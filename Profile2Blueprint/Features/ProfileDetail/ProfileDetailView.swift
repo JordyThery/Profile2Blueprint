@@ -182,6 +182,7 @@ struct ClassicScopeSummary: View {
     }
 }
 
+#if DEBUG
 #Preview("Detail – Source") {
     ProfileDetailView(workspace: .previewDemo(), profileID: 101)
         .frame(width: 800, height: 760)
@@ -191,3 +192,4 @@ struct ClassicScopeSummary: View {
     ProfileDetailView(workspace: .previewDemo(), profileID: 105)
         .frame(width: 800, height: 760)
 }
+#endif

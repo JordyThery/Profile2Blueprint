@@ -132,6 +132,7 @@ struct RuleChecklistView: View {
     }
 }
 
+#if DEBUG
 #Preview("Blueprint preview") {
     let workspace = Workspace.previewDemo()
     BlueprintPreviewTab(session: workspace.session(for: 101)!)
@@ -143,3 +144,4 @@ struct RuleChecklistView: View {
     DiffTab(session: workspace.session(for: 102)!)
         .frame(width: 900, height: 800)
 }
+#endif

@@ -210,6 +210,7 @@ struct HistoryDocument: FileDocument {
     }
 }
 
+#if DEBUG
 #Preview("Detail pane") {
     HistoryDetailPane(record: MigrationRecord(
         timestamp: Date(),
@@ -225,3 +226,4 @@ struct HistoryDocument: FileDocument {
     ))
     .frame(width: 900)
 }
+#endif

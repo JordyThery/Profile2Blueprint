@@ -225,6 +225,7 @@ private struct ActivityDetailPane: View {
     }
 }
 
+#if DEBUG
 #Preview {
     let temp = FileManager.default.temporaryDirectory
     let model = AppModel(
@@ -250,3 +251,4 @@ private struct ActivityDetailPane: View {
         .environment(model)
         .frame(width: 1150, height: 600)
 }
+#endif

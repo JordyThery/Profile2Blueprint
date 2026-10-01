@@ -400,8 +400,10 @@ private struct StepIndicator: View {
     }
 }
 
+#if DEBUG
 #Preview("Migrate – needs attention") {
     let workspace = Workspace.previewDemo()
     MigrateTab(workspace: workspace, session: workspace.session(for: 105)!)
         .frame(width: 800, height: 800)
 }
+#endif

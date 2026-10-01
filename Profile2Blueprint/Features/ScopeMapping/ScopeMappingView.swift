@@ -162,8 +162,10 @@ struct ScopeMappingView: View {
     }
 }
 
+#if DEBUG
 #Preview("Scope – ambiguous") {
     let workspace = Workspace.previewDemo()
     ScopeMappingView(workspace: workspace, session: workspace.session(for: 102)!)
         .frame(width: 800, height: 700)
 }
+#endif

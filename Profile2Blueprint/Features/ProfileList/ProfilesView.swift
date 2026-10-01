@@ -225,7 +225,9 @@ extension Result<ProfileDocument, PlistParseError> {
     }
 }
 
+#if DEBUG
 #Preview("Profiles – demo") {
     ProfilesContent(workspace: .previewDemo())
         .frame(width: 1100, height: 700)
 }
+#endif

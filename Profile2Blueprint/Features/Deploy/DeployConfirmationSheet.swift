@@ -109,6 +109,7 @@ struct DeployConfirmationSheet: View {
     }
 }
 
+#if DEBUG
 #Preview("Deploy confirmation") {
     DeployConfirmationSheet(
         items: [DeployItem(blueprintID: "5b1f7c2e-0000-4000-8000-000000000001", blueprintName: "Classic – Managed Login Items (migrated)",
@@ -116,3 +117,4 @@ struct DeployConfirmationSheet: View {
         environmentName: "Production", isDemo: false
     ) { _ in }
 }
+#endif

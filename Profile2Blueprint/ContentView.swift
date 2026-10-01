@@ -177,6 +177,7 @@ struct CurrentTenantBadge: View {
     }
 }
 
+#if DEBUG
 #Preview {
     ContentView()
         .environment(AppModel(
@@ -184,3 +185,4 @@ struct CurrentTenantBadge: View {
             secrets: InMemorySecretStore()
         ))
 }
+#endif
