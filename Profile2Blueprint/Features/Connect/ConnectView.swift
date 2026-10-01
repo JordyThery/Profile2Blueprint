@@ -141,7 +141,7 @@ struct ConnectView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(!canTest)
-                    .help("Requests a token and lists computer device groups. Uses the values above, saved or not.")
+                    .help("Request a token and list platform device groups. Uses the values above, saved or not.")
 
                     Button {
                         save()
@@ -150,7 +150,7 @@ struct ConnectView: View {
                     }
                     .keyboardShortcut("s")
                     .disabled(!isDirty)
-                    .help("Saves the settings; the client secret goes to your Keychain (\u{2318}S)")
+                    .help("Save the tenant settings and client secret (\u{2318}S)")
 
                     if isDirty {
                         Label("Unsaved changes", systemImage: "pencil.circle")
@@ -191,7 +191,7 @@ struct ConnectView: View {
                     testConnection()
                 }
                 .disabled(!canTest)
-                .help("Request a token and list device groups to check the credentials")
+                .help("Request a token and list platform device groups. Uses the values above, saved or not.")
             }
         }
         .confirmationDialog(
@@ -262,7 +262,7 @@ private struct ConnectionResultView: View {
     var body: some View {
         switch state {
         case .idle:
-            Text("Not tested yet. “Test Connection” requests a token and lists computer device groups.")
+            Text("Not tested yet. “Test Connection” requests a token and lists platform device groups.")
                 .foregroundStyle(.secondary)
         case .testing:
             HStack {

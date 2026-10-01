@@ -38,7 +38,7 @@ final class HistoryLog {
             blueprintID: blueprintID,
             blueprintName: blueprintName,
             result: result,
-            message: message
+            message: Redactor.redact(message)
         )
         records.append(entry)
         activity?.append(ActivityEvent(

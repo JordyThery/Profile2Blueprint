@@ -1,6 +1,6 @@
 import Foundation
 
-/// The subset of the Blueprints API v1 uses. PATCH, DELETE and undeploy are
+/// The subset of the Blueprints API the app uses. PATCH, DELETE and undeploy are
 /// intentionally absent.
 nonisolated protocol BlueprintsAPI: Sendable {
     /// Blueprints whose name equals `name` (case-insensitive), for the duplicate check.

@@ -122,7 +122,7 @@ nonisolated enum EligibilityChecker {
             break
         case .user:
             add(.userLevel, .blocker, "User-level profile",
-                "v1 only migrates computer-level (System) profiles. User-channel profiles are out of scope.")
+                "Only computer-level (System) profiles can be migrated. User-channel profiles are out of scope.")
         case let .other(raw):
             add(.userLevel, .blocker, "Unknown profile level “\(raw)”",
                 "Only computer-level (System) profiles can be migrated.")
@@ -205,13 +205,13 @@ nonisolated enum EligibilityChecker {
             .subtracting(nonCanonicalPayloadTypes.keys)
         if !unrecognised.isEmpty {
             add(.unsupportedPayloadType, .warning, "Payload type not in the known registry",
-                "The configuration-profile component matches payload types against a fixed registry, and \(unrecognised.sorted().joined(separator: ", ")) wasn't in it when this was probed (\(payloadTableProbeDate)). Create may fail with “Failed to validate configuration.” Try it: the API is the authority, and the list may have grown.")
+                "The configuration-profile component matches payload types against a fixed registry, and \(unrecognised.sorted().joined(separator: ", ")) wasn't in it when this was probed (\(payloadTableProbeDate)). Create may fail with “Failed to validate configuration.” Attempting it is safe: the API is the authority and the registry may have grown.")
         }
 
         let apiOnly = Set(types).intersection(supportedPayloadTypes).subtracting(uiManageablePayloadTypes)
         if !apiOnly.isEmpty {
             add(.apiOnlyPayload, .info, "Not editable in the Jamf Pro UI",
-                "\(apiOnly.sorted().joined(separator: ", ")) will appear as a read-only “Legacy payload” in the blueprint and can only be changed through the API.")
+                "\(apiOnly.sorted().joined(separator: ", ")) will appear in the blueprint as read-only “Legacy payload” items, editable only through the API.")
         }
 
         let uuids = document.payloads.compactMap(\.uuid)

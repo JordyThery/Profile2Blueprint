@@ -11,12 +11,9 @@ import Foundation
 ///
 /// Key casing and order, and array order, are preserved exactly.
 nonisolated enum PlistToJSON {
-    /// Payload wrapper keys that the Blueprints API expects in camelCase, as used in
-    /// the working JNUC demo body. Only applied at the top level of each payload;
-    /// type-specific keys (e.g. `Rules`) keep their Apple casing.
-    ///
-    /// Provisional: confirmed only against the demo, not the OpenAPI schema, which
-    /// documents just `payloadType`. The verify step checks the server's read-back.
+    /// Payload wrapper keys the Blueprints API expects in camelCase, verified against a
+    /// live tenant. Only applied at the top level of each payload; type-specific keys
+    /// (e.g. `Rules`) keep their Apple casing. The verify step checks the read-back.
     static let wrapperKeyMap: [String: String] = [
         "PayloadType": "payloadType",
         "PayloadUUID": "payloadUUID",
@@ -75,8 +72,8 @@ nonisolated enum ServerStringRewrite {
     ///
     /// U+2028/U+2029/U+0085 are deliberately left alone: they round-trip exactly, so
     /// comparing them strictly keeps real corruption detectable.
-    /// Works on Unicode scalars because Swift treats CRLF as a single `Character`, so
-    /// `contains("\r")` and `replacingOccurrences(of: "\r", …)` both miss it.
+    /// Works on Unicode scalars because Swift treats CRLF as a single `Character`,
+    /// so `contains("\r")` is false for CRLF text.
     static func normalize(_ value: String) -> String {
         guard value.unicodeScalars.contains("\r") else {
             return value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -118,12 +115,6 @@ nonisolated enum PlistJSONComparator {
         var caseInsensitiveKeys = false
         /// Require object keys to appear in the same order.
         var requireKeyOrder = false
-        /// Keys present only in the JSON that are not reported.
-        var ignoredExtraKeys: Set<String> = []
-        /// Keys present only in the plist that are not reported.
-        var ignoredMissingKeys: Set<String> = []
-        /// Rename map applied to plist keys before lookup (e.g. wrapper keys).
-        var keyMap: [String: String] = [:]
         /// Treat documented Jamf Pro string rewrites, and omitted empty values, as
         /// expected behaviour rather than data loss. Use when comparing against a
         /// server read-back; leave off when comparing against a locally built body.
@@ -181,13 +172,9 @@ nonisolated enum PlistJSONComparator {
     ) -> [ValueDifference] {
         var result: [ValueDifference] = []
         var matchedKeys: [String] = []
-        var nested = options
-        nested.keyMap = [:]
-        nested.ignoredExtraKeys = []
-        nested.ignoredMissingKeys = []
 
         for entry in plist.entries {
-            let key = options.keyMap[entry.key] ?? entry.key
+            let key = entry.key
             let childPath = path.isEmpty ? key : "\(path).\(key)"
             let match: (key: String, value: JSONValue)?
             if options.caseInsensitiveKeys {
@@ -196,24 +183,20 @@ nonisolated enum PlistJSONComparator {
                 match = json[key].map { (key, $0) }
             }
             guard let match else {
-                if !options.ignoredMissingKeys.contains(entry.key) {
-                    // An empty value the server simply didn't store back is a harmless
-                    // omission, not data loss: there was nothing in it to lose.
-                    let omittedEmpty = options.tolerateServerRewrites && entry.value.isEmptyContainer
-                    result.append(ValueDifference(
-                        path: childPath, expected: entry.value.displaySummary, actual: "(missing)",
-                        serverRewrite: omittedEmpty ? "The value was empty and the server does not store empty values." : nil
-                    ))
-                }
+                // An empty value the server simply didn't store back is a harmless
+                // omission, not data loss: there was nothing in it to lose.
+                let omittedEmpty = options.tolerateServerRewrites && entry.value.isEmptyContainer
+                result.append(ValueDifference(
+                    path: childPath, expected: entry.value.displaySummary, actual: "(missing)",
+                    serverRewrite: omittedEmpty ? "The value was empty and the server does not store empty values." : nil
+                ))
                 continue
             }
             matchedKeys.append(match.key)
-            result += differences(plist: entry.value, json: match.value, path: childPath, options: nested)
+            result += differences(plist: entry.value, json: match.value, path: childPath, options: options)
         }
 
-        let extra = json.keys.filter { key in
-            !matchedKeys.contains(key) && !options.ignoredExtraKeys.contains { $0.caseInsensitiveCompare(key) == .orderedSame }
-        }
+        let extra = json.keys.filter { !matchedKeys.contains($0) }
         for key in extra {
             result.append(ValueDifference(path: path.isEmpty ? key : "\(path).\(key)", expected: "(absent)", actual: json[key]?.displaySummary ?? ""))
         }

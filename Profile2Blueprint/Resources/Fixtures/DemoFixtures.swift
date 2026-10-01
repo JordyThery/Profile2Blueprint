@@ -6,7 +6,7 @@ import Foundation
 /// is XML-escaped inside `general/payloads`, `level` is `System`/`User`, and
 /// `general/uuid` carries the top-level PayloadIdentifier.
 nonisolated enum DemoFixtures {
-    // MARK: Fixture 1 — the JNUC demo profile
+    // MARK: Fixture 1 — modelled on the profile from Jamf's JNUC transform demo
 
     static let managedLoginItemsTopUUID = "8F2A6C1E-3B4D-4E5F-9A7B-1C2D3E4F5A6B"
     static let managedLoginItemsPayloadUUID = "2D9E7C41-5A3B-4C8D-9E1F-0A2B3C4D5E6F"

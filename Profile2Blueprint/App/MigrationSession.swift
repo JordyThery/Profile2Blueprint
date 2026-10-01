@@ -201,13 +201,14 @@ final class MigrationSession: Identifiable {
         guard canCreate else { return }
         await perform { [self] in
             let request = try await prepareRequest()
-            let existing = try await pipeline.existingBlueprints()
-            if !existing.isEmpty {
-                duplicates = existing
+            let created: BlueprintCreated
+            do {
+                created = try await pipeline.create()
+            } catch let duplicate as DuplicateNameError {
+                duplicates = duplicate.existing
                 state = await pipeline.state
                 return
             }
-            let created = try await pipeline.create()
             blueprintID = created.id
             createdName = request.name
             persistSessionRecord()
@@ -314,9 +315,17 @@ final class MigrationSession: Identifiable {
         }
     }
 
+    /// The user opted into cleanup and it hasn't run; whether the deployment was clean
+    /// enough is a separate check (`ClassicScopeService.deploymentAllowsUnscope`).
+    /// The deploy confirmation reads this too, so the sheet promises cleanup
+    /// exactly when the session would run it.
+    var autoUnscopeArmed: Bool {
+        unscopeAfterDeploy && canChangeClassicScope && scopeBackup == nil
+    }
+
     /// Runs the opt-in auto-unscope after a deployment result, if (and only if) it was clean.
     private func autoUnscopeIfRequested() async throws {
-        guard unscopeAfterDeploy, canChangeClassicScope, scopeBackup == nil else { return }
+        guard autoUnscopeArmed else { return }
         if ClassicScopeService.deploymentAllowsUnscope(outcome) {
             try await unscopeStage()
         } else {
@@ -410,8 +419,7 @@ final class MigrationSession: Identifiable {
             outcome = .succeeded(report)
             state = .deployed(report)
         }
-        guard unscopeAfterDeploy, canChangeClassicScope, scopeBackup == nil,
-              ClassicScopeService.deploymentAllowsUnscope(outcome) else { return }
+        guard autoUnscopeArmed, ClassicScopeService.deploymentAllowsUnscope(outcome) else { return }
         await perform { [self] in try await unscopeStage() }
     }
 

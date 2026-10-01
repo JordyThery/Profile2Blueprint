@@ -1,11 +1,9 @@
 import Foundation
 
-nonisolated enum EligibilityStatus: Int, Comparable, Hashable, Sendable {
-    case ready = 0
-    case needsAttention = 1
-    case blocked = 2
-
-    static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }
+nonisolated enum EligibilityStatus: Int, Hashable, Sendable {
+    case ready
+    case needsAttention
+    case blocked
 
     var title: String {
         switch self {

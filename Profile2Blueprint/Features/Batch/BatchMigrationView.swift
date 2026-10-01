@@ -88,7 +88,9 @@ struct BatchMigrationView: View {
                 items: deployable.map { session in
                     DeployItem(blueprintID: session.blueprintID ?? "", blueprintName: session.createdName ?? session.blueprintName,
                                sourceName: session.profile.name, groups: session.selectedGroups,
-                               warnings: session.fidelity?.caseChanges.count ?? 0)
+                               warnings: session.fidelity?.caseChanges.count ?? 0,
+                               unscopeClassicProfile: session.autoUnscopeArmed
+                                   ? "“\(session.profile.name)” (#\(session.profile.id))" : nil)
                 },
                 environmentName: workspace.environment.displayName,
                 isDemo: workspace.environment.isDemo

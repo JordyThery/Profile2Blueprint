@@ -80,7 +80,7 @@ nonisolated enum BlueprintBuilder {
         case let .failure(error):
             problems.append(error.message)
         }
-        if profile.level != .system { problems.append("Only computer-level profiles can be migrated in v1.") }
+        if profile.level != .system { problems.append("Only computer-level (System) profiles can be migrated.") }
 
         guard problems.isEmpty, let document else { throw BlueprintBuildError(problems: problems) }
 

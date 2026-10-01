@@ -6,7 +6,7 @@ import OSLog
 nonisolated enum MigrationState: Hashable, Sendable {
     case idle
     case fetched
-    case validated(EligibilityStatus)
+    case validated
     case built
     case created(blueprintID: String)
     case verified(passed: Bool)
@@ -35,6 +35,15 @@ nonisolated enum DeploymentOutcome: Hashable, Sendable {
 nonisolated struct PipelineError: Error, LocalizedError, Sendable {
     var message: String
     var errorDescription: String? { message }
+}
+
+/// A same-named blueprint already exists. Carries the matches so callers can offer
+/// rename / skip / open-existing instead of a plain failure.
+nonisolated struct DuplicateNameError: Error, LocalizedError, Sendable {
+    var existing: [BlueprintOverview]
+    var errorDescription: String? {
+        "A blueprint with this name already exists. Rename, skip, or open the existing one."
+    }
 }
 
 /// Bounded polling: starts at `initialInterval`, grows ×1.5 up to `maxInterval`, gives up at `timeout`.
@@ -104,7 +113,7 @@ actor MigrationPipeline {
         guard let profile else { throw PipelineError(message: "Fetch the profile before validating.") }
         let result = EligibilityChecker.check(profile, platformGroups: platformGroups)
         report = result
-        state = .validated(result.status)
+        state = .validated
         return result
     }
 
@@ -132,20 +141,20 @@ actor MigrationPipeline {
         return try await blueprints.blueprints(named: request.name)
     }
 
-    /// 6. Create the blueprint, not deployed. Refuses if a same-named blueprint exists
-    /// unless the caller has already checked and chosen to rename.
+    /// 6. Create the blueprint, not deployed. Throws `DuplicateNameError` — leaving the
+    /// pipeline at `built` so the caller can rename and retry — when the name is taken.
     func create() async throws -> BlueprintCreated {
         guard let request, state == .built else { throw PipelineError(message: "Build the blueprint before creating it.") }
         do {
             let existing = try await blueprints.blueprints(named: request.name)
-            if !existing.isEmpty {
-                throw PipelineError(message: "A blueprint named “\(request.name)” already exists. Rename, skip, or open the existing one.")
-            }
+            if !existing.isEmpty { throw DuplicateNameError(existing: existing) }
             let created = try await blueprints.create(request)
             blueprintID = created.id
             state = .created(blueprintID: created.id)
             Log.app.info("Created blueprint \(created.id, privacy: .public) (not deployed)")
             return created
+        } catch let duplicate as DuplicateNameError {
+            throw duplicate
         } catch {
             state = .failed(stage: "create", ErrorReport(error))
             throw error
@@ -179,7 +188,6 @@ actor MigrationPipeline {
     /// 8. Deploy, only with a confirmation for this exact blueprint, then poll.
     func deploy(
         confirmation: DeployConfirmation,
-        allowFidelityFailures: Bool = false,
         onProgress: @Sendable (DeploymentState?) async -> Void = { _ in }
     ) async throws -> DeploymentOutcome {
         guard let blueprintID, case let .verified(passed) = state else {
@@ -188,7 +196,7 @@ actor MigrationPipeline {
         guard confirmation.blueprintID == blueprintID else {
             throw PipelineError(message: "The confirmation is for a different blueprint. Nothing was deployed.")
         }
-        guard passed || allowFidelityFailures else {
+        guard passed else {
             throw PipelineError(message: "Verification found mismatches. Deploying was refused.")
         }
 

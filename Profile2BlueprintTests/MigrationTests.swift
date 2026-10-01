@@ -238,7 +238,7 @@ struct ScopeMapperTests {
 @Suite("Blueprint builder")
 struct BlueprintBuilderTests {
 
-    @Test("Fixture 1 builds the §3.3 body with identifiers copied verbatim")
+    @Test("Fixture 1 builds the create body with identifiers copied verbatim")
     func fixture1Body() throws {
         let source = try profile(DemoFixtures.managedLoginItems)
         let request = try BlueprintBuilder.build(
@@ -516,7 +516,7 @@ struct FidelityVerifierTests {
         #expect(report.caseChanges.isEmpty)
     }
 
-    @Test("Expected server canonicalisation is tolerated (§3.6)")
+    @Test("Expected server canonicalisation is tolerated")
     func canonicalisation() {
         let canonical = detail(for: request) { configuration in
             configuration["payloadDisplayName"] = .string("Classic - Security Baseline")
@@ -684,8 +684,12 @@ struct PipelineTests {
         _ = try await pipeline.validate(platformGroups: DemoFixtures.platformGroups)
         _ = try await pipeline.build(name: "taken", description: nil, deviceGroupIDs: [engineers.id], acknowledgedWarnings: false)
         #expect(try await pipeline.existingBlueprints().count == 1)
-        await #expect(throws: PipelineError.self) { _ = try await pipeline.create() }
+        await #expect(throws: DuplicateNameError.self) { _ = try await pipeline.create() }
         #expect(await server.createCount == 0)
+        // The duplicate leaves the pipeline at .built, so renaming and retrying works.
+        _ = try await pipeline.build(name: "now free", description: nil, deviceGroupIDs: [engineers.id], acknowledgedWarnings: false)
+        _ = try await pipeline.create()
+        #expect(await server.createCount == 1)
     }
 
     @Test("Deploy requires a confirmation for this exact blueprint")

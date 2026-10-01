@@ -36,7 +36,7 @@ struct DeployConfirmationSheet: View {
 
             Text(isDemo
                  ? "Offline demo. This simulates a deployment."
-                 : "Environment: \(environmentName). Devices in these groups will receive the DDM profile. Where the classic profile is installed, it is replaced in place.")
+                 : "Tenant: \(environmentName). Devices in these groups will receive the DDM profile. Where the classic profile is installed, it is replaced in place.")
                 .foregroundStyle(isDemo ? Color.secondary : Color.orange)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -83,10 +83,16 @@ struct DeployConfirmationSheet: View {
             }
 
             Toggle(isOn: $confirmed) {
-                Text(items.count == 1
-                     ? "I confirm deploying “\(items[0].blueprintName)” to ^[\(totalDevices) device](inflect: true)"
-                        + (items[0].unscopeClassicProfile != nil ? " and unscoping the classic profile afterwards." : ".")
-                     : "I confirm deploying all \(items.count) blueprints listed above.")
+                // Single literals only: concatenated strings skip grammar inflection.
+                if items.count == 1, let item = items.first {
+                    if item.unscopeClassicProfile != nil {
+                        Text("I confirm deploying “\(item.blueprintName)” to ^[\(totalDevices) device](inflect: true) and unscoping the classic profile afterwards.")
+                    } else {
+                        Text("I confirm deploying “\(item.blueprintName)” to ^[\(totalDevices) device](inflect: true).")
+                    }
+                } else {
+                    Text("I confirm deploying all \(items.count) blueprints listed above.")
+                }
             }
 
             HStack {

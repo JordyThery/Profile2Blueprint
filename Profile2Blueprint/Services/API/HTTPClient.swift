@@ -251,7 +251,7 @@ nonisolated final class HTTPClient: Sendable {
         return HTTPResponse(status: http.statusCode, headers: headers, data: data)
     }
 
-    /// Honors an integer `Retry-After` header, capped by the policy's max delay.
+    /// Honours an integer `Retry-After` header, capped by the policy's max delay.
     private func retryAfter(_ response: HTTPResponse) -> Duration? {
         guard let value = response.header("Retry-After"), let seconds = Int(value.trimmingCharacters(in: .whitespaces)) else {
             return nil

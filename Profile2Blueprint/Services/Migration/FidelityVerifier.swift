@@ -166,7 +166,7 @@ nonisolated enum FidelityVerifier {
                 status: .match,
                 note: tolerated == 0
                     ? "All setting values equal."
-                    : "All setting values equal, with ^[\(tolerated) known server rewrite](inflect: true) listed below."
+                    : "All setting values equal; \(tolerated) known server rewrite\(tolerated == 1 ? "" : "s") listed below."
             ), at: 0)
         }
         return rows

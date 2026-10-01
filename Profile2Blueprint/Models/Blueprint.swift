@@ -1,6 +1,6 @@
 import Foundation
 
-/// A fully built `POST /v1/blueprints` body. `body` is the exact JSON that is sent.
+/// A fully built `POST /blueprints/v1/blueprints` body. `body` is the exact JSON that is sent.
 nonisolated struct BlueprintRequest: Hashable, Sendable {
     var name: String
     var description: String?
@@ -60,7 +60,7 @@ nonisolated struct DeploymentState: Decodable, Hashable, Sendable {
     }
 }
 
-/// Entry of `GET /v1/blueprints`.
+/// Entry of `GET /blueprints/v1/blueprints`.
 nonisolated struct BlueprintOverview: Decodable, Hashable, Sendable, Identifiable {
     var id: String
     var name: String
@@ -90,7 +90,7 @@ nonisolated struct BlueprintStepDetail: Decodable, Hashable, Sendable {
     var activationPredicate: String?
 }
 
-/// `GET /v1/blueprints/{id}`.
+/// `GET /blueprints/v1/blueprints/{id}`.
 nonisolated struct BlueprintDetail: Decodable, Hashable, Sendable, Identifiable {
     var id: String
     var name: String
@@ -102,7 +102,7 @@ nonisolated struct BlueprintDetail: Decodable, Hashable, Sendable, Identifiable 
     var steps: [BlueprintStepDetail]
 }
 
-/// `GET /v1/blueprints/{id}/report`.
+/// `GET /blueprints/v1/blueprints/{id}/report`.
 nonisolated struct BlueprintReport: Decodable, Hashable, Sendable {
     var succeeded: Int
     var failed: Int

@@ -244,7 +244,7 @@ private struct ActivityDetailPane: View {
                                         method: "POST", path: "blueprints/v1/blueprints", status: 400, durationMs: 230,
                                         traceId: "bdacd3d34c6d8c7f"))
     model.activity.append(ActivityEvent(environment: "Jamf Pro", category: .migration,
-                                        message: "Create (not deployed) — P2B Test – notifications profile (#475) → blueprint 2f93c32f: Created, not deployed. Scope: P2B Test – one Mac."))
+                                        message: "Create (not deployed) — Classic – Managed Login Items (#101) → blueprint 5b1f7c2e: Created, not deployed. Scope: Engineers."))
     model.activity.append(ActivityEvent(environment: "App", category: .blocked, level: .warning,
                                         message: "Refused before sending: not on the allow-list.", method: "DELETE", path: "blueprints/v1/blueprints/x"))
     return ActivityView()

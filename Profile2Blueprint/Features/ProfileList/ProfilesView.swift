@@ -11,7 +11,7 @@ struct ProfilesView: View {
                 ProfilesContent(workspace: workspace)
             case let .failure(error):
                 ContentUnavailableView {
-                    Label("No Environment", systemImage: "network.slash")
+                    Label("No Tenant", systemImage: "network.slash")
                 } description: {
                     Text(error.localizedDescription)
                 } actions: {
@@ -194,8 +194,8 @@ private struct ProfileRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                if let reason = report?.reasons.first {
-                    Text(reason.title + (report!.reasons.count > 1 ? " +\(report!.reasons.count - 1) more" : ""))
+                if let reasons = report?.reasons, let reason = reasons.first {
+                    Text(reason.title + (reasons.count > 1 ? " +\(reasons.count - 1) more" : ""))
                         .font(.caption)
                         .foregroundStyle(reason.severity.color)
                         .lineLimit(1)

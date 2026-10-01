@@ -42,7 +42,7 @@ struct ScopeMappingView: View {
 
                 scopeWarnings
 
-                GroupBox("All platform computer groups") {
+                GroupBox("All platform device groups") {
                     VStack(alignment: .leading, spacing: 8) {
                         TextField("Filter groups", text: $groupSearch)
                             .textFieldStyle(.roundedBorder)
@@ -150,9 +150,10 @@ struct ScopeMappingView: View {
                     }
                     Divider()
                     HStack {
-                        Text(session.selectedGroups.count > 1 ? "Up to (groups may overlap)" : "Total")
+                        Text("Total")
                         Spacer()
-                        Text("^[\(session.deviceCount) device](inflect: true)").monospacedDigit().fontWeight(.semibold)
+                        Text("\(session.selectedGroups.count > 1 ? "up to " : "")^[\(session.deviceCount) device](inflect: true)")
+                            .monospacedDigit().fontWeight(.semibold)
                     }
                 }
             }

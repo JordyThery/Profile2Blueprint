@@ -9,14 +9,6 @@ nonisolated enum DeviceType: String, Codable, Hashable, Sendable {
         let raw = try decoder.singleValueContainer().decode(String.self)
         self = DeviceType(rawValue: raw) ?? .unknown
     }
-
-    var displayName: String {
-        switch self {
-        case .computer: "Computer"
-        case .mobile: "Mobile"
-        case .unknown: "Unknown"
-        }
-    }
 }
 
 nonisolated enum GroupType: String, Codable, Hashable, Sendable {

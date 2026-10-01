@@ -6,7 +6,7 @@ A native macOS app that migrates **Jamf Pro classic macOS configuration profiles
 
 ## Install
 
-Download the latest `Profile2Blueprint-x.y.zip` from [Releases](https://github.com/JordyThery/Profile2Blueprint/releases), unzip it, and move **Profile2Blueprint.app** to `/Applications`. The app is signed with a Developer ID certificate and notarized, so it opens without a Gatekeeper prompt. Requires **macOS 14 or later**.
+Download the latest `Profile2Blueprint-x.y.zip` from [Releases](https://github.com/JordyThery/Profile2Blueprint/releases), unzip it, and move **Profile2Blueprint.app** to `/Applications`. The app is signed with a Developer ID certificate and notarized, so Gatekeeper verifies it instead of blocking it. Requires **macOS 14 or later**.
 
 ## Try it without a tenant
 
@@ -80,9 +80,9 @@ Profile2Blueprint/
                  ClassicAPI, DeviceGroupsAPI, BlueprintsAPI, ClassicScopeWriter
     Migration/   PlistParser, ClassicXMLParser, PlistToJSON, ScopeMapper,
                  EligibilityChecker, BlueprintBuilder, FidelityVerifier,
-                 MigrationPipeline (actor, staged state machine), ClassicScopeService
-    Persistence/ TenantStore, HistoryStore, ActivityStore, ScopeBackupStore,
-                 SessionStateStore
+                 MigrationPipeline (actor, staged state machine),
+                 ClassicScopeService (with ScopeBackupStore)
+    Persistence/ TenantStore, HistoryStore, ActivityStore, SessionStateStore
   Features/    Connect, ProfileList, ProfileDetail, ScopeMapping, Review,
                Deploy, Batch, History, Activity, About
   Resources/   Fixtures (demo profiles and in-memory demo servers)

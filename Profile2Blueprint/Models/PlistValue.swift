@@ -27,7 +27,6 @@ nonisolated indirect enum PlistValue: Hashable, Sendable {
         return nil
     }
 
-    /// The plist element name, e.g. `string`, `dict`.
     /// An empty string, array or dictionary: a value with nothing in it to lose.
     var isEmptyContainer: Bool {
         switch self {
@@ -38,6 +37,7 @@ nonisolated indirect enum PlistValue: Hashable, Sendable {
         }
     }
 
+    /// The plist element name, e.g. `string`, `dict`.
     var typeName: String {
         switch self {
         case .string: "string"

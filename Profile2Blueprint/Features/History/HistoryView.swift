@@ -28,7 +28,7 @@ struct HistoryView: View {
         Group {
             if model.history.records.isEmpty {
                 ContentUnavailableView("No Actions Yet", systemImage: "clock.arrow.circlepath",
-                                       description: Text("Dry runs, creates, verifications and deployments are recorded here."))
+                                       description: Text("Dry runs, creates, verifications, deployments and classic cleanup are recorded here."))
             } else {
                 Table(records, selection: $selection, sortOrder: $sortOrder) {
                     TableColumn("Time", value: \.timestamp) { record in
@@ -215,12 +215,12 @@ struct HistoryDocument: FileDocument {
     HistoryDetailPane(record: MigrationRecord(
         timestamp: Date(),
         tenantName: "Jamf Pro",
-        environmentID: "50c1c4f3-1a2e-42e4-b3c0-e24854250b67",
+        environmentID: "A1B2C3D4-0000-4000-8000-00000000000E",
         action: .unscopeClassic,
-        sourceProfileID: 475,
-        sourceProfileName: "P2B Test – notifications profile",
-        blueprintID: "2f93c32f-6837-40bf-90b9-10d3ea32f752",
-        blueprintName: "P2B Test – notifications profile (migrated)",
+        sourceProfileID: 101,
+        sourceProfileName: "Classic – Managed Login Items",
+        blueprintID: "5b1f7c2e-0000-4000-8000-000000000001",
+        blueprintName: "Classic – Managed Login Items (migrated)",
         result: .success,
         message: "Removed all scope targets from the classic profile (payloads untouched). Scope backup saved; restore is available."
     ))

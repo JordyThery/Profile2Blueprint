@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Review & create → Verify → Deploy, with a confirmation gate between each.
+/// Review & create → Verify → Deploy, with an explicit confirmation before deploy.
 struct MigrateTab: View {
     let workspace: Workspace
     @Bindable var session: MigrationSession
@@ -13,7 +13,8 @@ struct MigrateTab: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                StepIndicator(state: session.state, hasBlueprint: session.blueprintID != nil, fidelity: session.fidelity)
+                StepIndicator(state: session.state, hasBlueprint: session.blueprintID != nil, fidelity: session.fidelity,
+                              cleanupDone: session.scopeBackup != nil)
                 environmentBanner
                 review
                 if let duplicates = session.duplicates {
@@ -39,7 +40,7 @@ struct MigrateTab: View {
                         sourceName: session.profile.name,
                         groups: session.selectedGroups,
                         warnings: session.fidelity?.caseChanges.count ?? 0,
-                        unscopeClassicProfile: session.unscopeAfterDeploy && session.canChangeClassicScope
+                        unscopeClassicProfile: session.autoUnscopeArmed
                             ? "“\(session.profile.name)” (#\(session.profile.id))" : nil
                     )],
                     environmentName: environment.displayName,
@@ -115,7 +116,7 @@ struct MigrateTab: View {
                     Button("Run Dry Run", systemImage: "eye") {
                         Task { await session.runDryRun() }
                     }
-                    .disabled(session.isBusy || session.report.status == .blocked || previewProblems != nil
+                    .disabled(session.isBusy || session.effectiveReport.status == .blocked || previewProblems != nil
                               || (session.needsAcknowledgement && !session.acknowledgedWarnings))
 
                     Button("Create Blueprint (Not Deployed)", systemImage: "plus.square.on.square") {
@@ -223,7 +224,7 @@ struct MigrateTab: View {
                     }
                     Button("Refresh Status") { Task { await session.recheckDeployment() } }.disabled(session.isBusy)
                 default:
-                    Text("Deploying pushes the blueprint to every device in the target group. On each device the classic profile is replaced in place by the DDM-managed one.")
+                    Text("Deploying pushes the blueprint to every device in the target groups. On each device the classic profile is replaced in place by the DDM-managed one.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                     Button("Deploy…", systemImage: "paperplane") { showingDeploySheet = true }
@@ -370,10 +371,12 @@ private struct StepIndicator: View {
     let state: MigrationState
     let hasBlueprint: Bool
     let fidelity: FidelityReport?
+    /// Classic cleanup ran (a scope backup exists), so the last step is complete.
+    let cleanupDone: Bool
 
     private var current: Int {
         switch state {
-        case .deployed: 4
+        case .deployed: cleanupDone ? 5 : 4
         case .deploying: 3
         default: hasBlueprint ? (fidelity != nil ? 3 : 2) : 1
         }
@@ -381,10 +384,10 @@ private struct StepIndicator: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            ForEach(Array(["Review", "Create", "Verify", "Deploy"].enumerated()), id: \.offset) { index, title in
+            ForEach(Array(["Review & create", "Verify", "Deploy", "Cleanup"].enumerated()), id: \.offset) { index, title in
                 let step = index + 1
                 HStack(spacing: 4) {
-                    Image(systemName: step < current || (step == 4 && current == 4) ? "checkmark.circle.fill" : (step == current ? "circle.inset.filled" : "circle"))
+                    Image(systemName: step < current ? "checkmark.circle.fill" : (step == current ? "circle.inset.filled" : "circle"))
                         .foregroundStyle(step <= current ? Color.accentColor : Color.secondary)
                     Text(title).foregroundStyle(step <= current ? .primary : .secondary)
                 }
