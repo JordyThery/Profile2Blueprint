@@ -1,12 +1,41 @@
 # Profile2Blueprint
 
-A native macOS app that migrates **Jamf Pro classic macOS configuration profiles** into **Jamf Platform Blueprints**, using the Apple-supported in-place Classic → DDM transform. It turns a manual, API-driven workflow into a safe, reviewable, GUI-driven one.
+A native macOS app that migrates **Jamf Pro classic macOS configuration profiles** into **Jamf Platform Blueprints**, using the Apple-supported in-place Classic → DDM transform. It turns a manual, API-driven workflow into a safe, reviewable one.
 
-> **Status:** verified end to end against a live Jamf tenant — create, server-side verify, deploy, the in-place transform on a device, and classic scope cleanup with restore. Still validate each migration on a test device before fleet-wide use.
+> **Status:** verified end to end against a live Jamf tenant — create, server-side verify, deploy, the in-place transform on a device, and classic scope cleanup with restore. Validate each migration on a test device before fleet-wide use.
+
+## Install
+
+Download the latest `Profile2Blueprint-x.y.zip` from [Releases](https://github.com/JordyThery/Profile2Blueprint/releases), unzip it, and move **Profile2Blueprint.app** to `/Applications`. The app is signed with a Developer ID certificate and notarized, so it opens without a Gatekeeper prompt. Requires **macOS 14 or later**.
+
+## Try it without a tenant
+
+Switch on **Offline demo mode** in the sidebar. The full flow — eligibility, scope mapping, create, verify, deploy, unscope and restore — runs against bundled fixtures, with no network access and nothing to configure. This is the quickest way to see whether the app fits your environment.
+
+## Connect to Jamf
+
+In [Jamf Account](https://account.jamf.com), create an API integration scoped to the **platform environment** (tenant scope cannot reach the Blueprints API, and the scope level is fixed once the integration is created). Grant it:
+
+| Capability | Actions | Needed for |
+|---|---|---|
+| `device-groups` | Read | Listing platform device groups to map classic scope onto |
+| `configuration-profiles` | Read | Reading the classic profiles to migrate |
+| `blueprints` | Create, Read, Deploy | Creating, verifying and deploying blueprints |
+| `configuration-profiles` | Update | **Optional** — only to clear classic scope after a deployment |
+
+Jamf Account presents these as per-capability checkboxes; the APIs refer to them as `device-groups:read`, `blueprints:create` and so on.
+
+Then in the app: **Add Tenant** → pick the region → paste the platform **Environment ID**, **Client ID** and **Client secret** → **Test Connection** (requests a token and lists computer device groups) → **Save Changes**. Secrets are stored only in your Keychain.
+
+## First migration
+
+1. Open **Profiles**. Each classic macOS profile is graded ✅ Ready, ⚠️ Needs attention or ⛔ Blocked, with the reasons listed.
+2. Select a ✅ Ready profile and review the **Scope** and **Blueprint Preview** tabs. Preview shows the exact JSON that will be sent.
+3. Run **Migrate**. The blueprint is created but *not* deployed; the app then verifies it against the server's read-back. Deploying is a separate, explicitly confirmed step.
 
 ## How it works
 
-Apple lets a classic (imperative) MDM profile be transformed in place into a DDM-managed profile — no enforcement gap, no conflict — when all of these hold:
+Apple allows a classic (imperative) MDM profile to be transformed in place into a DDM-managed profile — no enforcement gap, no conflict — when all of these hold:
 
 1. The classic profile was installed by MDM.
 2. DDM is enabled on the device.
@@ -14,41 +43,30 @@ Apple lets a classic (imperative) MDM profile be transformed in place into a DDM
 4. The number of payloads in `PayloadContent` matches.
 5. Each payload's `PayloadType`, `PayloadIdentifier` and `PayloadUUID` match, in the same order.
 
-The app walks that workflow stage by stage: **fetch → validate → distill (plist → JSON) → map scope → build → create (not deployed) → verify → deploy**, with an explicit confirmation gate before anything irreversible. Rules 1–2 can't be checked through the API; the app says so and leaves them to you.
+The app walks that workflow stage by stage — **fetch → validate → distill (plist → JSON) → map scope → build → create → verify → deploy** — with an explicit confirmation gate before anything irreversible. Rules 1–2 cannot be checked through the API; the app says so and leaves them to you.
 
-## Features
+## Safety model
 
-- **Tenant management** — multiple saved tenants (us / eu / apac, optional host override). OAuth client secrets live only in the Keychain.
-- **Profiles list** — every classic macOS profile with an eligibility badge: ✅ Ready, ⚠️ Needs attention (with reasons), ⛔ Blocked (with reasons). Selecting target groups resolves the pick-a-group warnings; information-loss warnings still require an explicit acknowledgement.
-- **Profile detail** — Source (metadata, scope, payload tree), Scope mapping (exact-name auto-match with pickers for the rest), Blueprint Preview (the exact JSON that will be POSTed), Diff (the five rules as a checklist plus side-by-side JSON), and Migrate.
-- **Safety model**
-  - Dry run is the default; creating a blueprint never deploys it.
-  - Verification compares identifiers, payload order and count, setting values and scope against the server's read-back, tolerating documented server canonicalisation.
-  - Deploy requires a per-blueprint confirmation listing the target groups and device count, and is refused when verification failed.
-  - The HTTP layer refuses any request that isn't a GET, a blueprint create, a blueprint deploy or (only when explicitly enabled) a scope-only classic profile update — before it reaches the network.
-- **Classic cleanup (opt-in)** — after a fully clean deployment (0 failed, 0 pending), the app can remove the classic profile's scope targets. Guarded three times: a per-tenant setting that is off by default, a per-profile opt-in, and a confirmation. The original scope is backed up locally and can be restored.
-- **Batch migration** — per-item summaries, one deploy confirmation listing every target.
-- **Sessions persist** — a created blueprint re-attaches after a relaunch and resumes at its current stage; after a deployment the device report refreshes automatically until every device reports in.
-- **History** — a local log of every migration action, exportable as Markdown or JSON.
-- **Activity** — a local log of everything the app does: token requests, every API call (status, duration, trace ID), retries, refused writes and settings changes. Secrets are never logged.
-- **Offline demo mode** — the full flow, including deploy and unscope/restore, against bundled fixtures. No tenant required.
+- Creating a blueprint never deploys it.
+- Verification compares identifiers, payload order and count, setting values and scope against the server's read-back, tolerating documented server canonicalisation.
+- Deploy requires a per-blueprint confirmation listing the target groups and device count, and is refused when verification failed.
+- The HTTP layer refuses any request that isn't a GET, a blueprint create, a blueprint deploy or — only when explicitly enabled — a scope-only classic profile update, before it reaches the network.
+- **Classic cleanup is opt-in.** After a fully clean deployment (0 failed, 0 pending), the app can remove the classic profile's scope targets. This is guarded three times: a per-tenant setting that is off by default, a per-profile opt-in, and a confirmation. The original scope is backed up locally and can be restored.
+- Client secrets and tokens are never written to any log.
 
-## Requirements
+## Other features
 
-- macOS 14+, Xcode with the macOS 26/27 SDK (Swift 6, strict concurrency).
-- A [Jamf Account](https://account.jamf.com) API integration scoped to the **platform environment**, with:
-  - `device-groups:read`
-  - `configuration-profiles:read`
-  - `blueprints:create`, `blueprints:read`, `blueprints:deploy`
-  - `configuration-profiles:update` — only if you enable classic scope changes
+- **Multiple tenants** — us / eu / apac, with an optional host override.
+- **Scope mapping** — exact-name auto-matching, with pickers for anything ambiguous or unmatched.
+- **Diff** — the five rules as a checklist, plus side-by-side JSON.
+- **Batch migration** — per-item summaries and one deploy confirmation listing every target.
+- **Persistent sessions** — a created blueprint re-attaches after a relaunch and resumes at its current stage; after a deployment the device report refreshes until every device has reported in.
+- **History** — every migration action, exportable as Markdown or JSON.
+- **Activity** — everything the app does: token requests, every API call (status, duration, trace ID), retries, refused writes and settings changes.
 
-## Getting started
+## Build from source
 
-1. Build and run the `Profile2Blueprint` scheme.
-2. Either switch on **Offline demo mode** in the sidebar, or add a tenant: pick the region, paste the platform **Environment ID**, **Client ID** and **Client secret**, then **Test Connection** (requests a token and lists computer device groups).
-3. Open **Profiles**, pick a ✅ Ready profile, review the Scope and Blueprint Preview tabs, then run the Migrate flow.
-
-## Architecture
+Requires Xcode with the macOS 26 SDK or later (Swift 6, strict concurrency). Open the project and run the `Profile2Blueprint` scheme; there are no third-party dependencies. `⌘U` runs the test suite.
 
 ```
 Profile2Blueprint/
@@ -67,7 +85,7 @@ Profile2Blueprint/
   Features/    Connect, ProfileList, ProfileDetail, ScopeMapping, Review,
                Deploy, Batch, History, Activity, About
   Resources/   Fixtures (demo profiles and in-memory demo servers)
-Profile2BlueprintTests/   Swift Testing suite (300+ tests, mock URLProtocol)
+Profile2BlueprintTests/   Swift Testing suite (300+ cases, mock URLProtocol)
 ```
 
 Each API sits behind a protocol with live and demo implementations, so the pipeline and UI run unchanged against fixtures.
@@ -76,4 +94,4 @@ Each API sits behind a protocol with live and demo implementations, so the pipel
 
 - Scope limitations and exclusions have no blueprint equivalent and are not carried over (the eligibility checker warns about this).
 - User-level profiles, and `com.apple.font` / `com.apple.webClip.managed` payloads, cannot be migrated (API restriction).
-- The classic scope update (`PUT /osxconfigurationprofiles/id/{id}`) uses the Classic API's partial-XML convention; Jamf's OpenAPI specs do not document the request body, so re-verify after major Jamf Pro upgrades.
+- The classic scope update (`PUT /proclassic/osxconfigurationprofiles/id/{id}`) uses the Classic API's partial-XML convention. Jamf's OpenAPI specs do not document the request body, so re-verify after major Jamf Pro upgrades.
