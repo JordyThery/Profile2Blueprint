@@ -37,6 +37,14 @@ nonisolated enum FidelityVerifier {
     static let wrapperKeys: Set<String> = [
         "PayloadType", "PayloadUUID", "PayloadIdentifier", "PayloadVersion",
         "PayloadDisplayName", "PayloadOrganization", "PayloadDescription", "PayloadEnabled",
+        "PayloadRemovalDisallowed", "PayloadScope",
+    ]
+
+    /// Payload metadata the server rewrites, injects or drops by design. Reported for
+    /// visibility but never as a mismatch, except `PayloadEnabled` — see `verify`.
+    static let serverManagedKeys = [
+        "PayloadVersion", "PayloadOrganization", "PayloadDisplayName", "PayloadDescription",
+        "PayloadRemovalDisallowed", "PayloadScope", "PayloadEnabled",
     ]
 
     static func verify(
@@ -86,7 +94,7 @@ nonisolated enum FidelityVerifier {
             row("\(label) payloadIdentifier", payload.identifier, value("payloadIdentifier"))
             row("\(label) payloadUUID", payload.uuid, value("payloadUUID"))
 
-            for key in ["PayloadVersion", "PayloadOrganization", "PayloadDisplayName", "PayloadDescription", "PayloadEnabled"] {
+            for key in serverManagedKeys {
                 let source = payload.content[key]?.displaySummary
                 let server = object.value(forKeyIgnoringCase: key)?.value.displaySummary
                 guard source != server else { continue }
@@ -135,9 +143,15 @@ nonisolated enum FidelityVerifier {
 
         var options = PlistJSONComparator.Options()
         options.caseInsensitiveKeys = true
+        options.tolerateServerRewrites = true
         let differences = PlistJSONComparator.differences(plist: .dict(sourceSettings), json: .object(returnedSettings), options: options)
-        var rows = differences.map {
-            FidelityRow(field: "\(label) \($0.path)", classic: $0.expected, blueprint: $0.actual, status: .mismatch)
+        // A documented server rewrite is shown but does not block the deployment; only
+        // an unexplained difference means the blueprint wouldn't match the source.
+        var rows = differences.map { difference in
+            FidelityRow(
+                field: "\(label) \(difference.path)", classic: difference.expected, blueprint: difference.actual,
+                status: difference.serverRewrite == nil ? .mismatch : .info, note: difference.serverRewrite
+            )
         }
 
         for change in keyCaseChanges(.dict(sourceSettings), .object(returnedSettings), path: "") {
@@ -145,9 +159,15 @@ nonisolated enum FidelityVerifier {
                                     note: "Key casing changed. Expected for Rules/RuleType/RuleValue; otherwise confirm the device still reads it."))
         }
 
-        if differences.isEmpty {
-            rows.insert(FidelityRow(field: "\(label) settings", classic: "\(sourceSettings.count) keys", blueprint: "\(returnedSettings.count) keys",
-                                    status: .match, note: "All setting values equal."), at: 0)
+        if !rows.contains(where: { $0.status == .mismatch }) {
+            let tolerated = differences.count { $0.serverRewrite != nil }
+            rows.insert(FidelityRow(
+                field: "\(label) settings", classic: "\(sourceSettings.count) keys", blueprint: "\(returnedSettings.count) keys",
+                status: .match,
+                note: tolerated == 0
+                    ? "All setting values equal."
+                    : "All setting values equal, with ^[\(tolerated) known server rewrite](inflect: true) listed below."
+            ), at: 0)
         }
         return rows
     }

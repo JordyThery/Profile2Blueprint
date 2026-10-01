@@ -127,18 +127,18 @@ nonisolated enum DemoFixtures {
 
     static let certificatesAndDates = profileXML(
         id: 103,
-        name: "Classic – Root CA and Update Deadline",
+        name: "Classic – Certificate Preference and Update Deadline",
         uuid: "A1B2C3D4-0001-4000-8000-000000000103",
         plist: plist("""
         <key>PayloadUUID</key><string>A1B2C3D4-0001-4000-8000-000000000103</string>
         <key>PayloadType</key><string>Configuration</string>
         <key>PayloadIdentifier</key><string>A1B2C3D4-0001-4000-8000-000000000103</string>
-        <key>PayloadDisplayName</key><string>Classic – Root CA and Update Deadline</string>
+        <key>PayloadDisplayName</key><string>Classic – Certificate Preference and Update Deadline</string>
         <key>PayloadVersion</key><integer>1</integer>
         <key>PayloadContent</key>
         <array>
           <dict>
-            <key>PayloadType</key><string>com.apple.security.root</string>
+            <key>PayloadType</key><string>com.apple.security.certificatepreference</string>
             <key>PayloadIdentifier</key><string>C0000000-0000-4000-8000-000000000001</string>
             <key>PayloadUUID</key><string>C0000000-0000-4000-8000-000000000001</string>
             <key>PayloadVersion</key><integer>1</integer>

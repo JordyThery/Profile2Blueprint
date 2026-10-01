@@ -34,13 +34,51 @@ struct EligibilityTests {
         #expect(report.findings.first { $0.kind == .userLevel }?.severity == .blocker)
     }
 
-    @Test("Blocked payload types are Blocked", arguments: ["com.apple.font", "com.apple.webClip.managed"])
+    @Test("Every payload type the API refuses is Blocked",
+          arguments: EligibilityChecker.blockedPayloadTypes.sorted())
     func blockedTypes(type: String) throws {
         let xml = DemoFixtures.corporateFonts.replacingOccurrences(of: "com.apple.font", with: type)
         let report = try check(xml)
         #expect(report.status == .blocked)
         #expect(report.has(.blockedPayloadType))
         #expect(report.findings.first { $0.kind == .blockedPayloadType }?.detail.contains(type) == true)
+        #expect(!report.has(.unsupportedPayloadType), "a refused type is not also reported as unrecognised")
+    }
+
+    @Test("Certificate payloads are Blocked rather than flagged as informational")
+    func certificatePayloadsBlocked() throws {
+        let xml = DemoFixtures.corporateFonts.replacingOccurrences(of: "com.apple.font", with: "com.apple.security.pkcs12")
+        let report = try check(xml)
+        #expect(report.status == .blocked)
+        #expect(report.has(.blockedPayloadType))
+    }
+
+    @Test("A payload type outside the known registry warns but does not block")
+    func unrecognisedType() throws {
+        let xml = DemoFixtures.corporateFonts.replacingOccurrences(of: "com.apple.font", with: "com.example.invented")
+        let report = try check(xml)
+        #expect(report.status == .needsAttention, "the API is the authority; the registry may have grown")
+        #expect(report.findings.first { $0.kind == .unsupportedPayloadType }?.severity == .warning)
+        #expect(report.findings.first { $0.kind == .unsupportedPayloadType }?.detail.contains("com.example.invented") == true)
+    }
+
+    @Test("A payload type Jamf Pro spells differently is Blocked, not rewritten")
+    func nonCanonicalType() throws {
+        let xml = DemoFixtures.corporateFonts.replacingOccurrences(of: "com.apple.font", with: "com.apple.preferences.users")
+        let report = try check(xml)
+        #expect(report.status == .blocked)
+        let finding = try #require(report.findings.first { $0.kind == .nonCanonicalPayloadType })
+        #expect(finding.detail.contains("com.apple.preference.users"), "names the spelling the API wants")
+        #expect(!report.has(.unsupportedPayloadType))
+    }
+
+    @Test("Payloads the Jamf Pro UI can't edit are called out")
+    func apiOnlyPayload() throws {
+        let wifi = try check(DemoFixtures.wifiAllComputers)
+        let finding = try #require(wifi.findings.first { $0.kind == .apiOnlyPayload })
+        #expect(finding.severity == .info)
+        #expect(finding.detail.contains("com.apple.wifi.managed"))
+        #expect(try !check(DemoFixtures.managedLoginItems).has(.apiOnlyPayload), "com.apple.servicemanagement is UI-manageable")
     }
 
     @Test("Missing payload identifiers are Blocked")
@@ -137,6 +175,23 @@ struct EligibilityTests {
         let report = try check(xml)
         #expect(report.status == .blocked)
         #expect(report.findings.first { $0.kind == .serverValidation }?.detail.contains("SetupModes") == true)
+    }
+
+    @Test("Any empty value is Blocked, not just the Wi-Fi case",
+          arguments: ["&lt;string/&gt;", "&lt;array/&gt;"])
+    func emptyValues(empty: String) throws {
+        let xml = DemoFixtures.wifiAllComputers.replacingOccurrences(
+            of: "&lt;key&gt;AutoJoin&lt;/key&gt;", with: "&lt;key&gt;ProxyPACURL&lt;/key&gt;\(empty)&lt;key&gt;AutoJoin&lt;/key&gt;")
+        let report = try check(xml)
+        #expect(report.status == .blocked)
+        #expect(report.findings.first { $0.kind == .serverValidation }?.detail.contains("ProxyPACURL") == true)
+    }
+
+    @Test("An empty value in server-managed metadata is not treated as a rejection")
+    func emptyMetadataIgnored() throws {
+        let xml = DemoFixtures.wifiAllComputers.replacingOccurrences(
+            of: "&lt;key&gt;AutoJoin&lt;/key&gt;", with: "&lt;key&gt;PayloadDescription&lt;/key&gt;&lt;string/&gt;&lt;key&gt;AutoJoin&lt;/key&gt;")
+        #expect(try !check(xml).has(.serverValidation), "the server rewrites these keys anyway")
     }
 
     @Test("Disabled payloads need attention (server drops PayloadEnabled)")
@@ -250,6 +305,17 @@ struct BlueprintBuilderTests {
         #expect(text.contains(#""Ratio":0.75"#))
     }
 
+    @Test("Custom Settings payloads keep their capitalised PayloadContent")
+    func managedPreferencesKeepPayloadContent() throws {
+        // The Blueprints API needs the MCX structure intact and stores the key verbatim.
+        // Guards against a future change that strips payload metadata wholesale.
+        let document = try profile(DemoFixtures.securityBaseline).document.get()
+        let mcx = try #require(document.payloads.first { $0.type == "com.apple.ManagedClient.preferences" })
+        let object = PlistToJSON.payloadObject(mcx.content)
+        #expect(object["PayloadContent"]?.objectValue != nil, "must stay PayloadContent, not payloadContent")
+        #expect(object.keys.contains("payloadType") && object.keys.contains("payloadUUID"))
+    }
+
     @Test("Validation: name, description, groups, blocked types, level")
     func validation() throws {
         let fixture1 = try profile(DemoFixtures.managedLoginItems)
@@ -287,6 +353,56 @@ private func mutatePayload(_ index: Int, _ configuration: inout JSONObject, _ ch
     change(&payload)
     payloads[index] = .object(payload)
     configuration["payloadContent"] = .array(payloads)
+}
+
+@Suite("Server string rewrites")
+struct ServerRewriteTests {
+
+    private func compare(_ plist: PlistValue, _ json: JSONValue) -> [ValueDifference] {
+        var options = PlistJSONComparator.Options()
+        options.tolerateServerRewrites = true
+        return PlistJSONComparator.differences(plist: plist, json: json, options: options)
+    }
+
+    @Test("CR, CRLF and edge whitespace are folded before comparing",
+          arguments: [("a\r\nb", "a\nb"), ("a\rb", "a\nb"), ("  spaced  ", "spaced")])
+    func foldedSilently(source: String, stored: String) {
+        #expect(compare(.string(source), .string(stored)).isEmpty)
+    }
+
+    @Test("Known rewrites are explained instead of failing",
+          arguments: [
+              ("line one\nline two", "line oneline two", "line feeds"),
+              ("A & B < C", "A &amp; B &lt; C", "PI-827"),
+              ("done \u{1F680}", "done \u{FFFD}", "Basic Multilingual Plane"),
+          ])
+    func classified(source: String, stored: String, expectedPhrase: String) throws {
+        let difference = try #require(compare(.string(source), .string(stored)).first)
+        let reason = try #require(difference.serverRewrite, "should be classified, not reported as corruption")
+        #expect(reason.contains(expectedPhrase))
+    }
+
+    @Test("Genuine corruption is still a difference")
+    func realCorruptionSurvives() throws {
+        let difference = try #require(compare(.string("enabled"), .string("disabled")).first)
+        #expect(difference.serverRewrite == nil)
+    }
+
+    @Test("An omitted empty value is a harmless omission; an omitted real value is not")
+    func omittedValues() throws {
+        let source = PlistDictionary([.init(key: "Empty", value: .array([])), .init(key: "Real", value: .string("x"))])
+        let differences = compare(.dict(source), .object(JSONObject()))
+        #expect(differences.count == 2)
+        #expect(differences.first { $0.path == "Empty" }?.serverRewrite != nil)
+        #expect(differences.first { $0.path == "Real" }?.serverRewrite == nil)
+    }
+
+    @Test("Without the option, every rewrite is a plain difference")
+    func strictByDefault() {
+        let differences = PlistJSONComparator.differences(plist: .string("a\r\nb"), json: .string("a\nb"))
+        #expect(differences.count == 1)
+        #expect(differences[0].serverRewrite == nil)
+    }
 }
 
 @Suite("Fidelity verifier")

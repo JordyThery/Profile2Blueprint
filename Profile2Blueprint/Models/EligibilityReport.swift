@@ -37,6 +37,9 @@ nonisolated enum FindingKind: String, Hashable, Sendable {
     case userLevel
     case unparseablePayload
     case blockedPayloadType
+    case unsupportedPayloadType
+    case nonCanonicalPayloadType
+    case apiOnlyPayload
     case missingIdentifiers
     case noPayloads
     case duplicatePayloadUUIDs

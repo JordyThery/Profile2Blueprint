@@ -3,12 +3,106 @@ import Foundation
 /// Decides whether a classic profile can be transformed in place into a DDM
 /// legacy-profile blueprint. Pure: no I/O, so the whole table is unit-tested.
 nonisolated enum EligibilityChecker {
-    /// Payload types the Blueprints API refuses to create.
-    static let blockedPayloadTypes: Set<String> = ["com.apple.font", "com.apple.webClip.managed"]
+    /// When the payload-type tables below were probed against the Blueprints API.
+    /// Both are instance- and version-specific; the API is the final authority.
+    static let payloadTableProbeDate = "2026-07-17"
 
-    /// Server-side validation rules seen live: `(payload type, key)` that must not be an empty array.
-    static let knownServerRules: [(payloadType: String, key: String)] = [
-        ("com.apple.wifi.managed", "SetupModes"),
+    /// Payload types the Blueprints API refuses outright. A blueprint carrying one is
+    /// rejected with `400 Payload disabled: <type>` regardless of its keys.
+    ///
+    /// Source: Jamf's own `jamf-cli` (`internal/profileconvert`, `DisabledPayloadTypes`),
+    /// wire-probed by Jamf against every Apple MDM payload type.
+    static let blockedPayloadTypes: Set<String> = [
+        "com.apple.ADCertificate.managed",
+        "com.apple.DirectoryService.managed",
+        "com.apple.MCX.FileVault2",
+        "com.apple.airplay",
+        "com.apple.airplay.security",
+        "com.apple.cellular",
+        "com.apple.dnsSettings.managed",
+        "com.apple.education",
+        "com.apple.ews.account",
+        "com.apple.extensiblesso",
+        "com.apple.font",
+        "com.apple.profileRemovalPassword",
+        "com.apple.proxy.http.global",
+        "com.apple.security.pem",
+        "com.apple.security.pkcs1",
+        "com.apple.security.pkcs12",
+        "com.apple.security.root",
+        "com.apple.security.scep",
+        "com.apple.vpn.managed",
+        "com.apple.vpn.managed.appmapping",
+        "com.apple.webClip.managed",
+        "com.apple.webcontent-filter",
+    ]
+
+    /// Payload types the `com.jamf.ddm-configuration-profile` component accepts as
+    /// standalone payloads. The component matches against a fixed registry rather than
+    /// validating arbitrary Apple payloads; a type outside this set fails with the
+    /// opaque `Failed to validate configuration.`
+    ///
+    /// Same source as `blockedPayloadTypes`. Treated as a warning rather than a blocker:
+    /// an allow-list goes stale in the dangerous direction, so a type Jamf adds later
+    /// must not make this app refuse a migration that now works.
+    static let supportedPayloadTypes: Set<String> = [
+        "com.apple.AssetCache.managed", "com.apple.Dictionary", "com.apple.DiscRecording",
+        "com.apple.MCX.Accounts", "com.apple.MCX.EnergySaver", "com.apple.MCX.MobileAccounts",
+        "com.apple.MCX.TimeMachine", "com.apple.MCX.TimeServer", "com.apple.ManagedClient.preferences",
+        "com.apple.NSExtension", "com.apple.SetupAssistant.managed", "com.apple.SystemConfiguration",
+        "com.apple.TCC.configuration-profile-policy", "com.apple.airprint", "com.apple.app.lock",
+        "com.apple.applicationaccess", "com.apple.applicationaccess.new", "com.apple.appstore",
+        "com.apple.asam", "com.apple.associated-domains", "com.apple.cellularprivatenetwork.managed",
+        "com.apple.conferenceroomdisplay", "com.apple.desktop", "com.apple.dnsProxy.managed",
+        "com.apple.dock", "com.apple.domains", "com.apple.familycontrols.contentfilter",
+        "com.apple.familycontrols.timelimits.v2", "com.apple.fileproviderd", "com.apple.finder",
+        "com.apple.firstactiveethernet.managed", "com.apple.firstethernet.managed", "com.apple.gamed",
+        "com.apple.globalethernet.managed", "com.apple.homescreenlayout", "com.apple.loginitems.managed",
+        "com.apple.loginwindow", "com.apple.lom", "com.apple.mcxMenuExtras", "com.apple.mcxprinting",
+        "com.apple.networkusagerules", "com.apple.notificationsettings", "com.apple.preference.security",
+        "com.apple.preference.users", "com.apple.relay.managed", "com.apple.screensaver",
+        "com.apple.screensaver.user", "com.apple.secondactiveethernet.managed",
+        "com.apple.secondethernet.managed", "com.apple.security.FDERecoveryKeyEscrow",
+        "com.apple.security.acme", "com.apple.security.certificatepreference",
+        "com.apple.security.certificaterevocation", "com.apple.security.certificatetransparency",
+        "com.apple.security.firewall", "com.apple.security.identitypreference",
+        "com.apple.security.smartcard", "com.apple.servicemanagement",
+        "com.apple.shareddeviceconfiguration", "com.apple.syspolicy.kernel-extension-policy",
+        "com.apple.system-extension-policy", "com.apple.systemmigration", "com.apple.systempolicy.control",
+        "com.apple.systempolicy.managed", "com.apple.systempolicy.rule",
+        "com.apple.thirdactiveethernet.managed", "com.apple.thirdethernet.managed", "com.apple.tvremote",
+        "com.apple.universalaccess", "com.apple.vpn.managed.applayer", "com.apple.wifi.managed",
+        "com.apple.xsan", "com.apple.xsan.preferences", "loginwindow",
+    ]
+
+    /// Payload types Jamf Pro writes that the Blueprints API spells differently. Jamf Pro
+    /// uses the filename Apple publishes the schema under; the API only accepts Apple's
+    /// declared type. Rewriting the type would break rule 5 against the installed
+    /// profile, so these block migration instead.
+    static let nonCanonicalPayloadTypes: [String: String] = [
+        "com.apple.preferences.users": "com.apple.preference.users",
+    ]
+
+    /// Payload types the Jamf Pro blueprints UI can edit directly. Accepted types outside
+    /// this set become read-only "Legacy payload" items, editable only through the API.
+    ///
+    /// Advisory only, so drift costs at worst a slightly wrong note.
+    static let uiManageablePayloadTypes: Set<String> = [
+        "com.apple.Dictionary", "com.apple.DiscRecording", "com.apple.MCX.Accounts",
+        "com.apple.MCX.MobileAccounts", "com.apple.MCX.TimeMachine", "com.apple.MCX.TimeServer",
+        "com.apple.NSExtension", "com.apple.SystemConfiguration",
+        "com.apple.TCC.configuration-profile-policy", "com.apple.airprint", "com.apple.app.lock",
+        "com.apple.applicationaccess", "com.apple.appstore", "com.apple.asam",
+        "com.apple.cellularprivatenetwork.managed", "com.apple.conferenceroomdisplay",
+        "com.apple.desktop", "com.apple.dnsProxy.managed", "com.apple.domains",
+        "com.apple.familycontrols.contentfilter", "com.apple.fileproviderd", "com.apple.finder",
+        "com.apple.gamed", "com.apple.loginitems.managed", "com.apple.loginwindow",
+        "com.apple.mcxprinting", "com.apple.notificationsettings", "com.apple.preference.security",
+        "com.apple.preference.users", "com.apple.screensaver", "com.apple.screensaver.user",
+        "com.apple.security.firewall", "com.apple.security.smartcard", "com.apple.servicemanagement",
+        "com.apple.shareddeviceconfiguration", "com.apple.syspolicy.kernel-extension-policy",
+        "com.apple.systempolicy.control", "com.apple.systempolicy.managed", "com.apple.tvremote",
+        "com.apple.universalaccess", "loginwindow",
     ]
 
     /// Top-level keys that are carried into the blueprint configuration (or implied by it).
@@ -90,10 +184,34 @@ nonisolated enum EligibilityChecker {
                 "The transform matches identifiers exactly, so these are required: " + missing.joined(separator: "; ") + ".")
         }
 
-        let blocked = document.payloads.compactMap(\.type).filter(blockedPayloadTypes.contains)
+        let types = document.payloads.compactMap(\.type)
+
+        let blocked = types.filter(blockedPayloadTypes.contains)
         if !blocked.isEmpty {
-            add(.blockedPayloadType, .blocker, "Unsupported payload type",
-                "Blueprints containing \(Set(blocked).sorted().joined(separator: ", ")) payloads cannot be created.")
+            add(.blockedPayloadType, .blocker, "Payload type the Blueprints API refuses",
+                "Blueprints cannot contain \(Set(blocked).sorted().joined(separator: ", ")). The API rejects the whole blueprint with “Payload disabled”. Probed \(payloadTableProbeDate); if Jamf has since enabled it, the create call is the authority.")
+        }
+
+        let nonCanonical = types.compactMap { type in
+            nonCanonicalPayloadTypes[type].map { (written: type, expected: $0) }
+        }
+        if !nonCanonical.isEmpty {
+            add(.nonCanonicalPayloadType, .blocker, "Payload type Jamf Pro spells differently",
+                "Jamf Pro wrote \(nonCanonical.map { "“\($0.written)”" }.joined(separator: ", ")), but the Blueprints API only accepts \(nonCanonical.map { "“\($0.expected)”" }.joined(separator: ", ")). Rewriting the type would break the rule that every payload type matches the installed profile, so this profile can't be transformed in place.")
+        }
+
+        let unrecognised = Set(types).subtracting(supportedPayloadTypes)
+            .subtracting(blockedPayloadTypes)
+            .subtracting(nonCanonicalPayloadTypes.keys)
+        if !unrecognised.isEmpty {
+            add(.unsupportedPayloadType, .warning, "Payload type not in the known registry",
+                "The configuration-profile component matches payload types against a fixed registry, and \(unrecognised.sorted().joined(separator: ", ")) wasn't in it when this was probed (\(payloadTableProbeDate)). Create may fail with “Failed to validate configuration.” Try it: the API is the authority, and the list may have grown.")
+        }
+
+        let apiOnly = Set(types).intersection(supportedPayloadTypes).subtracting(uiManageablePayloadTypes)
+        if !apiOnly.isEmpty {
+            add(.apiOnlyPayload, .info, "Not editable in the Jamf Pro UI",
+                "\(apiOnly.sorted().joined(separator: ", ")) will appear as a read-only “Legacy payload” in the blueprint and can only be changed through the API.")
         }
 
         let uuids = document.payloads.compactMap(\.uuid)
@@ -118,19 +236,27 @@ nonisolated enum EligibilityChecker {
                 "The blueprint body has no fields for: \(dropped.joined(separator: ", ")). The server sets its own values.")
         }
 
-        // Known server-side schema rules, observed against the live Blueprints API.
+        // Empty strings and empty arrays are artefacts of the classic UI that the DDM API
+        // rejects. Only a payload's own keys are checked: that is the depth at which the
+        // API enforces it. Seen live as an empty Wi-Fi SetupModes (HTTP 400 SIZE).
         var rejected: [String] = []
         for payload in document.payloads {
-            for rule in knownServerRules where rule.payloadType == payload.type {
-                if case let .array(values)? = payload.content[rule.key], values.isEmpty {
-                    rejected.append("payload \(payload.index + 1) (\(rule.payloadType)) has an empty \(rule.key)")
+            for entry in payload.content.entries where !FidelityVerifier.wrapperKeys.contains(entry.key) {
+                let empty: String?
+                switch entry.value {
+                case let .string(text) where text.isEmpty: empty = "empty string"
+                case let .array(values) where values.isEmpty: empty = "empty array"
+                default: empty = nil
+                }
+                if let empty {
+                    rejected.append("payload \(payload.index + 1) (\(payload.type ?? "unknown type")) has an \(empty) for \(entry.key)")
                 }
             }
         }
         if !rejected.isEmpty {
             add(.serverValidation, .blocker, "The Blueprints API will reject this payload",
-                "The server validates known payload types against Apple's schema: " + rejected.joined(separator: "; ")
-                    + ". Fix it in the classic profile (choose a setup mode, or remove the key) and reload, otherwise create fails with HTTP 400.")
+                "Empty values are rejected by the API: " + rejected.joined(separator: "; ")
+                    + ". Give the key a value in the classic profile, or remove it, then reload. Otherwise create fails with HTTP 400.")
         }
 
         let disabled = document.payloads.filter { $0.content["PayloadEnabled"] == .bool(false) }
@@ -145,8 +271,9 @@ nonisolated enum EligibilityChecker {
         }
     }
 
+    /// Certificate payload types are not checked here: they are all in
+    /// `blockedPayloadTypes`, so saying their contents would be uploaded is misleading.
     private static func containsSensitiveContent(_ document: ProfileDocument) -> Bool {
-        if document.payloads.contains(where: { $0.type == "com.apple.security.pkcs12" }) { return true }
         func walk(_ value: PlistValue) -> Bool {
             switch value {
             case let .dict(dict):

@@ -93,5 +93,7 @@ Each API sits behind a protocol with live and demo implementations, so the pipel
 ## Known limitations
 
 - Scope limitations and exclusions have no blueprint equivalent and are not carried over (the eligibility checker warns about this).
-- User-level profiles, and `com.apple.font` / `com.apple.webClip.managed` payloads, cannot be migrated (API restriction).
+- User-level profiles cannot be migrated.
+- 22 payload types are refused by the Blueprints API and are flagged as blocked before anything is sent — certificates and SCEP, VPN and per-app VPN, Extensible SSO, directory binding, legacy MCX FileVault, global HTTP proxy, web content filter, DNS settings, fonts and web clips among them. The payload-type tables come from Jamf's own [`jamf-cli`](https://github.com/Jamf-Concepts/jamf-cli/tree/main/internal/profileconvert), which wire-probed them; they are instance- and version-specific, so the API remains the authority.
+- A payload type Jamf Pro spells differently from Apple (currently `com.apple.preferences.users`) blocks migration. Rewriting the type would break the rule that every payload type matches the installed profile.
 - The classic scope update (`PUT /proclassic/osxconfigurationprofiles/id/{id}`) uses the Classic API's partial-XML convention. Jamf's OpenAPI specs do not document the request body, so re-verify after major Jamf Pro upgrades.
