@@ -101,6 +101,36 @@ struct ConnectView: View {
             }
 
             Section("Connection") {
+                HStack(spacing: 10) {
+                    Button {
+                        testConnection()
+                    } label: {
+                        Label("Test Connection", systemImage: "bolt.horizontal")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!canTest)
+                    .help("Requests a token and lists computer device groups. Uses the values above, saved or not.")
+
+                    Button {
+                        save()
+                    } label: {
+                        Label(isDirty ? "Save Changes" : "Saved", systemImage: "square.and.arrow.down")
+                    }
+                    .keyboardShortcut("s")
+                    .disabled(!isDirty)
+                    .help("Saves the settings; the client secret goes to your Keychain (\u{2318}S)")
+
+                    if isDirty {
+                        Label("Unsaved changes", systemImage: "pencil.circle")
+                            .font(.callout)
+                            .foregroundStyle(.orange)
+                    }
+                }
+                if let hint = nextStepHint {
+                    Label(hint, systemImage: "arrow.turn.down.right")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
                 ConnectionResultView(state: state)
             }
         }
@@ -108,9 +138,11 @@ struct ConnectView: View {
         .navigationTitle(draft.displayName)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
-                Button("Delete", systemImage: "trash", role: .destructive) {
+                Button("Delete Tenant", systemImage: "trash", role: .destructive) {
                     confirmingDelete = true
                 }
+                .help("Delete this tenant and its Keychain secret from this Mac")
+
                 Button("Make Current", systemImage: "checkmark.circle") {
                     model.makeCurrent(draft.id)
                 }
@@ -120,15 +152,14 @@ struct ConnectView: View {
                 Button("Save", systemImage: "square.and.arrow.down") {
                     save()
                 }
-                .keyboardShortcut("s")
                 .disabled(!isDirty)
+                .help("Save the tenant settings and client secret (\u{2318}S)")
 
                 Button("Test Connection", systemImage: "bolt.horizontal") {
-                    let tenant = draft
-                    let override = secret
-                    Task { await model.testConnection(tenant, secretOverride: override) }
+                    testConnection()
                 }
-                .disabled(!draft.validationIssues.isEmpty || (secret.isEmpty && !hasStoredSecret) || state == .testing)
+                .disabled(!canTest)
+                .help("Request a token and list device groups to check the credentials")
             }
         }
         .confirmationDialog(
@@ -159,6 +190,31 @@ struct ConnectView: View {
         .onAppear {
             hasStoredSecret = model.hasStoredSecret(for: draft.id)
         }
+    }
+
+    private var canTest: Bool {
+        draft.validationIssues.isEmpty && (!secret.isEmpty || hasStoredSecret) && state != .testing
+    }
+
+    /// One-line guidance for whatever the form still needs.
+    private var nextStepHint: String? {
+        if let issue = draft.validationIssues.first { return issue }
+        if secret.isEmpty && !hasStoredSecret {
+            return "Enter the client secret, then press Test Connection."
+        }
+        if case .idle = state, !isDirty {
+            return "Press Test Connection to check the credentials."
+        }
+        if isDirty {
+            return "Test Connection uses the values above as entered; press Save Changes to keep them."
+        }
+        return nil
+    }
+
+    private func testConnection() {
+        let tenant = draft
+        let override = secret
+        Task { await model.testConnection(tenant, secretOverride: override) }
     }
 
     private func save() {

@@ -6,11 +6,13 @@ enum SidebarItem: Hashable {
     case profiles
     case history
     case activity
+    case about
 }
 
 struct ContentView: View {
     @Environment(AppModel.self) private var model
     @State private var selection: SidebarItem?
+    @State private var tenantPendingDeletion: Tenant?
 
     var body: some View {
         @Bindable var model = model
@@ -24,6 +26,8 @@ struct ContentView: View {
                             .contextMenu {
                                 Button("Make Current Tenant") { model.makeCurrent(tenant.id) }
                                     .disabled(tenant.id == model.currentTenantID)
+                                Divider()
+                                Button("Delete Tenant…", role: .destructive) { tenantPendingDeletion = tenant }
                             }
                     }
                     Button {
@@ -41,6 +45,11 @@ struct ContentView: View {
                         .tag(SidebarItem.history)
                     Label("Activity", systemImage: "list.bullet.rectangle")
                         .tag(SidebarItem.activity)
+                }
+
+                Section {
+                    Label("About", systemImage: "info.circle")
+                        .tag(SidebarItem.about)
                 }
             }
             .safeAreaInset(edge: .bottom) {
@@ -68,6 +77,8 @@ struct ContentView: View {
                 HistoryView()
             case .activity:
                 ActivityView()
+            case .about:
+                AboutView()
             case nil:
                 ContentUnavailableView(
                     "Connect a Tenant",
@@ -80,6 +91,21 @@ struct ContentView: View {
             ToolbarItem(placement: .principal) {
                 CurrentTenantBadge(tenant: model.currentTenant, isDemoMode: model.isDemoMode)
             }
+        }
+        .confirmationDialog(
+            "Delete \u{201c}\(tenantPendingDeletion?.displayName ?? "")\u{201d}?",
+            isPresented: Binding(
+                get: { tenantPendingDeletion != nil },
+                set: { if !$0 { tenantPendingDeletion = nil } }
+            ),
+            presenting: tenantPendingDeletion
+        ) { tenant in
+            Button("Delete Tenant and Keychain Secret", role: .destructive) {
+                if selection == .tenant(tenant.id) { selection = nil }
+                model.delete(tenant.id)
+            }
+        } message: { tenant in
+            Text("Removes \u{201c}\(tenant.displayName)\u{201d} and its client secret from this Mac only. Nothing changes in Jamf.")
         }
         .alert(
             "Couldn't Save",
