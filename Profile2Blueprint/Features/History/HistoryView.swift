@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -5,6 +6,7 @@ import UniformTypeIdentifiers
 struct HistoryView: View {
     @Environment(AppModel.self) private var model
     @State private var search = ""
+    @State private var selection: MigrationRecord.ID?
     @State private var exportDocument: HistoryDocument?
     @State private var exportError: String?
     @State private var sortOrder = [KeyPathComparator(\MigrationRecord.timestamp, order: .reverse)]
@@ -28,7 +30,7 @@ struct HistoryView: View {
                 ContentUnavailableView("No Actions Yet", systemImage: "clock.arrow.circlepath",
                                        description: Text("Dry runs, creates, verifications and deployments are recorded here."))
             } else {
-                Table(records, sortOrder: $sortOrder) {
+                Table(records, selection: $selection, sortOrder: $sortOrder) {
                     TableColumn("Time", value: \.timestamp) { record in
                         Text(record.timestamp.formatted(date: .abbreviated, time: .standard)).monospacedDigit()
                     }
@@ -41,19 +43,19 @@ struct HistoryView: View {
                         Text("\(record.sourceProfileName) (#\(record.sourceProfileID))")
                     }
                     TableColumn("Blueprint") { record in
-                        VStack(alignment: .leading) {
-                            Text(record.blueprintName ?? "—")
-                            if let id = record.blueprintID {
-                                Text(id).font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
-                            }
-                        }
+                        Text(record.blueprintName ?? "—").lineLimit(1)
                     }
                     TableColumn("Result") { record in
                         resultLabel(record.result)
                     }
                     .width(70)
                     TableColumn("Details") { record in
-                        Text(record.message).lineLimit(2).help(record.message)
+                        Text(record.message).lineLimit(1).truncationMode(.tail)
+                    }
+                }
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    if let record = selection.flatMap({ id in model.history.records.first { $0.id == id } }) {
+                        HistoryDetailPane(record: record)
                     }
                 }
             }
@@ -102,6 +104,77 @@ struct HistoryView: View {
     }
 }
 
+/// Full details of the selected record, with everything selectable and copyable.
+private struct HistoryDetailPane: View {
+    let record: MigrationRecord
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(record.action.title).font(.headline)
+                Text(record.timestamp.formatted(date: .abbreviated, time: .standard))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button("Copy Details", systemImage: "doc.on.doc") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(clipboardText, forType: .string)
+                }
+                .help("Copy every field of this record")
+            }
+
+            Text(record.message)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 3) {
+                GridRow {
+                    field("Tenant", record.tenantName)
+                    field("Source profile", "\(record.sourceProfileName) (#\(record.sourceProfileID))")
+                    field("Result", record.result.rawValue.capitalized)
+                }
+                if record.blueprintName != nil || record.blueprintID != nil {
+                    GridRow {
+                        if let name = record.blueprintName {
+                            field("Blueprint", name)
+                        }
+                        if let id = record.blueprintID {
+                            field("Blueprint ID", id, monospaced: true)
+                        }
+                    }
+                }
+            }
+            .font(.callout)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.bar)
+        .overlay(alignment: .top) { Divider() }
+    }
+
+    private func field(_ label: String, _ value: String, monospaced: Bool = false) -> some View {
+        HStack(spacing: 6) {
+            Text(label).foregroundStyle(.secondary)
+            Text(value)
+                .font(monospaced ? .callout.monospaced() : .callout)
+                .textSelection(.enabled)
+        }
+    }
+
+    private var clipboardText: String {
+        var lines = [
+            "Time: \(record.timestamp.formatted(.iso8601))",
+            "Tenant: \(record.tenantName)",
+            "Action: \(record.action.title)",
+            "Source profile: \(record.sourceProfileName) (#\(record.sourceProfileID))",
+            "Result: \(record.result.rawValue)",
+        ]
+        if let name = record.blueprintName { lines.append("Blueprint: \(name)") }
+        if let id = record.blueprintID { lines.append("Blueprint ID: \(id)") }
+        lines.append("Message: \(record.message)")
+        return lines.joined(separator: "\n")
+    }
+}
+
 extension UTType {
     nonisolated static let markdownText = UTType(filenameExtension: "md", conformingTo: .plainText) ?? .plainText
 }
@@ -135,4 +208,20 @@ struct HistoryDocument: FileDocument {
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
         FileWrapper(regularFileWithContents: data)
     }
+}
+
+#Preview("Detail pane") {
+    HistoryDetailPane(record: MigrationRecord(
+        timestamp: Date(),
+        tenantName: "Jamf Pro",
+        environmentID: "50c1c4f3-1a2e-42e4-b3c0-e24854250b67",
+        action: .unscopeClassic,
+        sourceProfileID: 475,
+        sourceProfileName: "P2B Test – notifications profile",
+        blueprintID: "2f93c32f-6837-40bf-90b9-10d3ea32f752",
+        blueprintName: "P2B Test – notifications profile (migrated)",
+        result: .success,
+        message: "Removed all scope targets from the classic profile (payloads untouched). Scope backup saved; restore is available."
+    ))
+    .frame(width: 900)
 }
