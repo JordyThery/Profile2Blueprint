@@ -42,7 +42,7 @@ struct AboutView: View {
 
                 VStack(spacing: 4) {
                     Text("Built with SwiftUI and Swift 6, assisted by Claude.")
-                    Text("Not affiliated with Jamf or Apple. Verify every migration on a test device before fleet-wide use.")
+                    Text("Verify every migration on a test device before fleet-wide use.")
                 }
                 .font(.callout)
                 .foregroundStyle(.secondary)

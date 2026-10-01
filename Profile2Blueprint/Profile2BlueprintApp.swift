@@ -16,7 +16,7 @@ import SwiftUI
                 Button("About Profile2Blueprint") {
                     NSApplication.shared.orderFrontStandardAboutPanel(options: [
                         .credits: NSAttributedString(
-                            string: "Created by Jordy Thery\nNot affiliated with Jamf or Apple.",
+                            string: "Created by Jordy Thery",
                             attributes: [.font: NSFont.systemFont(ofSize: 11), .paragraphStyle: centered]
                         ),
                     ])
