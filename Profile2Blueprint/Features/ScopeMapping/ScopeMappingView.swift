@@ -122,7 +122,7 @@ struct ScopeMappingView: View {
 
     private var scopeWarnings: some View {
         let kinds: Set<FindingKind> = [.noMappedGroup, .unmatchedGroups, .ambiguousGroups, .allComputers, .nonGroupTargets, .limitations, .exclusions]
-        let findings = report.findings.filter { kinds.contains($0.kind) }
+        let findings = session.effectiveReport.findings.filter { kinds.contains($0.kind) }
         return Group {
             if !findings.isEmpty {
                 GroupBox("Scope differences") {

@@ -37,8 +37,8 @@ struct BatchMigrationView: View {
                         set: { session.acknowledgedWarnings = $0 }
                     ))
                     .labelsHidden()
-                    .disabled(session.report.status != .needsAttention || session.blueprintID != nil || running)
-                    .help(session.report.status == .needsAttention ? "Including acknowledges this item's warnings" : "")
+                    .disabled(session.effectiveReport.status != .needsAttention || session.blueprintID != nil || running)
+                    .help(session.effectiveReport.status == .needsAttention ? "Including acknowledges this item's warnings" : "")
                 }
                 .width(50)
                 TableColumn("Profile") { session in
@@ -47,7 +47,7 @@ struct BatchMigrationView: View {
                         Text(session.blueprintName).font(.caption).foregroundStyle(.secondary)
                     }
                 }
-                TableColumn("Eligibility") { session in EligibilityBadge(status: session.report.status) }
+                TableColumn("Eligibility") { session in EligibilityBadge(status: session.effectiveReport.status) }
                     .width(min: 110, ideal: 130)
                 TableColumn("Target") { session in
                     Text(session.selectedGroups.isEmpty ? "None" : session.selectedGroups.map(\.name).joined(separator: ", "))
@@ -101,7 +101,7 @@ struct BatchMigrationView: View {
     // MARK: Logic
 
     private func included(_ session: MigrationSession) -> Bool {
-        switch session.report.status {
+        switch session.effectiveReport.status {
         case .ready: true
         case .needsAttention: session.acknowledgedWarnings
         case .blocked: false
@@ -157,8 +157,8 @@ struct BatchMigrationView: View {
         } else if let fidelity = session.fidelity {
             Text(fidelity.passed ? "Created · verified" : "Created · \(fidelity.mismatches.count) mismatch(es)")
                 .foregroundStyle(fidelity.passed ? .green : .red)
-        } else if session.report.status == .blocked {
-            Text(session.report.reasons.first?.title ?? "Blocked").foregroundStyle(.red)
+        } else if session.effectiveReport.status == .blocked {
+            Text(session.effectiveReport.reasons.first?.title ?? "Blocked").foregroundStyle(.red)
         } else if !included(session) {
             Text("Skipped: needs attention").foregroundStyle(.secondary)
         } else if session.selectedGroupIDs.isEmpty {

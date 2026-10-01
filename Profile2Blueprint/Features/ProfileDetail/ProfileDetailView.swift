@@ -19,7 +19,7 @@ struct ProfileDetailView: View {
         if let profile = workspace.profiles[profileID], let report = workspace.reports[profileID],
            let session = workspace.session(for: profileID) {
             VStack(spacing: 0) {
-                header(profile: profile, report: report)
+                header(profile: profile, report: session.effectiveReport)
                 Divider()
                 Group {
                     switch tab {

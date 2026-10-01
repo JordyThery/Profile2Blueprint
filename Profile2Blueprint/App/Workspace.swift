@@ -55,6 +55,7 @@ final class Workspace {
     let environment: MigrationEnvironment
     let history: HistoryLog
     let scopeBackups: ScopeBackupStore
+    let sessionStates: SessionStateStore
 
     private(set) var summaries: [ClassicProfileSummary] = []
     private(set) var listPhase: LoadPhase = .idle
@@ -71,10 +72,16 @@ final class Workspace {
     /// Maximum parallel profile fetches, kept low to limit Classic API load.
     var detailConcurrency = 4
 
-    init(environment: MigrationEnvironment, history: HistoryLog, scopeBackups: ScopeBackupStore = .appDefault()) {
+    init(
+        environment: MigrationEnvironment,
+        history: HistoryLog,
+        scopeBackups: ScopeBackupStore = .appDefault(),
+        sessionStates: SessionStateStore = .appDefault()
+    ) {
         self.environment = environment
         self.history = history
         self.scopeBackups = scopeBackups
+        self.sessionStates = sessionStates
     }
 
     var isLoadingDetails: Bool { listPhase == .loaded && detailsLoaded < summaries.count }
@@ -165,11 +172,19 @@ final class Workspace {
     }
 
     #if DEBUG
-    /// A demo workspace filled synchronously from fixtures, for SwiftUI previews.
-    static func previewDemo() -> Workspace {
-        let workspace = Workspace(environment: .demo(), history: HistoryLog(store: HistoryStore(
-            fileURL: FileManager.default.temporaryDirectory.appending(path: "preview-history-\(UUID().uuidString).json"))),
-            scopeBackups: ScopeBackupStore(fileURL: FileManager.default.temporaryDirectory.appending(path: "preview-scope-backups-\(UUID().uuidString).json")))
+    /// A demo workspace filled synchronously from fixtures, for previews and tests.
+    /// Pass a shared environment and stores to simulate a relaunch against the same data.
+    static func previewDemo(
+        environment: MigrationEnvironment = .demo(),
+        sessionStates: SessionStateStore? = nil
+    ) -> Workspace {
+        let temp = FileManager.default.temporaryDirectory
+        let workspace = Workspace(
+            environment: environment,
+            history: HistoryLog(store: HistoryStore(fileURL: temp.appending(path: "preview-history-\(UUID().uuidString).json"))),
+            scopeBackups: ScopeBackupStore(fileURL: temp.appending(path: "preview-scope-backups-\(UUID().uuidString).json")),
+            sessionStates: sessionStates ?? SessionStateStore(fileURL: temp.appending(path: "preview-sessions-\(UUID().uuidString).json"))
+        )
         workspace.groups = DemoFixtures.platformGroups
         workspace.summaries = (try? ClassicXMLParser.parseProfileList(Data(DemoFixtures.profileListXML.utf8))) ?? []
         for summary in workspace.summaries {

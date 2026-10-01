@@ -80,23 +80,26 @@ struct MigrateTab: View {
                     MetadataRow(label: "Devices", value: session.selectedGroups.isEmpty ? "" : "\(session.selectedGroups.count > 1 ? "up to " : "")\(session.deviceCount)")
                     GridRow {
                         Text("Eligibility").foregroundStyle(.secondary).gridColumnAlignment(.trailing)
-                        EligibilityBadge(status: session.report.status)
+                        EligibilityBadge(status: session.effectiveReport.status)
                     }
                 }
 
-                switch session.report.status {
+                switch session.effectiveReport.status {
                 case .blocked:
-                    FindingsList(findings: session.report.reasons.filter { $0.severity == .blocker })
+                    FindingsList(findings: session.effectiveReport.reasons.filter { $0.severity == .blocker })
                     Text("This profile can't be migrated as a 1:1 legacy-profile blueprint.").foregroundStyle(.secondary)
                 case .needsAttention:
-                    FindingsList(findings: session.report.reasons)
+                    FindingsList(findings: session.effectiveReport.reasons)
                     Toggle(isOn: $session.acknowledgedWarnings) {
                         Text("I understand that the transform may not be seamless: the DDM profile could be rejected, or conflict with the classic profile that is still installed. Continue anyway.")
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     .disabled(session.blueprintID != nil)
                 case .ready:
-                    Label("All automated checks pass.", systemImage: "checkmark.circle").foregroundStyle(.green)
+                    Label(session.report.status == .ready
+                          ? "All automated checks pass."
+                          : "All automated checks pass with the selected groups.",
+                          systemImage: "checkmark.circle").foregroundStyle(.green)
                 }
 
                 if let problems = previewProblems {
@@ -212,6 +215,11 @@ struct MigrateTab: View {
                     Label("Deployed.", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
                     if let report {
                         DeviceReportView(report: report)
+                    }
+                    if session.reportMonitorActive {
+                        Label("Auto-refreshing until every device reports in…", systemImage: "arrow.triangle.2.circlepath")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                     Button("Refresh Status") { Task { await session.recheckDeployment() } }.disabled(session.isBusy)
                 default:

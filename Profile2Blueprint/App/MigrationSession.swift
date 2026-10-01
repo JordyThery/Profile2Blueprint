@@ -33,6 +33,8 @@ final class MigrationSession: Identifiable {
     private let groupsSnapshot: [PlatformGroup]
     private let pipeline: MigrationPipeline
     private let scopeBackups: ScopeBackupStore
+    private let sessionStates: SessionStateStore
+    @ObservationIgnored private var reportMonitor: Task<Void, Never>?
 
     // MARK: Draft
 
@@ -46,7 +48,11 @@ final class MigrationSession: Identifiable {
     var dryRun = true
     /// Per-profile opt-in: unscope the classic profile once the blueprint is deployed
     /// to every device. Only offered when classic scope changes are enabled for the tenant.
-    var unscopeAfterDeploy = false
+    var unscopeAfterDeploy = false {
+        didSet {
+            if blueprintID != nil, oldValue != unscopeAfterDeploy { persistSessionRecord() }
+        }
+    }
 
     // MARK: Results
 
@@ -67,6 +73,10 @@ final class MigrationSession: Identifiable {
     /// The most recent unrestored scope backup for this profile, if any.
     private(set) var scopeBackup: ScopeBackup?
     private(set) var unscopeStatus: UnscopeStatus = .notRequested
+    /// The device report is being refreshed in the background after a deployment.
+    private(set) var reportMonitorActive = false
+    /// A blueprint from an earlier launch is being re-attached.
+    private(set) var isRestoring = false
 
     init(profile: ClassicProfile, report: EligibilityReport, workspace: Workspace) {
         profileID = profile.id
@@ -77,17 +87,22 @@ final class MigrationSession: Identifiable {
         history = workspace.history
         groupsSnapshot = workspace.groups
         scopeBackups = workspace.scopeBackups
+        sessionStates = workspace.sessionStates
         pipeline = MigrationPipeline(classic: workspace.environment.classic, blueprints: workspace.environment.blueprints)
         blueprintName = BlueprintBuilder.defaultName(for: profile)
         blueprintDescription = BlueprintBuilder.defaultDescription(for: profile)
         selectedGroupIDs = ScopeMapper.automaticSelection(report.scopeMapping)
         let profileID = profile.id
         let environment = workspace.environment
-        Task { [scopeBackups] in
+        let environmentKey = environment.environmentID ?? environment.displayName
+        Task { [scopeBackups, sessionStates] in
             if let existing = await scopeBackups.latest(profileID: profileID, environmentID: environment.environmentID,
                                                         environmentName: environment.displayName) {
                 self.scopeBackup = existing
                 self.unscopeStatus = .unscoped(existing.createdAt)
+            }
+            if let saved = await sessionStates.record(environmentKey: environmentKey, profileID: profileID) {
+                await self.restore(from: saved)
             }
         }
     }
@@ -111,10 +126,21 @@ final class MigrationSession: Identifiable {
     /// Sum of member counts. Groups can overlap, so this is an upper bound when > 1 group.
     var deviceCount: Int { selectedGroups.reduce(0) { $0 + $1.memberCount } }
 
-    var needsAcknowledgement: Bool { report.status == .needsAttention }
+    /// Eligibility with the pick-a-group findings resolved by the current selection.
+    /// Warnings about information loss (exclusions, limitations, …) remain.
+    var effectiveReport: EligibilityReport {
+        guard !selectedGroupIDs.isEmpty else { return report }
+        var resolved = report
+        resolved.findings.removeAll {
+            $0.kind == .noMappedGroup || $0.kind == .unmatchedGroups || $0.kind == .ambiguousGroups
+        }
+        return resolved
+    }
+
+    var needsAcknowledgement: Bool { effectiveReport.status == .needsAttention }
 
     var canCreate: Bool {
-        !isBusy && !dryRun && blueprintID == nil && report.status != .blocked
+        !isBusy && !dryRun && blueprintID == nil && effectiveReport.status != .blocked
             && (!needsAcknowledgement || acknowledgedWarnings) && (try? preview.get()) != nil
     }
 
@@ -183,6 +209,7 @@ final class MigrationSession: Identifiable {
             let created = try await pipeline.create()
             blueprintID = created.id
             createdName = request.name
+            persistSessionRecord()
             state = await pipeline.state
             history.record(.create, environment: environment, profile: profile, blueprintID: created.id, blueprintName: request.name,
                                      result: .success, message: "Created, not deployed. Scope: \(selectedGroups.map(\.name).joined(separator: ", ")).")
@@ -204,6 +231,7 @@ final class MigrationSession: Identifiable {
                 try await pipeline.adoptExisting(id: existing.id)
                 blueprintID = existing.id
                 createdName = existing.name
+                persistSessionRecord()
                 state = await pipeline.state
                 history.record(.adoptExisting, environment: environment, profile: profile, blueprintID: existing.id,
                                          blueprintName: existing.name, result: .success, message: "Using the existing blueprint instead of creating one.")
@@ -218,6 +246,7 @@ final class MigrationSession: Identifiable {
 
     /// Deploys after the confirmation sheet, then polls until done or timed out.
     func deploy(_ confirmation: DeployConfirmation) async {
+        stopReportMonitor()
         await perform { [self] in
             history.record(.deploy, environment: environment, profile: profile, blueprintID: confirmation.blueprintID,
                                      blueprintName: confirmation.blueprintName, result: .success,
@@ -232,6 +261,7 @@ final class MigrationSession: Identifiable {
     /// Re-polls after a timeout.
     func recheckDeployment() async {
         guard let blueprintID else { return }
+        stopReportMonitor()
         await perform { [self] in
             let result = try await pipeline.monitor(id: blueprintID) { [weak self] progress in
                 await MainActor.run { self?.deployment = progress }
@@ -289,11 +319,99 @@ final class MigrationSession: Identifiable {
         if ClassicScopeService.deploymentAllowsUnscope(outcome) {
             try await unscopeStage()
         } else {
-            let detail = deviceReport.map { "\($0.failed) failed, \($0.pending) pending" } ?? "no device report"
-            unscopeStatus = .waiting("Not unscoped: the deployment isn't clean yet (\(detail)). Refresh the status, then unscope manually.")
+            let detail = deviceReport.map { "\($0.failed) failed, \($0.pending) pending" } ?? "no device report yet"
+            unscopeStatus = .waiting("Not unscoped yet: \(detail). The report refreshes automatically and cleanup runs once every device succeeds.")
             history.record(.unscopeClassic, environment: environment, profile: profile, blueprintID: blueprintID, blueprintName: createdName,
-                           result: .warning, message: "Auto-unscope skipped: \(detail).")
+                           result: .warning, message: "Auto-unscope deferred: \(detail). Watching the device report.")
         }
+    }
+
+    // MARK: Session persistence
+
+    private var environmentKey: String { environment.environmentID ?? environment.displayName }
+
+    /// Saves enough to re-attach this migration after a relaunch.
+    private func persistSessionRecord() {
+        guard let blueprintID else { return }
+        let record = PersistedMigration(
+            environmentKey: environmentKey,
+            profileID: profileID,
+            blueprintID: blueprintID,
+            blueprintName: createdName ?? blueprintName,
+            selectedGroupIDs: selectedGroupIDs,
+            unscopeAfterDeploy: unscopeAfterDeploy
+        )
+        Task { [sessionStates] in await sessionStates.save(record) }
+    }
+
+    /// Re-attaches a blueprint created in an earlier launch: rebuilds the request,
+    /// adopts the blueprint and verifies it. A 404 clears the stale record.
+    private func restore(from record: PersistedMigration) async {
+        isRestoring = true
+        defer { isRestoring = false }
+        blueprintName = record.blueprintName
+        selectedGroupIDs = record.selectedGroupIDs
+        unscopeAfterDeploy = record.unscopeAfterDeploy
+        if effectiveReport.status == .needsAttention {
+            acknowledgedWarnings = true // accepted when the blueprint was created
+        }
+        await perform { [self] in
+            do {
+                _ = try await prepareRequest()
+                try await pipeline.adoptExisting(id: record.blueprintID)
+                blueprintID = record.blueprintID
+                createdName = record.blueprintName
+                state = await pipeline.state
+                try await verifyStage()
+            } catch {
+                if case APIError.http(404, _, _, _, _) = error {
+                    await sessionStates.remove(environmentKey: environmentKey, profileID: profileID)
+                    blueprintID = nil
+                    createdName = nil
+                    state = .fetched
+                    throw PipelineError(message: "The blueprint created in an earlier session no longer exists on the server. The saved reference was removed; create it again if needed.")
+                }
+                throw error
+            }
+        }
+    }
+
+    // MARK: Device report monitor
+
+    /// Refreshes the device report in the background until no device is pending,
+    /// then runs the opt-in classic cleanup.
+    private func startReportMonitor() {
+        guard let blueprintID else { return }
+        reportMonitor?.cancel()
+        reportMonitorActive = true
+        reportMonitor = Task { [pipeline] in
+            let final = try? await pipeline.monitorReport(id: blueprintID) { [weak self] update in
+                await MainActor.run {
+                    self?.deviceReport = update
+                    self?.outcome = .succeeded(update)
+                }
+            }
+            guard !Task.isCancelled else { return }
+            reportMonitorActive = false
+            await reportBecameFinal(final)
+        }
+    }
+
+    private func stopReportMonitor() {
+        reportMonitor?.cancel()
+        reportMonitor = nil
+        reportMonitorActive = false
+    }
+
+    private func reportBecameFinal(_ report: BlueprintReport?) async {
+        if let report {
+            deviceReport = report
+            outcome = .succeeded(report)
+            state = .deployed(report)
+        }
+        guard unscopeAfterDeploy, canChangeClassicScope, scopeBackup == nil,
+              ClassicScopeService.deploymentAllowsUnscope(outcome) else { return }
+        await perform { [self] in try await unscopeStage() }
     }
 
     // MARK: Helpers
@@ -309,6 +427,7 @@ final class MigrationSession: Identifiable {
                                      blueprintName: createdName, result: (report?.failed ?? 0) > 0 ? .warning : .success,
                                      message: "Deployed. Devices: \(counts).")
             try? await autoUnscopeIfRequested()
+            if (report?.pending ?? 1) > 0 { startReportMonitor() }
         case let .failed(deployment):
             history.record(.deploymentResult, environment: environment, profile: profile, blueprintID: blueprintID,
                                      blueprintName: createdName, result: .failure, message: "Deployment failed: \(deployment.displayText).")
@@ -326,7 +445,9 @@ final class MigrationSession: Identifiable {
             name: blueprintName,
             description: blueprintDescription,
             deviceGroupIDs: selectedGroupIDs,
-            acknowledgedWarnings: acknowledgedWarnings
+            // The pipeline re-checks base eligibility; a selection that resolves every
+            // pick-a-group warning counts as acknowledged.
+            acknowledgedWarnings: acknowledgedWarnings || effectiveReport.status == .ready
         )
         state = await pipeline.state
         return request
@@ -337,6 +458,19 @@ final class MigrationSession: Identifiable {
         fidelity = result
         readBack = await pipeline.readBack
         state = await pipeline.state
+        // An already-deployed blueprint (restored session, or adopted duplicate) resumes
+        // at the deployed stage, with the report refreshing until it is clean.
+        if let detail = readBack, detail.deploymentState.isDeployedSuccessfully {
+            let report = try? await environment.blueprints.report(id: detail.id)
+            deviceReport = report
+            outcome = .succeeded(report)
+            state = .deployed(report)
+            if (report?.pending ?? 1) > 0 {
+                startReportMonitor()
+            } else {
+                Task { await reportBecameFinal(report) }
+            }
+        }
         let summary = result.passed
             ? "All identity, order, count, settings and scope checks match."
                 + (result.caseChanges.isEmpty ? "" : " \(result.caseChanges.count) key casing change(s) to review.")

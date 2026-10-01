@@ -38,10 +38,13 @@ nonisolated struct PipelineError: Error, LocalizedError, Sendable {
 }
 
 /// Bounded polling: starts at `initialInterval`, grows ×1.5 up to `maxInterval`, gives up at `timeout`.
+/// The report fields pace the slower post-deploy device-report refresh.
 nonisolated struct PollingPolicy: Sendable {
     var initialInterval: Duration = .seconds(2)
     var maxInterval: Duration = .seconds(10)
     var timeout: Duration = .seconds(300)
+    var reportInterval: Duration = .seconds(20)
+    var reportTimeout: Duration = .seconds(1_800)
 }
 
 /// Runs the staged migration of one classic profile. Each stage checks it is
@@ -227,6 +230,26 @@ actor MigrationPipeline {
             interval = min(interval * 1.5, polling.maxInterval)
         }
         return .timedOut(last)
+    }
+
+    /// Refreshes the device report until no device is pending, the timeout passes, or
+    /// the task is cancelled. Returns the last report seen (the caller judges cleanliness).
+    func monitorReport(
+        id: String,
+        onUpdate: @Sendable (BlueprintReport) async -> Void = { _ in }
+    ) async throws -> BlueprintReport? {
+        let deadline = clock.now.advanced(by: polling.reportTimeout)
+        var last: BlueprintReport?
+
+        while clock.now < deadline {
+            try Task.checkCancellation()
+            let report = try await blueprints.report(id: id)
+            last = report
+            await onUpdate(report)
+            if report.pending == 0 { return report }
+            try await sleep(polling.reportInterval)
+        }
+        return last
     }
 
     private func reset() {
