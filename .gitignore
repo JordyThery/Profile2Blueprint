@@ -13,6 +13,11 @@ xcuserdata/
 .swiftpm/
 .build/
 
+# Distribution output
+*.app/
+*.xcarchive/
+*.zip
+
 # Profiling output
 OptimizationProfiles/
 *.profdata
