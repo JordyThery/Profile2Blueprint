@@ -99,6 +99,10 @@ Each API sits behind a protocol with live and demo implementations, so the pipel
 - A payload type Jamf Pro spells differently from Apple (currently `com.apple.preferences.users`) blocks migration. Rewriting the type would break the rule that every payload type matches the installed profile.
 - The classic scope update (`PUT /proclassic/osxconfigurationprofiles/id/{id}`) uses the Classic API's partial-XML convention. Jamf's OpenAPI specs do not document the request body, so re-verify after major Jamf Pro upgrades.
 
+## Support
+
+If Profile2Blueprint saves you time, you can [buy me a coffee](https://buymeacoffee.com/jordythery). ☕️
+
 ## License
 
 [MIT](LICENSE)
