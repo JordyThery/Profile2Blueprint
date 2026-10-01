@@ -52,7 +52,7 @@ struct DeployConfirmationSheet: View {
                                     Image(systemName: "person.3")
                                     Text(group.name)
                                     Spacer()
-                                    Text("\(group.memberCount) devices").monospacedDigit()
+                                    Text("^[\(group.memberCount) device](inflect: true)").monospacedDigit()
                                 }
                                 .font(.callout)
                             }
@@ -78,13 +78,13 @@ struct DeployConfirmationSheet: View {
             HStack {
                 Text("Total")
                 Spacer()
-                Text("\(items.contains { $0.groups.count > 1 } || items.count > 1 ? "up to " : "")\(totalDevices) devices")
+                Text("\(items.contains { $0.groups.count > 1 } || items.count > 1 ? "up to " : "")^[\(totalDevices) device](inflect: true)")
                     .monospacedDigit().fontWeight(.semibold)
             }
 
             Toggle(isOn: $confirmed) {
                 Text(items.count == 1
-                     ? "I confirm deploying “\(items[0].blueprintName)” to \(totalDevices) device(s)"
+                     ? "I confirm deploying “\(items[0].blueprintName)” to ^[\(totalDevices) device](inflect: true)"
                         + (items[0].unscopeClassicProfile != nil ? " and unscoping the classic profile afterwards." : ".")
                      : "I confirm deploying all \(items.count) blueprints listed above.")
             }

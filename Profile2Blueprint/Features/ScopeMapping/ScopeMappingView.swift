@@ -60,7 +60,7 @@ struct ScopeMappingView: View {
                                     Text(group.name)
                                     Text(group.groupType.displayName).font(.caption).foregroundStyle(.secondary)
                                     Spacer()
-                                    Text("\(group.memberCount) devices").font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                                    Text("^[\(group.memberCount) device](inflect: true)").font(.caption).monospacedDigit().foregroundStyle(.secondary)
                                 }
                             }
                             .disabled(locked)
@@ -145,14 +145,14 @@ struct ScopeMappingView: View {
                         HStack {
                             Text(group.name)
                             Spacer()
-                            Text("\(group.memberCount) devices").monospacedDigit().foregroundStyle(.secondary)
+                            Text("^[\(group.memberCount) device](inflect: true)").monospacedDigit().foregroundStyle(.secondary)
                         }
                     }
                     Divider()
                     HStack {
                         Text(session.selectedGroups.count > 1 ? "Up to (groups may overlap)" : "Total")
                         Spacer()
-                        Text("\(session.deviceCount) devices").monospacedDigit().fontWeight(.semibold)
+                        Text("^[\(session.deviceCount) device](inflect: true)").monospacedDigit().fontWeight(.semibold)
                     }
                 }
             }
