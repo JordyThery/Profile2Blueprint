@@ -67,6 +67,9 @@ nonisolated struct Tenant: Codable, Hashable, Identifiable, Sendable {
     /// Prefix and suffix applied to suggested blueprint names on this tenant, so a test
     /// environment can be labelled differently from production.
     var naming: BlueprintNaming
+    /// Template for the suggested blueprint description, with the tokens in
+    /// `BlueprintBuilder.descriptionTokens`. Empty means no description.
+    var descriptionTemplate: String
 
     init(
         id: UUID = UUID(),
@@ -76,10 +79,12 @@ nonisolated struct Tenant: Codable, Hashable, Identifiable, Sendable {
         clientID: String = "",
         hostOverride: String? = nil,
         allowClassicScopeChanges: Bool = false,
-        naming: BlueprintNaming = .default
+        naming: BlueprintNaming = .default,
+        descriptionTemplate: String = BlueprintBuilder.defaultDescriptionTemplate
     ) {
         self.allowClassicScopeChanges = allowClassicScopeChanges
         self.naming = naming
+        self.descriptionTemplate = descriptionTemplate
         self.id = id
         self.name = name
         self.region = region
@@ -89,11 +94,12 @@ nonisolated struct Tenant: Codable, Hashable, Identifiable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, region, environmentID, clientID, hostOverride, allowClassicScopeChanges, naming
+        case id, name, region, environmentID, clientID, hostOverride, allowClassicScopeChanges, naming, descriptionTemplate
     }
 
-    /// Tolerates tenants saved before `allowClassicScopeChanges` and `naming` existed:
-    /// scope changes decode as off, naming as the original " (migrated)" suffix.
+    /// Tolerates tenants saved before `allowClassicScopeChanges`, `naming` and
+    /// `descriptionTemplate` existed: scope changes decode as off, and the name and
+    /// description fall back to the wording used before they were configurable.
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
@@ -104,6 +110,8 @@ nonisolated struct Tenant: Codable, Hashable, Identifiable, Sendable {
         hostOverride = try container.decodeIfPresent(String.self, forKey: .hostOverride)
         allowClassicScopeChanges = try container.decodeIfPresent(Bool.self, forKey: .allowClassicScopeChanges) ?? false
         naming = try container.decodeIfPresent(BlueprintNaming.self, forKey: .naming) ?? .default
+        descriptionTemplate = try container.decodeIfPresent(String.self, forKey: .descriptionTemplate)
+            ?? BlueprintBuilder.defaultDescriptionTemplate
     }
 
     /// Display name with a fallback for unnamed tenants.

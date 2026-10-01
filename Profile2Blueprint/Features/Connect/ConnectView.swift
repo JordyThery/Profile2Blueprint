@@ -2,6 +2,10 @@ import SwiftUI
 
 /// Edit a tenant's connection settings and test them.
 struct ConnectView: View {
+    /// Stand-in profile for the naming examples, so the effect is visible before saving.
+    private static let exampleProfileName = "Restrictions"
+    private static let exampleProfileID = 451
+
     @Environment(AppModel.self) private var model
     @State private var draft: Tenant
     @State private var secret = ""
@@ -66,15 +70,29 @@ struct ConnectView: View {
             Section {
                 TextField("Prefix", text: $draft.naming.prefix, prompt: Text("None"))
                 TextField("Suffix", text: $draft.naming.suffix, prompt: Text("None"))
-                LabeledContent("Example") {
-                    Text(draft.naming.name(for: "Restrictions"))
-                        .textSelection(.enabled)
+                TextField("Description", text: $draft.descriptionTemplate, prompt: Text("None"), axis: .vertical)
+                    .lineLimit(2...5)
+                VStack(alignment: .leading, spacing: 4) {
+                    LabeledContent("Example name") {
+                        Text(draft.naming.name(for: Self.exampleProfileName)).textSelection(.enabled)
+                    }
+                    LabeledContent("Example description") {
+                        Text(BlueprintBuilder.description(draft.descriptionTemplate,
+                                                          profileName: Self.exampleProfileName,
+                                                          profileID: Self.exampleProfileID))
+                            .textSelection(.enabled)
+                    }
                 }
             } header: {
-                Text("Blueprint naming")
+                Text("Blueprint name and description")
             } footer: {
-                Text("Both are optional: leave them empty to use the classic profile's name unchanged. Spacing is used exactly as typed, and you can still rename any blueprint before creating it.")
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("All three are optional: leave one empty to drop it. Spacing in the prefix and suffix is used exactly as typed, and you can still edit the name and description of any blueprint before creating it.")
+                    Text("Description tokens: " + BlueprintBuilder.descriptionTokens
+                        .map { "\($0.token) is \($0.meaning)" }
+                        .joined(separator: ", ") + ".")
+                }
+                .foregroundStyle(.secondary)
             }
 
             Section {

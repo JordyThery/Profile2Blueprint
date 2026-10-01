@@ -57,7 +57,7 @@ The app walks that workflow stage by stage — **fetch → validate → distill 
 ## Other features
 
 - **Multiple tenants** — us / eu / apac, with an optional host override.
-- **Blueprint naming** — a per-tenant prefix and suffix for suggested names (both optional), so a test environment can be labelled differently from production. Any name is still editable before creating.
+- **Blueprint name and description** — a per-tenant name prefix and suffix, and a description template with `{name}` and `{id}` tokens. All three are optional and default to the original wording, so a test environment can be labelled differently from production. Both stay editable per blueprint before creating.
 - **Scope mapping** — exact-name auto-matching, with pickers for anything ambiguous or unmatched.
 - **Diff** — the five rules as a checklist, plus side-by-side JSON.
 - **Batch migration** — per-item summaries and one deploy confirmation listing every target.

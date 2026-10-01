@@ -371,6 +371,39 @@ struct BlueprintNamingTests {
         #expect(naming.name(for: "Restrictions").count == BlueprintBuilder.maxNameLength)
     }
 
+    @Test("The default description template renders the original wording")
+    func defaultDescriptionUnchanged() throws {
+        let fixture = try profile(DemoFixtures.managedLoginItems)
+        #expect(BlueprintBuilder.defaultDescription(for: fixture)
+            == "Migrated from Jamf Pro classic macOS configuration profile ID 101 (“Classic – Managed Login Items”) by Profile2Blueprint.")
+    }
+
+    @Test("Description tokens are substituted")
+    func descriptionTokens() {
+        let rendered = BlueprintBuilder.description("{name} came from #{id}. {name} again.",
+                                                    profileName: "Wi-Fi", profileID: 430)
+        #expect(rendered == "Wi-Fi came from #430. Wi-Fi again.")
+    }
+
+    @Test("A template with no tokens is used as a constant description")
+    func descriptionWithoutTokens() {
+        #expect(BlueprintBuilder.description("Managed by DDM.", profileName: "x", profileID: 1) == "Managed by DDM.")
+    }
+
+    @Test("An empty template means no description, which is sent as null")
+    func emptyDescription() throws {
+        let fixture = try profile(DemoFixtures.managedLoginItems)
+        #expect(BlueprintBuilder.defaultDescription(for: fixture, template: "").isEmpty)
+        let request = try BlueprintBuilder.build(profile: fixture, name: "n", description: "", deviceGroupIDs: ["g"])
+        #expect(request.description == nil)
+    }
+
+    @Test("An over-long description is trimmed to the API's limit")
+    func descriptionTruncation() {
+        let rendered = BlueprintBuilder.description(String(repeating: "x", count: 3_000), profileName: "n", profileID: 1)
+        #expect(rendered.count == BlueprintBuilder.maxDescriptionLength)
+    }
+
     @Test("A tenant saved before naming existed decodes with the original suffix")
     func decodesLegacyTenant() throws {
         let json = Data("""
@@ -378,14 +411,17 @@ struct BlueprintNamingTests {
         """.utf8)
         let tenant = try JSONDecoder().decode(Tenant.self, from: json)
         #expect(tenant.naming == .default)
+        #expect(tenant.descriptionTemplate == BlueprintBuilder.defaultDescriptionTemplate)
         #expect(!tenant.allowClassicScopeChanges)
     }
 
-    @Test("Naming survives a save/load round trip")
+    @Test("Naming and the description template survive a save/load round trip")
     func roundTrips() throws {
-        let tenant = Tenant(name: "T", naming: BlueprintNaming(prefix: "A", suffix: "B"))
+        let tenant = Tenant(name: "T", naming: BlueprintNaming(prefix: "A", suffix: "B"),
+                            descriptionTemplate: "Was {id}")
         let decoded = try JSONDecoder().decode(Tenant.self, from: try JSONEncoder().encode(tenant))
         #expect(decoded.naming == tenant.naming)
+        #expect(decoded.descriptionTemplate == "Was {id}")
     }
 }
 

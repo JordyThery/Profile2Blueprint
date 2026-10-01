@@ -8,6 +8,8 @@ nonisolated struct MigrationEnvironment: Sendable {
     let environmentID: String?
     /// Prefix/suffix for suggested blueprint names, from the tenant's settings.
     let naming: BlueprintNaming
+    /// Template for suggested blueprint descriptions, from the tenant's settings.
+    let descriptionTemplate: String
     let classic: any ClassicAPI
     let groups: any DeviceGroupsAPI
     let blueprints: any BlueprintsAPI
@@ -17,6 +19,7 @@ nonisolated struct MigrationEnvironment: Sendable {
     init(
         displayName: String, isDemo: Bool, environmentID: String?,
         naming: BlueprintNaming = .default,
+        descriptionTemplate: String = BlueprintBuilder.defaultDescriptionTemplate,
         classic: any ClassicAPI, groups: any DeviceGroupsAPI, blueprints: any BlueprintsAPI,
         classicScopeWriter: (any ClassicScopeWriter)? = nil
     ) {
@@ -24,6 +27,7 @@ nonisolated struct MigrationEnvironment: Sendable {
         self.isDemo = isDemo
         self.environmentID = environmentID
         self.naming = naming
+        self.descriptionTemplate = descriptionTemplate
         self.classic = classic
         self.groups = groups
         self.blueprints = blueprints

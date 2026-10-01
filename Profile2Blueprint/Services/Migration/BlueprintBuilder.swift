@@ -16,8 +16,27 @@ nonisolated enum BlueprintBuilder {
         naming.name(for: profile.name)
     }
 
-    static func defaultDescription(for profile: ClassicProfile) -> String {
-        String("Migrated from Jamf Pro classic macOS configuration profile ID \(profile.id) (“\(profile.name)”) by Profile2Blueprint.".prefix(maxDescriptionLength))
+    /// Tokens a description template may use, with what each one is replaced by.
+    static let descriptionTokens: [(token: String, meaning: String)] = [
+        ("{name}", "the classic profile's name"),
+        ("{id}", "its Jamf Pro ID"),
+    ]
+
+    /// The description used before the template was configurable, kept as the default.
+    static let defaultDescriptionTemplate =
+        "Migrated from Jamf Pro classic macOS configuration profile ID {id} (“{name}”) by Profile2Blueprint."
+
+    /// Fills in `descriptionTokens` and trims to the API's limit. An empty template
+    /// yields an empty description, which `build` sends as null.
+    static func description(_ template: String, profileName: String, profileID: Int) -> String {
+        let filled = template
+            .replacingOccurrences(of: "{name}", with: profileName)
+            .replacingOccurrences(of: "{id}", with: String(profileID))
+        return String(filled.prefix(maxDescriptionLength))
+    }
+
+    static func defaultDescription(for profile: ClassicProfile, template: String = defaultDescriptionTemplate) -> String {
+        description(template, profileName: profile.name, profileID: profile.id)
     }
 
     /// The `configuration` object of the `com.jamf.ddm-configuration-profile` component.
