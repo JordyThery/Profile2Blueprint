@@ -25,7 +25,7 @@ In [Jamf Account](https://account.jamf.com), create an API integration scoped to
 
 Jamf Account presents these as per-capability checkboxes; the APIs refer to them as `device-groups:read`, `blueprints:create` and so on.
 
-Then in the app: **Add Tenant** → pick the region → paste the platform **Environment ID**, **Client ID** and **Client secret** → **Test Connection** (requests a token and lists computer device groups) → **Save Changes**. Secrets are stored only in your Keychain.
+Then in the app: **Add Tenant** → pick the region → paste the platform **Environment ID**, **Client ID** and **Client secret** → **Test Connection** (requests a token and lists platform device groups) → **Save Changes**. Secrets are stored only in your Keychain.
 
 ## First migration
 
