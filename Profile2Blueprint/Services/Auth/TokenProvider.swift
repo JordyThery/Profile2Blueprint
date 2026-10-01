@@ -121,7 +121,7 @@ actor TokenProvider {
             let decoded = try JSONDecoder().decode(TokenResponse.self, from: data)
             let lifetime = TimeInterval(decoded.expiresIn ?? 900)
             activity.record(ActivityEvent(environment: environmentName, category: .auth,
-                                          message: "Access token issued (valid \(Int(lifetime)) s). Token value is never logged.",
+                                          message: "Access token issued, valid \(Int(lifetime)) s.",
                                           method: "POST", path: tokenURL.path(), status: http.statusCode))
             return AccessToken(value: decoded.accessToken, expiresAt: issuedAt.addingTimeInterval(lifetime))
         } catch {

@@ -166,7 +166,7 @@ private struct ProfilesContent: View {
             ContentUnavailableView(
                 "Select a Profile",
                 systemImage: "doc.badge.gearshape",
-                description: Text("Choose a classic macOS configuration profile to inspect and migrate. Jamf Pro is only read, never changed.")
+                description: Text("Choose a classic macOS configuration profile to inspect and migrate. The app reads Jamf Pro; it never changes it unless classic scope cleanup is explicitly enabled.")
             )
         }
     }

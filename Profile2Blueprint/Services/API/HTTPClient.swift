@@ -149,7 +149,7 @@ nonisolated final class HTTPClient: Sendable {
             activity.record(ActivityEvent(
                 environment: environmentName, category: category,
                 level: (200..<300).contains(response.status) ? .info : (response.status >= 500 || response.status == 403 ? .error : .warning),
-                message: body?.errors.first.map { "\($0.code): \($0.description)" } ?? HTTPURLResponse.localizedString(forStatusCode: response.status),
+                message: body?.errors.first.map { "\($0.code): \($0.description)" } ?? Self.statusPhrase(response.status),
                 method: request.method, path: request.path, status: response.status,
                 durationMs: Self.milliseconds(since: started), traceId: body?.traceId
             ))
@@ -188,6 +188,17 @@ nonisolated final class HTTPClient: Sendable {
                 body: body,
                 rawBody: Redactor.redactedBody(response.data)
             )
+        }
+    }
+
+    /// Short HTTP status phrases for the activity log.
+    static func statusPhrase(_ status: Int) -> String {
+        switch status {
+        case 200: "OK"
+        case 201: "Created"
+        case 202: "Accepted"
+        case 204: "No content"
+        default: "HTTP \(status)"
         }
     }
 

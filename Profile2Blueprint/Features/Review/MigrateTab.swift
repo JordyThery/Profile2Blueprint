@@ -177,11 +177,11 @@ struct MigrateTab: View {
                     if fidelity.passed {
                         Label(fidelity.caseChanges.isEmpty
                               ? "Identifiers, order, count, settings and scope all match."
-                              : "Matches, but \(fidelity.caseChanges.count) key casing change(s) need a look.",
+                              : "Matches; review ^[\(fidelity.caseChanges.count) key casing change](inflect: true).",
                               systemImage: fidelity.caseChanges.isEmpty ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
                             .foregroundStyle(fidelity.caseChanges.isEmpty ? .green : .orange)
                     } else {
-                        Label("\(fidelity.mismatches.count) mismatch(es). The in-place transform would not be seamless, so deploying is disabled.",
+                        Label("^[\(fidelity.mismatches.count) mismatch](inflect: true). The in-place transform would not be seamless, so deploying is disabled.",
                               systemImage: "xmark.seal.fill")
                             .foregroundStyle(.red)
                     }

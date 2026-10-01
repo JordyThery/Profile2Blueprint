@@ -9,8 +9,8 @@ nonisolated protocol ClassicScopeWriter: Sendable {
 
 /// `PUT /proclassic/osxconfigurationprofiles/id/{id}` (permission `configuration-profiles:update`).
 ///
-/// Unverified against a live tenant: the spec doesn't document the body. This follows the
-/// Classic API convention of partial XML updates (only the elements sent are changed).
+/// The spec does not document the request body. This uses the Classic API's partial-XML
+/// update convention (only the elements sent are changed), verified against a live tenant.
 nonisolated struct LiveClassicScopeWriter: ClassicScopeWriter {
     let client: HTTPClient
 

@@ -61,7 +61,7 @@ struct BatchMigrationView: View {
             .frame(minHeight: 260)
 
             if notLoaded > 0 {
-                Label("\(notLoaded) selected profile(s) are still loading or failed to load and are not included.", systemImage: "hourglass")
+                Label("^[\(notLoaded) selected profile](inflect: true) still loading or failed to load — not included.", systemImage: "hourglass")
                     .foregroundStyle(.orange)
             }
 
@@ -155,7 +155,7 @@ struct BatchMigrationView: View {
         } else if case .deploying = session.state {
             Text(session.deployment?.displayText ?? "Deploying…")
         } else if let fidelity = session.fidelity {
-            Text(fidelity.passed ? "Created · verified" : "Created · \(fidelity.mismatches.count) mismatch(es)")
+            Text(fidelity.passed ? "Created · verified" : "Created · ^[\(fidelity.mismatches.count) mismatch](inflect: true)")
                 .foregroundStyle(fidelity.passed ? .green : .red)
         } else if session.effectiveReport.status == .blocked {
             Text(session.effectiveReport.reasons.first?.title ?? "Blocked").foregroundStyle(.red)

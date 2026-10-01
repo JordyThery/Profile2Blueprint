@@ -63,7 +63,7 @@ struct DeployConfirmationSheet: View {
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                             if item.warnings > 0 {
-                                Label("\(item.warnings) key casing change(s) found during verification", systemImage: "exclamationmark.triangle")
+                                Label("^[\(item.warnings) key casing change](inflect: true) found during verification", systemImage: "exclamationmark.triangle")
                                     .font(.caption).foregroundStyle(.orange)
                             }
                         }

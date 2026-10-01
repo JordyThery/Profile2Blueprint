@@ -185,7 +185,8 @@ final class MigrationSession: Identifiable {
             let request = try await prepareRequest()
             let existing = try await pipeline.existingBlueprints()
             let groups = selectedGroups.map(\.name).joined(separator: ", ")
-            var summary = "Would create “\(request.name)” (not deployed) with \(profile.document.payloadCount) payload(s), targeting \(groups) — \(deviceCount) device(s)."
+            let payloads = profile.document.payloadCount
+            var summary = "Would create “\(request.name)” (not deployed) with \(payloads) payload\(payloads == 1 ? "" : "s"), targeting \(groups) — \(deviceCount) device\(deviceCount == 1 ? "" : "s")."
             if !existing.isEmpty {
                 summary += " A blueprint with this name already exists (\(existing.map(\.id).joined(separator: ", ")))."
             }
@@ -473,8 +474,8 @@ final class MigrationSession: Identifiable {
         }
         let summary = result.passed
             ? "All identity, order, count, settings and scope checks match."
-                + (result.caseChanges.isEmpty ? "" : " \(result.caseChanges.count) key casing change(s) to review.")
-            : "\(result.mismatches.count) mismatch(es): " + result.mismatches.prefix(3).map(\.field).joined(separator: "; ")
+                + (result.caseChanges.isEmpty ? "" : " \(result.caseChanges.count) key casing change\(result.caseChanges.count == 1 ? "" : "s") to review.")
+            : "\(result.mismatches.count) mismatch\(result.mismatches.count == 1 ? "" : "es"): " + result.mismatches.prefix(3).map(\.field).joined(separator: "; ")
         history.record(.verify, environment: environment, profile: profile, blueprintID: blueprintID, blueprintName: createdName,
                                  result: result.passed ? (result.caseChanges.isEmpty ? .success : .warning) : .failure, message: summary)
     }

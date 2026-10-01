@@ -50,7 +50,7 @@ struct ProfileDetailView: View {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(profile.name).font(.title2.weight(.semibold)).textSelection(.enabled)
-                    Text("Classic profile #\(profile.id) · \(profile.document.payloadTypes.count) payload(s) · \(profile.level.displayName)")
+                    Text("Classic profile #\(profile.id) · ^[\(profile.document.payloadTypes.count) payload](inflect: true) · \(profile.level.displayName)")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
