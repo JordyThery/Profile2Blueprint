@@ -18,6 +18,35 @@ nonisolated enum Region: String, Codable, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// How a blueprint's suggested name is built from the classic profile's name.
+/// Either affix may be empty; with both empty the name is the profile's name verbatim.
+nonisolated struct BlueprintNaming: Codable, Hashable, Sendable {
+    /// The suffix used before naming was configurable, kept as the default so existing
+    /// tenants and the demo behave as before.
+    static let defaultSuffix = " (migrated)"
+    static let `default` = BlueprintNaming()
+
+    var prefix: String
+    var suffix: String
+
+    init(prefix: String = "", suffix: String = Self.defaultSuffix) {
+        self.prefix = prefix
+        self.suffix = suffix
+    }
+
+    /// Affixes are written verbatim, so spacing is whatever was typed — a prefix of
+    /// "TEST -" and "TEST - " are different on purpose.
+    ///
+    /// When the result exceeds `limit` the profile name is shortened rather than the
+    /// affixes, so a naming convention survives a long source name. If the affixes
+    /// alone fill the limit, the whole name is truncated instead.
+    func name(for profileName: String, limit: Int = BlueprintBuilder.maxNameLength) -> String {
+        let available = limit - prefix.count - suffix.count
+        guard available > 0 else { return String((prefix + profileName + suffix).prefix(limit)) }
+        return prefix + profileName.prefix(available) + suffix
+    }
+}
+
 /// A saved Jamf platform environment the app can talk to.
 ///
 /// Only non-secret values live here. The OAuth client secret is stored in the
@@ -35,6 +64,9 @@ nonisolated struct Tenant: Codable, Hashable, Identifiable, Sendable {
     /// Explicit opt-in that allows the app to change (only) the scope of classic
     /// profiles on this tenant. Off by default; while off, every Classic write is refused.
     var allowClassicScopeChanges: Bool
+    /// Prefix and suffix applied to suggested blueprint names on this tenant, so a test
+    /// environment can be labelled differently from production.
+    var naming: BlueprintNaming
 
     init(
         id: UUID = UUID(),
@@ -43,9 +75,11 @@ nonisolated struct Tenant: Codable, Hashable, Identifiable, Sendable {
         environmentID: String = "",
         clientID: String = "",
         hostOverride: String? = nil,
-        allowClassicScopeChanges: Bool = false
+        allowClassicScopeChanges: Bool = false,
+        naming: BlueprintNaming = .default
     ) {
         self.allowClassicScopeChanges = allowClassicScopeChanges
+        self.naming = naming
         self.id = id
         self.name = name
         self.region = region
@@ -55,10 +89,11 @@ nonisolated struct Tenant: Codable, Hashable, Identifiable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, region, environmentID, clientID, hostOverride, allowClassicScopeChanges
+        case id, name, region, environmentID, clientID, hostOverride, allowClassicScopeChanges, naming
     }
 
-    /// Tolerates tenants saved before `allowClassicScopeChanges` existed (they decode as off).
+    /// Tolerates tenants saved before `allowClassicScopeChanges` and `naming` existed:
+    /// scope changes decode as off, naming as the original " (migrated)" suffix.
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
@@ -68,6 +103,7 @@ nonisolated struct Tenant: Codable, Hashable, Identifiable, Sendable {
         clientID = try container.decode(String.self, forKey: .clientID)
         hostOverride = try container.decodeIfPresent(String.self, forKey: .hostOverride)
         allowClassicScopeChanges = try container.decodeIfPresent(Bool.self, forKey: .allowClassicScopeChanges) ?? false
+        naming = try container.decodeIfPresent(BlueprintNaming.self, forKey: .naming) ?? .default
     }
 
     /// Display name with a fallback for unnamed tenants.

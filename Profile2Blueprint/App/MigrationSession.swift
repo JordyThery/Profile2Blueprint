@@ -89,7 +89,7 @@ final class MigrationSession: Identifiable {
         scopeBackups = workspace.scopeBackups
         sessionStates = workspace.sessionStates
         pipeline = MigrationPipeline(classic: workspace.environment.classic, blueprints: workspace.environment.blueprints)
-        blueprintName = BlueprintBuilder.defaultName(for: profile)
+        blueprintName = BlueprintBuilder.defaultName(for: profile, naming: workspace.environment.naming)
         blueprintDescription = BlueprintBuilder.defaultDescription(for: profile)
         selectedGroupIDs = ScopeMapper.automaticSelection(report.scopeMapping)
         let profileID = profile.id

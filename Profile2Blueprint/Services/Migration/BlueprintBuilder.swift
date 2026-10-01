@@ -12,9 +12,8 @@ nonisolated enum BlueprintBuilder {
     static let maxNameLength = 200
     static let maxDescriptionLength = 2_000
 
-    static func defaultName(for profile: ClassicProfile) -> String {
-        let suffix = " (migrated)"
-        return String(profile.name.prefix(maxNameLength - suffix.count)) + suffix
+    static func defaultName(for profile: ClassicProfile, naming: BlueprintNaming = .default) -> String {
+        naming.name(for: profile.name)
     }
 
     static func defaultDescription(for profile: ClassicProfile) -> String {

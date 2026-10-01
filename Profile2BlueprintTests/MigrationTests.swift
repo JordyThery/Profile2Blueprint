@@ -333,6 +333,62 @@ struct BlueprintBuilderTests {
     }
 }
 
+@Suite("Blueprint naming")
+struct BlueprintNamingTests {
+
+    @Test("Prefix and suffix are applied verbatim")
+    func affixes() {
+        let naming = BlueprintNaming(prefix: "TEST - ", suffix: " [DDM]")
+        #expect(naming.name(for: "Restrictions") == "TEST - Restrictions [DDM]")
+    }
+
+    @Test("Either affix may be empty, and both empty leaves the name untouched",
+          arguments: [
+              (BlueprintNaming(prefix: "", suffix: ""), "Restrictions"),
+              (BlueprintNaming(prefix: "TEST - ", suffix: ""), "TEST - Restrictions"),
+              (BlueprintNaming(prefix: "", suffix: " (migrated)"), "Restrictions (migrated)"),
+          ])
+    func optionalAffixes(naming: BlueprintNaming, expected: String) {
+        #expect(naming.name(for: "Restrictions") == expected)
+    }
+
+    @Test("The default keeps the behaviour from before naming was configurable")
+    func defaultsUnchanged() {
+        #expect(BlueprintNaming.default.name(for: "Restrictions") == "Restrictions (migrated)")
+    }
+
+    @Test("Over the limit, the profile name is shortened and the affixes survive")
+    func truncation() {
+        let naming = BlueprintNaming(prefix: "TEST - ", suffix: " (migrated)")
+        let name = naming.name(for: String(repeating: "x", count: 400))
+        #expect(name.count == BlueprintBuilder.maxNameLength)
+        #expect(name.hasPrefix("TEST - ") && name.hasSuffix(" (migrated)"))
+    }
+
+    @Test("Affixes longer than the limit are truncated rather than overflowing")
+    func affixesOverLimit() {
+        let naming = BlueprintNaming(prefix: String(repeating: "p", count: 300), suffix: "s")
+        #expect(naming.name(for: "Restrictions").count == BlueprintBuilder.maxNameLength)
+    }
+
+    @Test("A tenant saved before naming existed decodes with the original suffix")
+    func decodesLegacyTenant() throws {
+        let json = Data("""
+        {"id":"\(UUID().uuidString)","name":"Old","region":"eu","environmentID":"e","clientID":"c"}
+        """.utf8)
+        let tenant = try JSONDecoder().decode(Tenant.self, from: json)
+        #expect(tenant.naming == .default)
+        #expect(!tenant.allowClassicScopeChanges)
+    }
+
+    @Test("Naming survives a save/load round trip")
+    func roundTrips() throws {
+        let tenant = Tenant(name: "T", naming: BlueprintNaming(prefix: "A", suffix: "B"))
+        let decoded = try JSONDecoder().decode(Tenant.self, from: try JSONEncoder().encode(tenant))
+        #expect(decoded.naming == tenant.naming)
+    }
+}
+
 // MARK: - Verifier
 
 private func detail(for request: BlueprintRequest, transform: (inout JSONObject) -> Void = { _ in }, groups: [String]? = nil) -> BlueprintDetail {

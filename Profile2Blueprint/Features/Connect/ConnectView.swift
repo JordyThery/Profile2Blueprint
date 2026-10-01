@@ -64,6 +64,20 @@ struct ConnectView: View {
             }
 
             Section {
+                TextField("Prefix", text: $draft.naming.prefix, prompt: Text("None"))
+                TextField("Suffix", text: $draft.naming.suffix, prompt: Text("None"))
+                LabeledContent("Example") {
+                    Text(draft.naming.name(for: "Restrictions"))
+                        .textSelection(.enabled)
+                }
+            } header: {
+                Text("Blueprint naming")
+            } footer: {
+                Text("Both are optional: leave them empty to use the classic profile's name unchanged. Spacing is used exactly as typed, and you can still rename any blueprint before creating it.")
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
                 Toggle(isOn: Binding(
                     get: { draft.allowClassicScopeChanges },
                     set: { enable in

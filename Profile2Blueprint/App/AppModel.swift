@@ -78,6 +78,7 @@ final class AppModel {
                 displayName: tenant.displayName,
                 isDemo: false,
                 environmentID: tenant.normalizedEnvironmentID,
+                naming: tenant.naming,
                 classic: LiveClassicAPI(client: client),
                 groups: LiveDeviceGroupsAPI(client: client),
                 blueprints: LiveBlueprintsAPI(client: client),
