@@ -10,7 +10,7 @@ Download the latest `Profile2Blueprint-x.y.zip` from [Releases](https://github.c
 
 ## Try it without a tenant
 
-Switch on **Offline demo mode** in the sidebar. The full flow — eligibility, scope mapping, create, verify, deploy, unscope and restore — runs against bundled fixtures, with no network access and nothing to configure. This is the quickest way to see whether the app fits your environment.
+Switch on **Offline demo mode** in the sidebar. The full flow — eligibility, scope mapping, create, verify, deploy, unscope and restore — runs against bundled fixtures, with no tenant contacted and nothing to configure. This is the quickest way to see whether the app fits your environment.
 
 ## Connect to Jamf
 
@@ -25,7 +25,7 @@ In [Jamf Account](https://account.jamf.com), create an API integration scoped to
 
 Jamf Account presents these as per-capability checkboxes; the APIs refer to them as `device-groups:read`, `blueprints:create` and so on.
 
-Then in the app: **Add Tenant** → pick the region → paste the platform **Environment ID**, **Client ID** and **Client secret** → **Test Connection** (requests a token and lists platform device groups) → **Save Changes**. Secrets are stored only in your Keychain.
+Then in the app: **Add Tenant** → pick the region → paste the platform **Environment ID**, **Client ID** and **Client secret** → **Test Connection** (requests a token and lists platform device groups) → **Save Changes**. Secrets are stored only in your Keychain. Optionally add the **Jamf Pro URL** you use in a browser to get **Open in Jamf Pro** links for the classic profile and its blueprint.
 
 ## First migration
 
@@ -53,6 +53,7 @@ The app walks that workflow stage by stage — **fetch → validate → distill 
 - The HTTP layer refuses any request that isn't a GET, a blueprint create, a blueprint deploy or — only when explicitly enabled — a scope-only classic profile update, before it reaches the network.
 - **Classic cleanup is opt-in.** After a fully clean deployment (0 failed, 0 pending), the app can remove the classic profile's scope targets. This is guarded three times: a per-tenant setting that is off by default, a per-profile opt-in, and a confirmation. The original scope is backed up locally and can be restored.
 - Client secrets and tokens are never written to any log.
+- Apart from the Jamf gateway, the only address the app contacts is GitHub, once a day, to ask whether a newer release exists. Turn it off in **About**.
 
 ## Other features
 
@@ -60,7 +61,9 @@ The app walks that workflow stage by stage — **fetch → validate → distill 
 - **Blueprint name and description** — a per-tenant name prefix and suffix, and a description template with `{name}` and `{id}` tokens. All three are optional and default to the original wording, so a test environment can be labelled differently from production. Both stay editable per blueprint before creating.
 - **Scope mapping** — exact-name auto-matching, with pickers for anything ambiguous or unmatched.
 - **Diff** — the five rules as a checklist, plus side-by-side JSON.
-- **Batch migration** — per-item summaries and one deploy confirmation listing every target.
+- **Batch migration** — tick profiles in the list (or ⌘-click), then review them together: per-item summaries and one deploy confirmation listing every target.
+- **Open in Jamf Pro** — jump to the classic profile (read-only) or its blueprint in the Jamf Pro console.
+- **Update check** — daily and on demand from the app menu, with release notes and an in-app download. The app can't replace itself in the sandbox, so installing stays a drag into Applications.
 - **Persistent sessions** — a created blueprint re-attaches after a relaunch and resumes at its current stage; after a deployment the device report refreshes until every device has reported in.
 - **History** — every migration action, exportable as Markdown or JSON.
 - **Activity** — everything the app does: token requests, every API call (status, duration, trace ID), retries, refused writes and settings changes.
@@ -71,7 +74,8 @@ Requires Xcode with the macOS 26 SDK or later (Swift 6, strict concurrency). Ope
 
 ```
 Profile2Blueprint/
-  App/        AppModel, Workspace, MigrationSession, HistoryLog, ActivityLog
+  App/        AppModel, Workspace, MigrationSession, HistoryLog, ActivityLog,
+              UpdateChecker
   Models/     Tenant, ClassicProfile, PlistValue/JSONValue (order-preserving),
               Blueprint, EligibilityReport, MigrationRecord, ActivityEvent
   Services/

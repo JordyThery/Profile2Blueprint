@@ -8,7 +8,9 @@ import SwiftUI
         WindowGroup {
             ContentView()
                 .environment(model)
+                .environment(model.updates)
                 .frame(minWidth: 820, minHeight: 520)
+                .task { await model.updates.checkAutomatically() }
         }
         .defaultSize(width: 1100, height: 720)
         .commands {
@@ -21,6 +23,9 @@ import SwiftUI
                         ),
                     ])
                 }
+            }
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") { model.updates.checkManually() }
             }
         }
     }

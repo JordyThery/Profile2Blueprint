@@ -3,6 +3,9 @@ import SwiftUI
 
 /// App information and credits.
 struct AboutView: View {
+    @Environment(UpdateChecker.self) private var updates
+    @AppStorage(UpdateChecker.automaticCheckKey) private var checksForUpdates = true
+
     private var version: String {
         let short = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
@@ -32,9 +35,18 @@ struct AboutView: View {
                     .frame(maxWidth: 480)
                     .padding(.top, 2)
 
-                Link("github.com/JordyThery/Profile2Blueprint",
-                     destination: URL(string: "https://github.com/JordyThery/Profile2Blueprint")!)
-                    .padding(.top, 6)
+                if let repository = URL(string: "https://github.com/JordyThery/Profile2Blueprint") {
+                    Link("github.com/JordyThery/Profile2Blueprint", destination: repository)
+                        .padding(.top, 6)
+                }
+
+                VStack(spacing: 6) {
+                    Button("Check for Updates…") { updates.checkManually() }
+                    Toggle("Check for updates daily", isOn: $checksForUpdates)
+                        .toggleStyle(.checkbox)
+                        .help("Once a day, ask GitHub whether a newer release exists. Nothing else is sent.")
+                }
+                .padding(.top, 8)
 
                 Divider()
                     .frame(maxWidth: 480)
@@ -59,6 +71,7 @@ struct AboutView: View {
 #if DEBUG
 #Preview {
     AboutView()
+        .environment(UpdateChecker())
         .frame(width: 700, height: 560)
 }
 #endif

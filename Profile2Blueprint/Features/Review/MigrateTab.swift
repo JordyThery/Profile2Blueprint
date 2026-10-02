@@ -60,7 +60,7 @@ struct MigrateTab: View {
         HStack(spacing: 8) {
             Image(systemName: environment.isDemo ? "testtube.2" : "bolt.horizontal.circle.fill")
             Text(environment.isDemo
-                 ? "Offline demo: nothing leaves this Mac."
+                 ? "Offline demo: nothing is sent to Jamf."
                  : "Live tenant “\(environment.displayName)”: create and deploy change this environment.")
         }
         .font(.callout)

@@ -47,6 +47,42 @@ nonisolated struct BlueprintNaming: Codable, Hashable, Sendable {
     }
 }
 
+/// Web links into the Jamf Pro console, built from the address users see in their
+/// browser. The gateway the app talks to has no route back to it, so it is entered
+/// by hand rather than fetched (which would need an extra API permission).
+nonisolated struct JamfProLinks: Hashable, Sendable {
+    let base: URL
+
+    /// Accepts the address with or without a scheme, a path or a trailing slash, as
+    /// people paste it. Only the host (and port) is kept; anything else is `nil`.
+    init?(_ address: String) {
+        var text = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return nil }
+        if !text.lowercased().hasPrefix("https://") && !text.lowercased().hasPrefix("http://") {
+            text = "https://" + text
+        }
+        guard let parsed = URLComponents(string: text), let host = parsed.host, host.contains("."), !host.contains(" ") else {
+            return nil
+        }
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = host
+        components.port = parsed.port
+        guard let url = components.url else { return nil }
+        base = url
+    }
+
+    /// Opens read-only (`o=r`), so following the link can't put a profile into edit mode.
+    func classicProfile(id: Int) -> URL {
+        base.appending(path: "OSXConfigurationProfiles.html")
+            .appending(queryItems: [URLQueryItem(name: "id", value: String(id)), URLQueryItem(name: "o", value: "r")])
+    }
+
+    func blueprint(id: String) -> URL {
+        base.appending(path: "view/mfe/blueprints").appending(path: id)
+    }
+}
+
 /// A saved Jamf platform environment the app can talk to.
 ///
 /// Only non-secret values live here. The OAuth client secret is stored in the
@@ -70,6 +106,9 @@ nonisolated struct Tenant: Codable, Hashable, Identifiable, Sendable {
     /// Template for the suggested blueprint description, with the tokens in
     /// `BlueprintBuilder.descriptionTokens`. Empty means no description.
     var descriptionTemplate: String
+    /// The Jamf Pro web address, for "Open in Jamf Pro". Optional; the buttons are
+    /// hidden while it is empty or invalid.
+    var jamfProURL: String
 
     init(
         id: UUID = UUID(),
@@ -80,11 +119,13 @@ nonisolated struct Tenant: Codable, Hashable, Identifiable, Sendable {
         hostOverride: String? = nil,
         allowClassicScopeChanges: Bool = false,
         naming: BlueprintNaming = .default,
-        descriptionTemplate: String = BlueprintBuilder.defaultDescriptionTemplate
+        descriptionTemplate: String = BlueprintBuilder.defaultDescriptionTemplate,
+        jamfProURL: String = ""
     ) {
         self.allowClassicScopeChanges = allowClassicScopeChanges
         self.naming = naming
         self.descriptionTemplate = descriptionTemplate
+        self.jamfProURL = jamfProURL
         self.id = id
         self.name = name
         self.region = region
@@ -94,12 +135,12 @@ nonisolated struct Tenant: Codable, Hashable, Identifiable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, region, environmentID, clientID, hostOverride, allowClassicScopeChanges, naming, descriptionTemplate
+        case id, name, region, environmentID, clientID, hostOverride, allowClassicScopeChanges, naming, descriptionTemplate, jamfProURL
     }
 
-    /// Tolerates tenants saved before `allowClassicScopeChanges`, `naming` and
-    /// `descriptionTemplate` existed: scope changes decode as off, and the name and
-    /// description fall back to the wording used before they were configurable.
+    /// Tolerates tenants saved before the later settings existed: scope changes decode
+    /// as off, the name and description fall back to the wording used before they
+    /// were configurable, and the Jamf Pro address as unset.
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
@@ -112,6 +153,7 @@ nonisolated struct Tenant: Codable, Hashable, Identifiable, Sendable {
         naming = try container.decodeIfPresent(BlueprintNaming.self, forKey: .naming) ?? .default
         descriptionTemplate = try container.decodeIfPresent(String.self, forKey: .descriptionTemplate)
             ?? BlueprintBuilder.defaultDescriptionTemplate
+        jamfProURL = try container.decodeIfPresent(String.self, forKey: .jamfProURL) ?? ""
     }
 
     /// Display name with a fallback for unnamed tenants.
@@ -145,6 +187,8 @@ nonisolated struct Tenant: Codable, Hashable, Identifiable, Sendable {
         guard let url = components.url, !host.isEmpty, !host.contains("/") else { return nil }
         return url
     }
+
+    var jamfProLinks: JamfProLinks? { JamfProLinks(jamfProURL) }
 
     /// The environment ID normalised to the lowercase form the spec's pattern expects.
     var normalizedEnvironmentID: String {

@@ -10,6 +10,8 @@ nonisolated struct MigrationEnvironment: Sendable {
     let naming: BlueprintNaming
     /// Template for suggested blueprint descriptions, from the tenant's settings.
     let descriptionTemplate: String
+    /// Links into the Jamf Pro console, when the tenant has its address set.
+    let jamfProLinks: JamfProLinks?
     let classic: any ClassicAPI
     let groups: any DeviceGroupsAPI
     let blueprints: any BlueprintsAPI
@@ -20,6 +22,7 @@ nonisolated struct MigrationEnvironment: Sendable {
         displayName: String, isDemo: Bool, environmentID: String?,
         naming: BlueprintNaming = .default,
         descriptionTemplate: String = BlueprintBuilder.defaultDescriptionTemplate,
+        jamfProLinks: JamfProLinks? = nil,
         classic: any ClassicAPI, groups: any DeviceGroupsAPI, blueprints: any BlueprintsAPI,
         classicScopeWriter: (any ClassicScopeWriter)? = nil
     ) {
@@ -28,6 +31,7 @@ nonisolated struct MigrationEnvironment: Sendable {
         self.environmentID = environmentID
         self.naming = naming
         self.descriptionTemplate = descriptionTemplate
+        self.jamfProLinks = jamfProLinks
         self.classic = classic
         self.groups = groups
         self.blueprints = blueprints

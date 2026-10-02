@@ -19,7 +19,7 @@ struct ProfileDetailView: View {
         if let profile = workspace.profiles[profileID], let report = workspace.reports[profileID],
            let session = workspace.session(for: profileID) {
             VStack(spacing: 0) {
-                header(profile: profile, report: session.effectiveReport)
+                header(profile: profile, report: session.effectiveReport, blueprintID: session.blueprintID)
                 Divider()
                 Group {
                     switch tab {
@@ -45,7 +45,7 @@ struct ProfileDetailView: View {
         }
     }
 
-    private func header(profile: ClassicProfile, report: EligibilityReport) -> some View {
+    private func header(profile: ClassicProfile, report: EligibilityReport, blueprintID: String?) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 2) {
@@ -56,6 +56,9 @@ struct ProfileDetailView: View {
                 }
                 Spacer()
                 EligibilityBadge(status: report.status)
+                if let links = workspace.environment.jamfProLinks {
+                    OpenInJamfProMenu(links: links, profileID: profile.id, blueprintID: blueprintID)
+                }
                 Button("Reload Profile", systemImage: "arrow.clockwise") {
                     Task { await workspace.reloadProfile(id: profileID) }
                 }
@@ -69,6 +72,30 @@ struct ProfileDetailView: View {
             .labelsHidden()
         }
         .padding()
+    }
+}
+
+/// Opens the classic profile, and once created the blueprint, in the Jamf Pro console.
+private struct OpenInJamfProMenu: View {
+    let links: JamfProLinks
+    let profileID: Int
+    let blueprintID: String?
+    @Environment(\.openURL) private var openURL
+
+    var body: some View {
+        Menu("Open in Jamf Pro", systemImage: "arrow.up.forward.app") {
+            Button("Classic Profile") { openURL(links.classicProfile(id: profileID)) }
+            Button("Blueprint") {
+                if let blueprintID { openURL(links.blueprint(id: blueprintID)) }
+            }
+            .disabled(blueprintID == nil)
+        }
+        .labelStyle(.iconOnly)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help(blueprintID == nil
+              ? "Open the classic profile in Jamf Pro. The blueprint link appears once it is created."
+              : "Open the classic profile or its blueprint in Jamf Pro")
     }
 }
 

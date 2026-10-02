@@ -137,7 +137,13 @@ private struct ProfilesContent: View {
                 summary: summary,
                 profile: workspace.profiles[summary.id],
                 report: workspace.reports[summary.id],
-                error: workspace.profileErrors[summary.id]
+                error: workspace.profileErrors[summary.id],
+                isChecked: Binding(
+                    get: { selection.contains(summary.id) },
+                    set: { checked in
+                        if checked { selection.insert(summary.id) } else { selection.remove(summary.id) }
+                    }
+                )
             )
             .tag(summary.id)
         }
@@ -177,9 +183,15 @@ private struct ProfileRow: View {
     let profile: ClassicProfile?
     let report: EligibilityReport?
     let error: ErrorReport?
+    /// Adds the row to the selection without ⌘-click, for building a batch.
+    @Binding var isChecked: Bool
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
+            Toggle("Include in selection", isOn: $isChecked)
+                .toggleStyle(.checkbox)
+                .labelsHidden()
+                .help("Add to the selection for batch migration")
             if error != nil {
                 Image(systemName: "exclamationmark.icloud")
                     .foregroundStyle(.red)

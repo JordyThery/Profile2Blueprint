@@ -30,6 +30,7 @@ final class AppModel {
 
     let history: HistoryLog
     let activity: ActivityLog
+    let updates: UpdateChecker
     /// Cache only; views observe `isDemoMode` / `currentTenantID`, which drive rebuilds.
     @ObservationIgnored private var workspace: Workspace?
 
@@ -52,6 +53,7 @@ final class AppModel {
         let activityLog = ActivityLog(store: activity)
         self.activity = activityLog
         self.history = HistoryLog(store: history, activity: activityLog)
+        updates = UpdateChecker(activity: activityLog)
         let configuration = store.load()
         tenants = configuration.tenants
         currentTenantID = configuration.currentTenantID.flatMap { id in
@@ -80,6 +82,7 @@ final class AppModel {
                 environmentID: tenant.normalizedEnvironmentID,
                 naming: tenant.naming,
                 descriptionTemplate: tenant.descriptionTemplate,
+                jamfProLinks: tenant.jamfProLinks,
                 classic: LiveClassicAPI(client: client),
                 groups: LiveDeviceGroupsAPI(client: client),
                 blueprints: LiveBlueprintsAPI(client: client),

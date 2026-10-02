@@ -11,11 +11,13 @@ enum SidebarItem: Hashable {
 
 struct ContentView: View {
     @Environment(AppModel.self) private var model
+    @Environment(UpdateChecker.self) private var updates
     @State private var selection: SidebarItem?
     @State private var tenantPendingDeletion: Tenant?
 
     var body: some View {
         @Bindable var model = model
+        @Bindable var updates = updates
 
         NavigationSplitView {
             List(selection: $selection) {
@@ -87,10 +89,8 @@ struct ContentView: View {
                 )
             }
         }
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                CurrentTenantBadge(tenant: model.currentTenant, isDemoMode: model.isDemoMode)
-            }
+        .sheet(isPresented: $updates.isPresented) {
+            UpdateView()
         }
         .confirmationDialog(
             "Delete \u{201c}\(tenantPendingDeletion?.displayName ?? "")\u{201d}?",
@@ -134,9 +134,17 @@ private struct TenantRow: View {
         Label {
             VStack(alignment: .leading, spacing: 1) {
                 Text(tenant.displayName)
-                Text(tenant.usesHostOverride ? tenant.host : tenant.region.rawValue.uppercased())
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if tenant.usesHostOverride {
+                    Label(tenant.host, systemImage: "exclamationmark.triangle.fill")
+                        .labelStyle(.titleAndIcon)
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .help("Non-production host override")
+                } else {
+                    Text(tenant.region.rawValue.uppercased())
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         } icon: {
             Image(systemName: isCurrent ? "checkmark.circle.fill" : "building.2")
@@ -147,42 +155,16 @@ private struct TenantRow: View {
 }
 
 /// Always-visible indicator of which tenant actions will run against.
-struct CurrentTenantBadge: View {
-    let tenant: Tenant?
-    var isDemoMode = false
 
-    var body: some View {
-        HStack(spacing: 6) {
-            Circle()
-                .fill(isDemoMode ? Color.blue : (tenant == nil ? Color.orange : Color.green))
-                .frame(width: 8, height: 8)
-            if isDemoMode {
-                Text("Offline demo").fontWeight(.semibold)
-                Text("· fixtures only").foregroundStyle(.secondary)
-            } else if let tenant {
-                Text(tenant.displayName).fontWeight(.semibold)
-                Text("·").foregroundStyle(.secondary)
-                Text(tenant.usesHostOverride ? tenant.host : tenant.region.rawValue.uppercased())
-                    .foregroundStyle(tenant.usesHostOverride ? Color.orange : Color.secondary)
-            } else {
-                Text("No current tenant").foregroundStyle(.secondary)
-            }
-        }
-        .font(.callout)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 4)
-        .background(.quaternary, in: Capsule())
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(isDemoMode ? "Offline demo mode" : (tenant.map { "Current tenant: \($0.displayName), \($0.host)" } ?? "No current tenant"))
-    }
-}
 
 #if DEBUG
 #Preview {
+    let model = AppModel(
+        store: TenantStore(fileURL: FileManager.default.temporaryDirectory.appending(path: "preview-tenants.json")),
+        secrets: InMemorySecretStore()
+    )
     ContentView()
-        .environment(AppModel(
-            store: TenantStore(fileURL: FileManager.default.temporaryDirectory.appending(path: "preview-tenants.json")),
-            secrets: InMemorySecretStore()
-        ))
+        .environment(model)
+        .environment(model.updates)
 }
 #endif
