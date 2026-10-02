@@ -14,7 +14,7 @@ Switch on **Offline demo mode** in the sidebar. The full flow — eligibility, s
 
 ## Connect to Jamf
 
-In [Jamf Account](https://account.jamf.com), create an API integration scoped to the **platform environment** (tenant scope cannot reach the Blueprints API, and the scope level is fixed once the integration is created). Grant it:
+In [Jamf Account](https://account.jamf.com), create an API integration scoped to the **platform environment** (tenant scope cannot reach the Blueprints API, and the scope level is fixed once the integration is created). Jamf's [Integrations Management guide](https://learn.jamf.com/r/en-US/jamf-account-documentation/Integrations_Management_in_Jamf_Account) covers the steps. Grant it:
 
 | Capability | Actions | Needed for |
 |---|---|---|
@@ -62,8 +62,8 @@ The app walks that workflow stage by stage — **fetch → validate → distill 
 - **Scope mapping** — exact-name auto-matching, with pickers for anything ambiguous or unmatched.
 - **Diff** — the five rules as a checklist, plus side-by-side JSON.
 - **Batch migration** — tick profiles in the list (or ⌘-click), then review them together: per-item summaries and one deploy confirmation listing every target.
-- **Open in Jamf Pro** — jump to the classic profile (read-only) or its blueprint in the Jamf Pro console.
-- **Update check** — daily and on demand from the app menu, with release notes and an in-app download. The app can't replace itself in the sandbox, so installing stays a drag into Applications.
+- **Open in Jamf Pro** — the configuration profile or its blueprint, in the Jamf Pro console.
+- **Update check** — daily and on demand, with release notes and a download.
 - **Persistent sessions** — a created blueprint re-attaches after a relaunch and resumes at its current stage; after a deployment the device report refreshes until every device has reported in.
 - **History** — every migration action, exportable as Markdown or JSON.
 - **Activity** — everything the app does: token requests, every API call (status, duration, trace ID), retries, refused writes and settings changes.

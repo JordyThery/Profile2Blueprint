@@ -3,11 +3,9 @@ import Observation
 
 /// Checks GitHub for a newer Profile2Blueprint release.
 ///
-/// This is a notifier and a downloader, not an installer. The app is sandboxed, so
-/// it cannot replace itself in /Applications; the update is saved where the user
-/// chooses and swapped in by hand. GitHub is the only address this talks to, it
-/// sends nothing but the request itself, and the automatic check can be turned off.
-/// It bypasses `HTTPClient`, which only ever talks to the Jamf gateway.
+/// A notifier and downloader, not an installer: the sandbox prevents the app from
+/// replacing itself. Talks only to GitHub, and bypasses `HTTPClient`, which is
+/// reserved for the Jamf gateway.
 @Observable
 final class UpdateChecker {
     /// A published release, reduced to what the update sheet shows.
@@ -38,8 +36,8 @@ final class UpdateChecker {
     private static let automaticCheckInterval: TimeInterval = 24 * 60 * 60
 
     private(set) var status: Status = .idle
-    /// Whether the update sheet is on screen. Set by a manual check at once, and by
-    /// the automatic one only when it found something new.
+    /// Whether the update sheet is shown: always for a manual check, and for the
+    /// automatic one only when it finds a new release.
     var isPresented = false
 
     @ObservationIgnored private let activity: ActivityLog?
@@ -56,9 +54,8 @@ final class UpdateChecker {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
     }
 
-    /// Checks in the background at most once a day, and only interrupts when there is
-    /// a release it has not offered before. Failures stay silent apart from Activity:
-    /// a missed check is not worth an alert.
+    /// At most once a day; interrupts only for a release not offered before. Failures
+    /// are logged to Activity but not shown.
     func checkAutomatically() async {
         guard defaults.object(forKey: Self.automaticCheckKey) == nil || defaults.bool(forKey: Self.automaticCheckKey) else { return }
         let lastCheck = defaults.object(forKey: Self.lastCheckKey) as? Date ?? .distantPast
@@ -109,7 +106,7 @@ final class UpdateChecker {
             }
             let decoded = try JSONDecoder().decode(Response.self, from: data)
             let version = decoded.tag_name.hasPrefix("v") ? String(decoded.tag_name.dropFirst()) : decoded.tag_name
-            activity?.app("Checked GitHub for updates: latest release is \(version), this is \(currentVersion).")
+            activity?.app("Update check: latest release \(version), installed \(currentVersion).")
             return Release(
                 version: version,
                 name: decoded.name ?? "Profile2Blueprint \(version)",

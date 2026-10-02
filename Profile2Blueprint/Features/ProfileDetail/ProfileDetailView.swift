@@ -75,7 +75,7 @@ struct ProfileDetailView: View {
     }
 }
 
-/// Opens the classic profile, and once created the blueprint, in the Jamf Pro console.
+/// Opens the configuration profile, and once created its blueprint, in Jamf Pro.
 private struct OpenInJamfProMenu: View {
     let links: JamfProLinks
     let profileID: Int
@@ -84,7 +84,7 @@ private struct OpenInJamfProMenu: View {
 
     var body: some View {
         Menu("Open in Jamf Pro", systemImage: "arrow.up.forward.app") {
-            Button("Classic Profile") { openURL(links.classicProfile(id: profileID)) }
+            Button("Configuration Profile") { openURL(links.classicProfile(id: profileID)) }
             Button("Blueprint") {
                 if let blueprintID { openURL(links.blueprint(id: blueprintID)) }
             }
@@ -93,9 +93,7 @@ private struct OpenInJamfProMenu: View {
         .labelStyle(.iconOnly)
         .menuIndicator(.hidden)
         .fixedSize()
-        .help(blueprintID == nil
-              ? "Open the classic profile in Jamf Pro. The blueprint link appears once it is created."
-              : "Open the classic profile or its blueprint in Jamf Pro")
+        .help("Open in Jamf Pro")
     }
 }
 

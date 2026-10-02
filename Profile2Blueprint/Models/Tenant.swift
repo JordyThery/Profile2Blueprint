@@ -47,21 +47,20 @@ nonisolated struct BlueprintNaming: Codable, Hashable, Sendable {
     }
 }
 
-/// Web links into the Jamf Pro console, built from the address users see in their
-/// browser. The gateway the app talks to has no route back to it, so it is entered
-/// by hand rather than fetched (which would need an extra API permission).
+/// Links into the Jamf Pro web console. The address is entered by hand: reading it
+/// from the API would need an extra permission.
 nonisolated struct JamfProLinks: Hashable, Sendable {
     let base: URL
 
-    /// Accepts the address with or without a scheme, a path or a trailing slash, as
-    /// people paste it. Only the host (and port) is kept; anything else is `nil`.
+    /// Accepts the address as pasted, with or without scheme, path or trailing slash.
+    /// Only the host and port are kept.
     init?(_ address: String) {
         var text = address.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return nil }
         if !text.lowercased().hasPrefix("https://") && !text.lowercased().hasPrefix("http://") {
             text = "https://" + text
         }
-        guard let parsed = URLComponents(string: text), let host = parsed.host, host.contains("."), !host.contains(" ") else {
+        guard let parsed = URLComponents(string: text), let host = parsed.host, host.contains(".") else {
             return nil
         }
         var components = URLComponents()
@@ -72,7 +71,7 @@ nonisolated struct JamfProLinks: Hashable, Sendable {
         base = url
     }
 
-    /// Opens read-only (`o=r`), so following the link can't put a profile into edit mode.
+    /// Opens read-only (`o=r`).
     func classicProfile(id: Int) -> URL {
         base.appending(path: "OSXConfigurationProfiles.html")
             .appending(queryItems: [URLQueryItem(name: "id", value: String(id)), URLQueryItem(name: "o", value: "r")])
@@ -106,8 +105,7 @@ nonisolated struct Tenant: Codable, Hashable, Identifiable, Sendable {
     /// Template for the suggested blueprint description, with the tokens in
     /// `BlueprintBuilder.descriptionTokens`. Empty means no description.
     var descriptionTemplate: String
-    /// The Jamf Pro web address, for "Open in Jamf Pro". Optional; the buttons are
-    /// hidden while it is empty or invalid.
+    /// The Jamf Pro web address for Open in Jamf Pro. Optional.
     var jamfProURL: String
 
     init(

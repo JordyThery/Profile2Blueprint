@@ -44,7 +44,7 @@ struct AboutView: View {
                     Button("Check for Updates…") { updates.checkManually() }
                     Toggle("Check for updates daily", isOn: $checksForUpdates)
                         .toggleStyle(.checkbox)
-                        .help("Once a day, ask GitHub whether a newer release exists. Nothing else is sent.")
+                        .help("Ask GitHub once a day whether a newer release exists")
                 }
                 .padding(.top, 8)
 

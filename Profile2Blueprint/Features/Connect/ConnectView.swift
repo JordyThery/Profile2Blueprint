@@ -34,9 +34,9 @@ struct ConnectView: View {
                 TextField("Environment ID", text: $draft.environmentID, prompt: Text("00000000-0000-0000-0000-000000000000"))
                     .font(.body.monospaced())
                 TextField("Jamf Pro URL", text: $draft.jamfProURL, prompt: Text("Optional — yourinstance.jamfcloud.com"))
-                    .help("The address you open Jamf Pro at in a browser. Used only for the Open in Jamf Pro links.")
+                    .help("The address you use for Jamf Pro in a browser. Used only for Open in Jamf Pro.")
                 if !draft.jamfProURL.trimmingCharacters(in: .whitespaces).isEmpty, draft.jamfProLinks == nil {
-                    Label("Not a valid web address. The Open in Jamf Pro links stay hidden until it is.", systemImage: "exclamationmark.triangle")
+                    Label("Not a valid web address.", systemImage: "exclamationmark.triangle")
                         .font(.callout)
                         .foregroundStyle(.orange)
                 }

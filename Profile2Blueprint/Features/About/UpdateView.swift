@@ -2,9 +2,8 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// The update sheet: what is new, the release notes, and a download that saves where
-/// the user chooses. The sandbox rules out replacing the running app, so installing
-/// stays a drag into Applications; the sheet says so rather than implying more.
+/// The update sheet: release notes and a download to a location the user picks.
+/// Installing stays a manual drag into Applications.
 struct UpdateView: View {
     @Environment(UpdateChecker.self) private var checker
     @Environment(\.dismiss) private var dismiss
@@ -116,8 +115,7 @@ struct UpdateView: View {
         }
     }
 
-    /// GitHub notes are Markdown; inline rendering keeps the bold and links and
-    /// leaves list markers as typed, which reads fine for release notes.
+    /// Inline Markdown: keeps bold and links, leaves list markers as typed.
     private func notesText(_ markdown: String) -> AttributedString {
         (try? AttributedString(
             markdown: markdown,
@@ -125,8 +123,8 @@ struct UpdateView: View {
         )) ?? AttributedString(markdown)
     }
 
-    /// Fetches the zip and hands it to a save panel. The panel is what makes this work
-    /// in the sandbox: the user picks the destination, which grants write access there.
+    /// Hands the zip to a save panel; the user's choice of destination is what grants
+    /// the sandbox write access.
     private func download(_ release: UpdateChecker.Release) {
         guard let url = release.downloadURL else { return }
         isDownloading = true

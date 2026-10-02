@@ -240,11 +240,12 @@ struct ReportMonitorTests {
     @Test("Gives up at the timeout and returns the last report")
     func timesOut() async throws {
         let api = ScriptedReportsAPI([BlueprintReport(succeeded: 1, failed: 0, pending: 9)])
-        // Real 5 ms sleeps against a 150 ms deadline: several polls, then a guaranteed stop.
+        // Real 5 ms sleeps against a 1 s deadline: several polls, then a guaranteed stop.
+        // The margin absorbs scheduling stalls when the whole suite runs in parallel.
         let pipeline = MigrationPipeline(
             classic: DemoClassicAPI(),
             blueprints: api,
-            polling: PollingPolicy(reportInterval: .milliseconds(5), reportTimeout: .milliseconds(150)),
+            polling: PollingPolicy(reportInterval: .milliseconds(5), reportTimeout: .seconds(1)),
             sleep: { try await Task.sleep(for: $0) }
         )
         let final = try await pipeline.monitorReport(id: "bp")
