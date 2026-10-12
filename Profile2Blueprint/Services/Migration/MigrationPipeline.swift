@@ -88,9 +88,9 @@ actor MigrationPipeline {
     // MARK: Stages
 
     /// 1. Read the classic profile (GET only).
-    func fetch(profileID: Int) async throws -> ClassicProfile {
+    func fetch(key: ProfileKey) async throws -> ClassicProfile {
         do {
-            let fetched = try await classic.profile(id: profileID)
+            let fetched = try await classic.profile(key: key)
             reset()
             profile = fetched
             state = .fetched

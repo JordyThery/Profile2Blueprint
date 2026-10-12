@@ -28,7 +28,7 @@ struct JamfProLinksTests {
     @Test("Links match the routes Jamf Pro's own console uses")
     func routes() throws {
         let links = try #require(JamfProLinks("jamf.lab9.be"))
-        #expect(links.classicProfile(id: 477).absoluteString == "https://jamf.lab9.be/OSXConfigurationProfiles.html?id=477&o=r",
+        #expect(links.classicProfile(platform: .macOS, id: 477).absoluteString == "https://jamf.lab9.be/OSXConfigurationProfiles.html?id=477&o=r",
                 "o=r opens read-only")
         #expect(links.blueprint(id: "4b23b59a-ba36-4f7c-9aea-00cf63ce9d13").absoluteString
                 == "https://jamf.lab9.be/view/mfe/blueprints/4b23b59a-ba36-4f7c-9aea-00cf63ce9d13")

@@ -4,7 +4,7 @@ import SwiftUI
 /// confirmation that lists every target.
 struct BatchMigrationView: View {
     let workspace: Workspace
-    let profileIDs: [Int]
+    let profileKeys: [ProfileKey]
 
     @Environment(\.dismiss) private var dismiss
     @State private var dryRun = true
@@ -13,10 +13,10 @@ struct BatchMigrationView: View {
     @State private var progressText: String?
 
     private var sessions: [MigrationSession] {
-        profileIDs.compactMap { workspace.session(for: $0) }
+        profileKeys.compactMap { workspace.session(for: $0) }
     }
 
-    private var notLoaded: Int { profileIDs.count - sessions.count }
+    private var notLoaded: Int { profileKeys.count - sessions.count }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {

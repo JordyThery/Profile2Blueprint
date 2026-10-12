@@ -73,12 +73,12 @@ final class Workspace {
     private(set) var listPhase: LoadPhase = .idle
     private(set) var groups: [PlatformGroup] = []
     private(set) var groupsError: ErrorReport?
-    private(set) var profiles: [Int: ClassicProfile] = [:]
-    private(set) var profileErrors: [Int: ErrorReport] = [:]
-    private(set) var reports: [Int: EligibilityReport] = [:]
+    private(set) var profiles: [ProfileKey: ClassicProfile] = [:]
+    private(set) var profileErrors: [ProfileKey: ErrorReport] = [:]
+    private(set) var reports: [ProfileKey: EligibilityReport] = [:]
     private(set) var detailsLoaded = 0
     /// Lazily created from view bodies, so not observed.
-    @ObservationIgnored private var sessions: [Int: MigrationSession] = [:]
+    @ObservationIgnored private var sessions: [ProfileKey: MigrationSession] = [:]
     @ObservationIgnored private var loadTask: Task<Void, Never>?
 
     /// Maximum parallel profile fetches, kept low to limit Classic API load.
@@ -98,7 +98,12 @@ final class Workspace {
 
     var isLoadingDetails: Bool { listPhase == .loaded && detailsLoaded < summaries.count }
 
-    func status(for id: Int) -> EligibilityStatus? { reports[id]?.status }
+    func status(for key: ProfileKey) -> EligibilityStatus? { reports[key]?.status }
+
+    /// Groups a profile of this platform can target.
+    func groups(for platform: ProfilePlatform) -> [PlatformGroup] {
+        groups.filter { $0.deviceType == platform.deviceGroupType }
+    }
 
     func count(of status: EligibilityStatus) -> Int {
         reports.values.filter { $0.status == status }.count
@@ -125,61 +130,62 @@ final class Workspace {
 
         let classic = environment.classic
         let groupsAPI = environment.groups
-        async let listResult = Result { try await classic.listProfiles() }
-        async let groupResult = Result { try await groupsAPI.computerGroups() }
+        async let macResult = Result { try await classic.listProfiles(platform: .macOS) }
+        async let mobileResult = Result { try await classic.listProfiles(platform: .mobile) }
+        async let groupResult = Result { try await groupsAPI.allGroups() }
 
         switch await groupResult {
         case let .success(groups): self.groups = groups
         case let .failure(error): groupsError = ErrorReport(error); groups = []
         }
-        switch await listResult {
-        case let .success(list):
-            summaries = list
+        switch (await macResult, await mobileResult) {
+        case let (.success(mac), .success(mobile)):
+            summaries = (mac + mobile).sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
             listPhase = .loaded
-        case let .failure(error):
+        case let (.failure(error), _), let (_, .failure(error)):
             summaries = []
             listPhase = .failed(ErrorReport(error))
             return
         }
 
-        await loadDetails(ids: summaries.map(\.id))
+        await loadDetails(keys: summaries.map(\.key))
     }
 
     /// Fetches full profiles with bounded concurrency, updating badges as they arrive.
-    private func loadDetails(ids: [Int]) async {
+    private func loadDetails(keys: [ProfileKey]) async {
         let classic = environment.classic
-        await withTaskGroup(of: (Int, Result<ClassicProfile, any Error>).self) { group in
-            var iterator = ids.makeIterator()
+        await withTaskGroup(of: (ProfileKey, Result<ClassicProfile, any Error>).self) { group in
+            var iterator = keys.makeIterator()
             func enqueue() {
-                guard let id = iterator.next() else { return }
-                group.addTask { (id, await Result { try await classic.profile(id: id) }) }
+                guard let key = iterator.next() else { return }
+                group.addTask { (key, await Result { try await classic.profile(key: key) }) }
             }
             for _ in 0..<detailConcurrency { enqueue() }
-            while let (id, result) = await group.next() {
+            while let (key, result) = await group.next() {
                 if Task.isCancelled { group.cancelAll(); return }
-                apply(id: id, result: result)
+                apply(key: key, result: result)
                 detailsLoaded += 1
                 enqueue()
             }
         }
     }
 
-    func reloadProfile(id: Int) async {
-        let result = await Result { try await environment.classic.profile(id: id) }
-        apply(id: id, result: result)
+    func reloadProfile(key: ProfileKey) async {
+        let result = await Result { try await environment.classic.profile(key: key) }
+        apply(key: key, result: result)
         if case let .success(profile) = result {
-            sessions[id]?.sourceDidChange(profile: profile, report: reports[id])
+            sessions[key]?.sourceDidChange(profile: profile, report: reports[key])
         }
     }
 
-    private func apply(id: Int, result: Result<ClassicProfile, any Error>) {
+    private func apply(key: ProfileKey, result: Result<ClassicProfile, any Error>) {
         switch result {
         case let .success(profile):
-            profiles[id] = profile
-            profileErrors[id] = nil
-            reports[id] = EligibilityChecker.check(profile, platformGroups: groups)
+            profiles[key] = profile
+            profileErrors[key] = nil
+            reports[key] = EligibilityChecker.check(profile, platformGroups: groups)
         case let .failure(error):
-            profileErrors[id] = ErrorReport(error)
+            profileErrors[key] = ErrorReport(error)
         }
     }
 
@@ -198,10 +204,13 @@ final class Workspace {
             sessionStates: sessionStates ?? SessionStateStore(fileURL: temp.appending(path: "preview-sessions-\(UUID().uuidString).json"))
         )
         workspace.groups = DemoFixtures.platformGroups
-        workspace.summaries = (try? ClassicXMLParser.parseProfileList(Data(DemoFixtures.profileListXML.utf8))) ?? []
+        workspace.summaries = ProfilePlatform.allCases.flatMap { platform in
+            (try? ClassicXMLParser.parseProfileList(Data(DemoFixtures.profileListXML(platform: platform).utf8), platform: platform)) ?? []
+        }
         for summary in workspace.summaries {
-            if let xml = DemoFixtures.profilesByID[summary.id], let profile = try? ClassicXMLParser.parseProfile(Data(xml.utf8)) {
-                workspace.apply(id: summary.id, result: .success(profile))
+            if let xml = DemoFixtures.profilesByKey[summary.key],
+               let profile = try? ClassicXMLParser.parseProfile(Data(xml.utf8), platform: summary.platform) {
+                workspace.apply(key: summary.key, result: .success(profile))
             }
         }
         workspace.detailsLoaded = workspace.summaries.count
@@ -213,11 +222,11 @@ final class Workspace {
     // MARK: Sessions
 
     /// The migration session for a loaded profile (created on first use).
-    func session(for id: Int) -> MigrationSession? {
-        if let existing = sessions[id] { return existing }
-        guard let profile = profiles[id], let report = reports[id] else { return nil }
+    func session(for key: ProfileKey) -> MigrationSession? {
+        if let existing = sessions[key] { return existing }
+        guard let profile = profiles[key], let report = reports[key] else { return nil }
         let session = MigrationSession(profile: profile, report: report, workspace: self)
-        sessions[id] = session
+        sessions[key] = session
         return session
     }
 }

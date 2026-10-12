@@ -70,7 +70,7 @@ nonisolated enum HistoryExport {
                 record.timestamp.formatted(.iso8601),
                 cell(record.tenantName),
                 record.action.title,
-                cell("\(record.sourceProfileName) (#\(record.sourceProfileID))"),
+                cell("\(record.sourceProfileName) (\(record.platform.displayName) #\(record.sourceProfileID))"),
                 cell(blueprint.isEmpty ? "—" : blueprint),
                 record.result.rawValue,
                 cell(record.message),

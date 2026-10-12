@@ -122,10 +122,10 @@ nonisolated enum EligibilityChecker {
             break
         case .user:
             add(.userLevel, .blocker, "User-level profile",
-                "Only computer-level (System) profiles can be migrated. User-channel profiles are out of scope.")
+                "Only device-level (System) profiles can be migrated. User-channel profiles are out of scope.")
         case let .other(raw):
             add(.userLevel, .blocker, "Unknown profile level “\(raw)”",
-                "Only computer-level (System) profiles can be migrated.")
+                "Only device-level (System) profiles can be migrated.")
         }
 
         // Payload document and rules 3–5 prerequisites
@@ -137,8 +137,8 @@ nonisolated enum EligibilityChecker {
         }
 
         // Scope
-        let mapping = ScopeMapper.propose(for: profile.scope, platformGroups: platformGroups)
-        checkScope(profile.scope, mapping: mapping, add: add)
+        let mapping = ScopeMapper.propose(for: profile.scope, platform: profile.platform, platformGroups: platformGroups)
+        checkScope(profile.scope, platform: profile.platform, mapping: mapping, add: add)
 
         // Distribution
         if profile.distributionMethod.localizedCaseInsensitiveContains("self service") {
@@ -214,6 +214,32 @@ nonisolated enum EligibilityChecker {
                 "\(apiOnly.sorted().joined(separator: ", ")) will appear in the blueprint as read-only “Legacy payload” items, editable only through the API.")
         }
 
+        // Wire fact from Jamf's own tooling: the Blueprints API overwrites each
+        // payload's payloadUUID with its payloadIdentifier (top-level identity is
+        // stored verbatim). A payload whose two differ can never match the installed
+        // copy, and deploying over it reports the declaration invalid.
+        let uuidMismatches = document.payloads.filter { payload in
+            guard let identifier = payload.identifier, let uuid = payload.uuid,
+                  !identifier.isEmpty, !uuid.isEmpty else { return false }
+            return identifier != uuid
+        }
+        if !uuidMismatches.isEmpty {
+            let list = uuidMismatches.map { "payload \($0.index + 1) (\($0.type ?? "unknown type"))" }.joined(separator: ", ")
+            add(.payloadUUIDMismatch, .blocker, "Payload UUID differs from its identifier",
+                "The Blueprints API overwrites each payload's UUID with its identifier, so \(list) could never match the installed profile and the transform would fail on devices. Typical of uploaded profiles. A profile cloned in Jamf Pro gets regenerated, matching identifiers.")
+        }
+
+        // The API accepts a payload with no settings, but the Jamf Pro UI refuses to
+        // deploy a blueprint that carries one.
+        let emptyPayloads = document.payloads.filter { payload in
+            !payload.content.entries.isEmpty
+                && payload.content.entries.allSatisfy { FidelityVerifier.wrapperKeys.contains($0.key) }
+        }
+        if !emptyPayloads.isEmpty {
+            add(.emptyPayload, .warning, "Payload with no settings",
+                "Payload \(emptyPayloads.map { String($0.index + 1) }.joined(separator: ", ")) carries only metadata. The API accepts it, but Jamf Pro refuses to deploy a blueprint containing an empty payload. Remove it from the classic profile first.")
+        }
+
         let uuids = document.payloads.compactMap(\.uuid)
         if Set(uuids).count != uuids.count {
             add(.duplicatePayloadUUIDs, .warning, "Duplicate payload UUIDs",
@@ -271,6 +297,19 @@ nonisolated enum EligibilityChecker {
         }
     }
 
+    /// Key endings whose value is a secret usable outside the profile, plus SCEP's
+    /// `Challenge`. The list matches Jamf's own tooling.
+    static let secretKeySuffixes = [
+        "password", "secret", "token", "authkey", "apikey", "accesskey",
+        "privatekey", "secretkey", "passcode", "credential",
+    ]
+
+    static func isSecretKey(_ key: String) -> Bool {
+        let lowered = key.lowercased()
+        if lowered == "challenge" { return true }
+        return secretKeySuffixes.contains { lowered.hasSuffix($0) }
+    }
+
     /// Certificate payload types are not checked here: they are all in
     /// `blockedPayloadTypes`, so saying their contents would be uploaded is misleading.
     private static func containsSensitiveContent(_ document: ProfileDocument) -> Bool {
@@ -278,9 +317,7 @@ nonisolated enum EligibilityChecker {
             switch value {
             case let .dict(dict):
                 return dict.entries.contains { entry in
-                    let isSecretKey = entry.key.localizedCaseInsensitiveContains("password")
-                        || entry.key.localizedCaseInsensitiveContains("secret")
-                    if isSecretKey, case let .string(text) = entry.value, !text.isEmpty { return true }
+                    if isSecretKey(entry.key), case let .string(text) = entry.value, !text.isEmpty { return true }
                     return walk(entry.value)
                 }
             case let .array(values):
@@ -296,14 +333,15 @@ nonisolated enum EligibilityChecker {
 
     private static func checkScope(
         _ scope: ClassicScope,
+        platform: ProfilePlatform,
         mapping: [ScopeMappingEntry],
         add: (FindingKind, FindingSeverity, String, String) -> Void
     ) {
         if mapping.allSatisfy({ $0.autoMatch == nil }) {
             add(.noMappedGroup, .warning, "No scope group maps to a platform group",
-                scope.computerGroups.isEmpty
-                    ? "The profile isn't scoped to any computer group. Pick a platform device group for the blueprint."
-                    : "None of the profile's computer groups has an exact name match in the platform. Pick a platform device group.")
+                scope.deviceGroups.isEmpty
+                    ? "The profile isn't scoped to any \(platform.deviceNoun) group. Pick a platform device group for the blueprint."
+                    : "None of the profile's \(platform.deviceNoun) groups has an exact name match in the platform. Pick a platform device group.")
         }
 
         let unmatched = mapping.filter(\.isUnmatched)
@@ -318,13 +356,13 @@ nonisolated enum EligibilityChecker {
                 "Several platform groups are named \(ambiguous.map { "“\($0.classicGroup.name)”" }.joined(separator: ", ")). Choose the right one.")
         }
 
-        if scope.allComputers {
-            add(.allComputers, .warning, "Scoped to All Computers",
-                "Blueprints can only target device groups. Pick a platform group that covers the same computers (for example an “All Managed Clients” smart group).")
+        if scope.allDevices {
+            add(.allDevices, .warning, "Scoped to all \(platform.deviceNoun)s",
+                "Blueprints can only target device groups. Pick a platform group that covers the same \(platform.deviceNoun)s (for example an “all managed” smart group).")
         }
 
         var other: [String] = []
-        if !scope.computers.isEmpty { other.append("\(scope.computers.count) individual computer\(scope.computers.count == 1 ? "" : "s")") }
+        if !scope.devices.isEmpty { other.append("\(scope.devices.count) individual \(platform.deviceNoun)\(scope.devices.count == 1 ? "" : "s")") }
         if !scope.buildings.isEmpty { other.append("buildings (\(scope.buildings.map(\.name).joined(separator: ", ")))") }
         if !scope.departments.isEmpty { other.append("departments (\(scope.departments.map(\.name).joined(separator: ", ")))") }
         for bucket in scope.otherTargets { other.append(bucket.displayName.lowercased()) }

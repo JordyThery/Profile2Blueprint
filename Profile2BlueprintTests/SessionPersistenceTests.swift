@@ -20,7 +20,7 @@ private func waitUntil(_ timeout: Duration = .seconds(5), _ condition: () -> Boo
 @Suite("Session state store")
 struct SessionStateStoreTests {
     private func record(profileID: Int = 101, blueprintID: String = "bp-1") -> PersistedMigration {
-        PersistedMigration(environmentKey: "env", profileID: profileID, blueprintID: blueprintID,
+        PersistedMigration(environmentKey: "env", platform: .macOS, profileID: profileID, blueprintID: blueprintID,
                            blueprintName: "Name", selectedGroupIDs: ["g1"], unscopeAfterDeploy: true)
     }
 
@@ -32,16 +32,16 @@ struct SessionStateStoreTests {
 
         await store.save(record())
         await store.save(record(blueprintID: "bp-2"))
-        let loaded = await SessionStateStore(fileURL: url).record(environmentKey: "env", profileID: 101)
+        let loaded = await SessionStateStore(fileURL: url).record(environmentKey: "env", key: ProfileKey(platform: .macOS, id: 101))
         #expect(loaded?.blueprintID == "bp-2", "same profile replaces, persisted to disk")
         #expect(loaded?.unscopeAfterDeploy == true)
         #expect(loaded?.selectedGroupIDs == ["g1"])
 
         for id in 102...105 { await store.save(record(profileID: id)) }
-        #expect(await store.record(environmentKey: "env", profileID: 101) == nil, "oldest dropped at the cap")
+        #expect(await store.record(environmentKey: "env", key: ProfileKey(platform: .macOS, id: 101)) == nil, "oldest dropped at the cap")
 
-        await store.remove(environmentKey: "env", profileID: 105)
-        #expect(await store.record(environmentKey: "env", profileID: 105) == nil)
+        await store.remove(environmentKey: "env", key: ProfileKey(platform: .macOS, id: 105))
+        #expect(await store.record(environmentKey: "env", key: ProfileKey(platform: .macOS, id: 105)) == nil)
     }
 }
 
@@ -56,7 +56,7 @@ struct SessionRestoreTests {
 
         // First launch: create, don't deploy.
         let first = Workspace.previewDemo(environment: environment, sessionStates: states)
-        let session1 = try #require(first.session(for: 101))
+        let session1 = try #require(first.session(for: ProfileKey(platform: .macOS, id: 101)))
         session1.dryRun = false
         await session1.create()
         let blueprintID = try #require(session1.blueprintID)
@@ -66,14 +66,14 @@ struct SessionRestoreTests {
         // The record is saved by a background task; wait for the flag to land.
         var saved: PersistedMigration?
         for _ in 0..<200 where saved?.unscopeAfterDeploy != true {
-            saved = await states.record(environmentKey: "Offline demo", profileID: 101)
+            saved = await states.record(environmentKey: "Offline demo", key: ProfileKey(platform: .macOS, id: 101))
             try await Task.sleep(for: .milliseconds(10))
         }
         #expect(saved?.unscopeAfterDeploy == true)
 
         // Second launch: same environment and store, fresh workspace.
         let second = Workspace.previewDemo(environment: environment, sessionStates: states)
-        let session2 = try #require(second.session(for: 101))
+        let session2 = try #require(second.session(for: ProfileKey(platform: .macOS, id: 101)))
         try await waitUntil { session2.blueprintID != nil && session2.fidelity != nil && !session2.isBusy }
 
         #expect(session2.blueprintID == blueprintID)
@@ -89,7 +89,7 @@ struct SessionRestoreTests {
         let states = temporaryStore()
 
         let first = Workspace.previewDemo(environment: environment, sessionStates: states)
-        let session1 = try #require(first.session(for: 101))
+        let session1 = try #require(first.session(for: ProfileKey(platform: .macOS, id: 101)))
         session1.dryRun = false
         await session1.create()
         let blueprintID = try #require(session1.blueprintID)
@@ -98,7 +98,7 @@ struct SessionRestoreTests {
         guard case .deployed = session1.state else { Issue.record("\(session1.state)"); return }
 
         let second = Workspace.previewDemo(environment: environment, sessionStates: states)
-        let session2 = try #require(second.session(for: 101))
+        let session2 = try #require(second.session(for: ProfileKey(platform: .macOS, id: 101)))
         try await waitUntil {
             if case .deployed = session2.state { return !session2.isBusy }
             return false
@@ -110,19 +110,19 @@ struct SessionRestoreTests {
     @Test("A stale record (blueprint deleted on the server) is cleared with an explanation")
     func staleRecordCleared() async throws {
         let states = temporaryStore()
-        await states.save(PersistedMigration(environmentKey: "Offline demo", profileID: 101,
+        await states.save(PersistedMigration(environmentKey: "Offline demo", platform: .macOS, profileID: 101,
                                              blueprintID: "deleted-on-server", blueprintName: "Gone",
                                              selectedGroupIDs: [DemoFixtures.engineersPlatformGroupID],
                                              unscopeAfterDeploy: false))
 
         // Fresh demo environment: the blueprint does not exist there.
         let workspace = Workspace.previewDemo(environment: .demo(), sessionStates: states)
-        let session = try #require(workspace.session(for: 101))
+        let session = try #require(workspace.session(for: ProfileKey(platform: .macOS, id: 101)))
         try await waitUntil { session.lastError != nil && !session.isBusy }
 
         #expect(session.blueprintID == nil)
         #expect(session.lastError?.title.contains("no longer exists") == true)
-        #expect(await states.record(environmentKey: "Offline demo", profileID: 101) == nil, "record removed")
+        #expect(await states.record(environmentKey: "Offline demo", key: ProfileKey(platform: .macOS, id: 101)) == nil, "record removed")
         #expect(session.canCreate == false || session.dryRun, "back to the normal create flow")
     }
 }
@@ -135,7 +135,7 @@ struct EffectiveEligibilityTests {
     func unmatchedResolvedBySelection() throws {
         // Fixture 103 is Needs attention solely because no platform group matches.
         let workspace = Workspace.previewDemo()
-        let session = try #require(workspace.session(for: 103))
+        let session = try #require(workspace.session(for: ProfileKey(platform: .macOS, id: 103)))
         #expect(session.report.status == .needsAttention)
         #expect(session.selectedGroupIDs.isEmpty)
         #expect(session.effectiveReport.status == .needsAttention)
@@ -152,12 +152,12 @@ struct EffectiveEligibilityTests {
     func lossWarningsRemain() throws {
         // Fixture 105 has All computers, exclusions and limitations.
         let workspace = Workspace.previewDemo()
-        let session = try #require(workspace.session(for: 105))
+        let session = try #require(workspace.session(for: ProfileKey(platform: .macOS, id: 105)))
         session.toggleGroup(DemoFixtures.engineersPlatformGroupID)
 
         let kinds = Set(session.effectiveReport.reasons.map(\.kind))
         #expect(!kinds.contains(.noMappedGroup))
-        #expect(kinds.contains(.exclusions) && kinds.contains(.limitations) && kinds.contains(.allComputers))
+        #expect(kinds.contains(.exclusions) && kinds.contains(.limitations) && kinds.contains(.allDevices))
         #expect(session.effectiveReport.status == .needsAttention)
         #expect(session.needsAcknowledgement)
     }
@@ -165,7 +165,7 @@ struct EffectiveEligibilityTests {
     @Test("Create goes through on a selection-resolved profile and the pipeline accepts it")
     func createWithoutAcknowledgement() async throws {
         let workspace = Workspace.previewDemo()
-        let session = try #require(workspace.session(for: 103))
+        let session = try #require(workspace.session(for: ProfileKey(platform: .macOS, id: 103)))
         session.toggleGroup(DemoFixtures.engineersPlatformGroupID)
         session.dryRun = false
         await session.create()

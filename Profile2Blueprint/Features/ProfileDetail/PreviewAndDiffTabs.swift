@@ -135,13 +135,13 @@ struct RuleChecklistView: View {
 #if DEBUG
 #Preview("Blueprint preview") {
     let workspace = Workspace.previewDemo()
-    BlueprintPreviewTab(session: workspace.session(for: 101)!)
+    BlueprintPreviewTab(session: workspace.session(for: ProfileKey(platform: .macOS, id: 101))!)
         .frame(width: 800, height: 700)
 }
 
 #Preview("Diff") {
     let workspace = Workspace.previewDemo()
-    DiffTab(session: workspace.session(for: 102)!)
+    DiffTab(session: workspace.session(for: ProfileKey(platform: .macOS, id: 102))!)
         .frame(width: 900, height: 800)
 }
 #endif

@@ -33,6 +33,7 @@ final class HistoryLog {
             tenantName: environment.displayName,
             environmentID: environment.environmentID,
             action: action,
+            platform: profile.platform,
             sourceProfileID: profile.id,
             sourceProfileName: profile.name,
             blueprintID: blueprintID,

@@ -5,12 +5,46 @@ import OSLog
 /// created blueprint and resume verify, deploy and cleanup.
 nonisolated struct PersistedMigration: Codable, Hashable, Sendable {
     var environmentKey: String
+    var platform: ProfilePlatform = .macOS
     var profileID: Int
     var blueprintID: String
     var blueprintName: String
     var selectedGroupIDs: [String]
     var unscopeAfterDeploy: Bool
     var updatedAt = Date()
+
+    var key: ProfileKey { ProfileKey(platform: platform, id: profileID) }
+
+    private enum CodingKeys: String, CodingKey {
+        case environmentKey, platform, profileID, blueprintID, blueprintName, selectedGroupIDs, unscopeAfterDeploy, updatedAt
+    }
+
+    /// Records saved before mobile support decode as macOS.
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        environmentKey = try container.decode(String.self, forKey: .environmentKey)
+        platform = try container.decodeIfPresent(ProfilePlatform.self, forKey: .platform) ?? .macOS
+        profileID = try container.decode(Int.self, forKey: .profileID)
+        blueprintID = try container.decode(String.self, forKey: .blueprintID)
+        blueprintName = try container.decode(String.self, forKey: .blueprintName)
+        selectedGroupIDs = try container.decode([String].self, forKey: .selectedGroupIDs)
+        unscopeAfterDeploy = try container.decode(Bool.self, forKey: .unscopeAfterDeploy)
+        updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
+    }
+
+    init(
+        environmentKey: String, platform: ProfilePlatform, profileID: Int, blueprintID: String,
+        blueprintName: String, selectedGroupIDs: [String], unscopeAfterDeploy: Bool, updatedAt: Date = Date()
+    ) {
+        self.environmentKey = environmentKey
+        self.platform = platform
+        self.profileID = profileID
+        self.blueprintID = blueprintID
+        self.blueprintName = blueprintName
+        self.selectedGroupIDs = selectedGroupIDs
+        self.unscopeAfterDeploy = unscopeAfterDeploy
+        self.updatedAt = updatedAt
+    }
 }
 
 /// Persists migration sessions as JSON in Application Support (`sessions.json`).
@@ -35,12 +69,12 @@ actor SessionStateStore {
         return SessionStateStore(fileURL: base.appending(path: "Profile2Blueprint/sessions.json"))
     }
 
-    func record(environmentKey: String, profileID: Int) -> PersistedMigration? {
-        records.first { $0.environmentKey == environmentKey && $0.profileID == profileID }
+    func record(environmentKey: String, key: ProfileKey) -> PersistedMigration? {
+        records.first { $0.environmentKey == environmentKey && $0.key == key }
     }
 
     func save(_ record: PersistedMigration) {
-        records.removeAll { $0.environmentKey == record.environmentKey && $0.profileID == record.profileID }
+        records.removeAll { $0.environmentKey == record.environmentKey && $0.key == record.key }
         records.append(record)
         if records.count > limit {
             records.sort { $0.updatedAt < $1.updatedAt }
@@ -49,8 +83,8 @@ actor SessionStateStore {
         persist()
     }
 
-    func remove(environmentKey: String, profileID: Int) {
-        records.removeAll { $0.environmentKey == environmentKey && $0.profileID == profileID }
+    func remove(environmentKey: String, key: ProfileKey) {
+        records.removeAll { $0.environmentKey == environmentKey && $0.key == key }
         persist()
     }
 

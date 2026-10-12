@@ -41,10 +41,12 @@ nonisolated enum FindingKind: String, Hashable, Sendable {
     case missingIdentifiers
     case noPayloads
     case duplicatePayloadUUIDs
+    case payloadUUIDMismatch
+    case emptyPayload
     case noMappedGroup
     case unmatchedGroups
     case ambiguousGroups
-    case allComputers
+    case allDevices
     case nonGroupTargets
     case limitations
     case exclusions
@@ -92,7 +94,7 @@ nonisolated struct EligibilityReport: Hashable, Sendable {
 
     /// Whether the five-rule identity checks (rules 3–5) are known to hold locally.
     var identityRulesHold: Bool {
-        !findings.contains { [.unparseablePayload, .missingIdentifiers, .noPayloads, .recordUUIDMismatch].contains($0.kind) }
+        !findings.contains { [.unparseablePayload, .missingIdentifiers, .noPayloads, .recordUUIDMismatch, .payloadUUIDMismatch].contains($0.kind) }
     }
 }
 

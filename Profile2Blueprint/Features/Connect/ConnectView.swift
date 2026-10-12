@@ -86,7 +86,8 @@ struct ConnectView: View {
                     LabeledContent("Example description") {
                         Text(BlueprintBuilder.description(draft.descriptionTemplate,
                                                           profileName: Self.exampleProfileName,
-                                                          profileID: Self.exampleProfileID))
+                                                          profileID: Self.exampleProfileID,
+                                                          platform: .macOS))
                             .textSelection(.enabled)
                     }
                 }
@@ -279,7 +280,8 @@ private struct ConnectionResultView: View {
         case let .succeeded(groups, date):
             VStack(alignment: .leading, spacing: 8) {
                 Label(
-                    "Connected. Token issued; \(groups.count) computer group\(groups.count == 1 ? "" : "s") found.",
+                    "Connected. Token issued; \(groups.count) device group\(groups.count == 1 ? "" : "s") found"
+                        + " (\(groups.count(where: { $0.deviceType == .computer })) computer, \(groups.count(where: { $0.deviceType == .mobile })) mobile).",
                     systemImage: "checkmark.seal.fill"
                 )
                 .foregroundStyle(.green)

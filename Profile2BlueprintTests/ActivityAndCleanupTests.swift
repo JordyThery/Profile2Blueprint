@@ -21,7 +21,7 @@ private func client(_ activity: RecordingActivity, policy: ClassicWritePolicy = 
                       environmentName: "Test", activity: activity, sleep: { _ in })
 }
 
-private let scopeOnlyBody = ClassicScopeService.unscopedBody
+private let scopeOnlyBody = ClassicScopeService.unscopedBody(platform: .macOS)
 
 // MARK: - Milestone 7: activity log
 
@@ -155,21 +155,21 @@ struct ClassicScopeServiceTests {
     func unscopeAndRestore() async throws {
         let (env, server) = environment()
         let store = backups()
-        let before = try await env.classic.profile(id: 102)
+        let before = try await env.classic.profile(key: ProfileKey(platform: .macOS, id: 102))
 
-        let (backup, after) = try await ClassicScopeService.unscope(profileID: 102, blueprintID: "bp", environment: env, backups: store)
+        let (backup, after) = try await ClassicScopeService.unscope(key: ProfileKey(platform: .macOS, id: 102), blueprintID: "bp", environment: env, backups: store)
         #expect(!ClassicScopeService.hasTargets(after.scope))
         #expect(after.payloadsPlist == before.payloadsPlist, "payloads untouched")
         #expect(backup.scopeXML == before.rawScopeXML)
-        #expect(try ClassicXMLParser.parseScopeXML(backup.scopeXML) == before.scope)
-        #expect(await store.latest(profileID: 102, environmentID: nil, environmentName: "Test")?.id == backup.id)
+        #expect(try ClassicXMLParser.parseScopeXML(backup.scopeXML, platform: .macOS) == before.scope)
+        #expect(await store.latest(key: ProfileKey(platform: .macOS, id: 102), environmentID: nil, environmentName: "Test")?.id == backup.id)
         let writes = await server.scopeWrites
         #expect(writes.count == 1 && HTTPClient.isScopeOnlyProfileXML(Data(writes[0].body.utf8)))
 
         let restored = try await ClassicScopeService.restore(backup, environment: env, backups: store)
         #expect(restored.scope == before.scope)
         #expect(restored.payloadsPlist == before.payloadsPlist)
-        #expect(await store.latest(profileID: 102, environmentID: nil, environmentName: "Test") == nil, "backup marked restored")
+        #expect(await store.latest(key: ProfileKey(platform: .macOS, id: 102), environmentID: nil, environmentName: "Test") == nil, "backup marked restored")
         #expect(await store.all.first?.restoredAt != nil)
     }
 
@@ -177,21 +177,21 @@ struct ClassicScopeServiceTests {
     func refusals() async throws {
         let (disabled, _) = environment(writer: false)
         await #expect(throws: ScopeChangeError.self) {
-            _ = try await ClassicScopeService.unscope(profileID: 101, blueprintID: nil, environment: disabled, backups: backups())
+            _ = try await ClassicScopeService.unscope(key: ProfileKey(platform: .macOS, id: 101), blueprintID: nil, environment: disabled, backups: backups())
         }
         let (env, _) = environment()
         let store = backups()
-        _ = try await ClassicScopeService.unscope(profileID: 101, blueprintID: nil, environment: env, backups: store)
+        _ = try await ClassicScopeService.unscope(key: ProfileKey(platform: .macOS, id: 101), blueprintID: nil, environment: env, backups: store)
         await #expect(throws: ScopeChangeError.self) {
-            _ = try await ClassicScopeService.unscope(profileID: 101, blueprintID: nil, environment: env, backups: store)
+            _ = try await ClassicScopeService.unscope(key: ProfileKey(platform: .macOS, id: 101), blueprintID: nil, environment: env, backups: store)
         }
         #expect(await store.all.count == 1, "no second backup")
     }
 
     @Test("Unscoped body clears targets but leaves limitations/exclusions alone")
     func unscopedBodyShape() throws {
-        let xml = String(decoding: ClassicScopeService.unscopedBody, as: UTF8.self)
-        #expect(HTTPClient.isScopeOnlyProfileXML(ClassicScopeService.unscopedBody))
+        let xml = String(decoding: ClassicScopeService.unscopedBody(platform: .macOS), as: UTF8.self)
+        #expect(HTTPClient.isScopeOnlyProfileXML(ClassicScopeService.unscopedBody(platform: .macOS)))
         #expect(xml.contains("<all_computers>false</all_computers>"))
         #expect(xml.contains("<computer_groups/>"))
         #expect(!xml.contains("exclusions") && !xml.contains("limitations") && !xml.contains("payloads"))
@@ -217,8 +217,8 @@ struct SessionCleanupTests {
     @Test("Opt-in auto-unscope runs after a clean demo deploy; restore puts the scope back")
     func autoUnscope() async throws {
         let workspace = Workspace.previewDemo()
-        let session = try #require(workspace.session(for: 101))
-        let originalScope = try #require(workspace.profiles[101]).scope
+        let session = try #require(workspace.session(for: ProfileKey(platform: .macOS, id: 101)))
+        let originalScope = try #require(workspace.profiles[ProfileKey(platform: .macOS, id: 101)]).scope
         try await Task.sleep(for: .milliseconds(50)) // let the backup lookup finish
 
         session.dryRun = false
@@ -230,13 +230,13 @@ struct SessionCleanupTests {
 
         await session.deploy(DeployConfirmation(blueprintID: blueprintID, blueprintName: "n", groupNames: ["Engineers"], deviceCount: 12, confirmedAt: Date()))
         guard case .unscoped = session.unscopeStatus else { Issue.record("\(session.unscopeStatus)"); return }
-        let unscoped = try await workspace.environment.classic.profile(id: 101)
+        let unscoped = try await workspace.environment.classic.profile(key: ProfileKey(platform: .macOS, id: 101))
         #expect(!ClassicScopeService.hasTargets(unscoped.scope))
         #expect(workspace.history.records.contains { $0.action == .unscopeClassic && $0.result == .success })
 
         await session.restoreClassicScope()
         #expect(session.unscopeStatus != .notRequested)
-        let restored = try await workspace.environment.classic.profile(id: 101)
+        let restored = try await workspace.environment.classic.profile(key: ProfileKey(platform: .macOS, id: 101))
         #expect(restored.scope == originalScope)
         #expect(workspace.history.records.contains { $0.action == .restoreClassicScope && $0.result == .success })
     }
@@ -244,12 +244,12 @@ struct SessionCleanupTests {
     @Test("Without the opt-in, deploying leaves the classic profile scoped")
     func noOptIn() async throws {
         let workspace = Workspace.previewDemo()
-        let session = try #require(workspace.session(for: 101))
+        let session = try #require(workspace.session(for: ProfileKey(platform: .macOS, id: 101)))
         session.dryRun = false
         await session.create()
         let blueprintID = try #require(session.blueprintID)
         await session.deploy(DeployConfirmation(blueprintID: blueprintID, blueprintName: "n", groupNames: ["Engineers"], deviceCount: 12, confirmedAt: Date()))
         #expect(session.unscopeStatus == .notRequested)
-        #expect(ClassicScopeService.hasTargets(try await workspace.environment.classic.profile(id: 101).scope))
+        #expect(ClassicScopeService.hasTargets(try await workspace.environment.classic.profile(key: ProfileKey(platform: .macOS, id: 101)).scope))
     }
 }

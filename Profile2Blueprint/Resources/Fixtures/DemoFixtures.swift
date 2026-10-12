@@ -299,9 +299,67 @@ nonisolated enum DemoFixtures {
         scope: scopeXML(groups: [(3, "Engineers")])
     )
 
+    // MARK: Mobile fixture 1 — single lock screen payload (the hardware-verified shape)
+
+    static let iphoneLockScreenTopUUID = "6B5ECD21-C8FA-44DF-AC99-9F533C36D6E8"
+
+    static let iphoneLockScreen = profileXML(
+        platform: .mobile,
+        id: 201,
+        name: "Demo – iPhone Lock Screen Message",
+        description: "Serial number on the lock screen",
+        uuid: iphoneLockScreenTopUUID,
+        plist: plist("""
+        <key>PayloadUUID</key><string>\(iphoneLockScreenTopUUID)</string>
+        <key>PayloadType</key><string>Configuration</string>
+        <key>PayloadIdentifier</key><string>\(iphoneLockScreenTopUUID)</string>
+        <key>PayloadDisplayName</key><string>Demo – iPhone Lock Screen Message</string>
+        <key>PayloadVersion</key><integer>1</integer>
+        <key>PayloadScope</key><string>System</string>
+        <key>PayloadContent</key>
+        <array>
+          <dict>
+            <key>PayloadType</key><string>com.apple.shareddeviceconfiguration</string>
+            <key>PayloadIdentifier</key><string>AB000000-0000-4000-8000-000000000001</string>
+            <key>PayloadUUID</key><string>AB000000-0000-4000-8000-000000000001</string>
+            <key>PayloadVersion</key><integer>1</integer>
+            <key>IfLostReturnToMessage</key><string>$SERIALNUMBER</string>
+            <key>LockScreenFootnote</key><string>$SERIALNUMBER</string>
+          </dict>
+        </array>
+        """),
+        scope: scopeXML(platform: .mobile, groups: [(12, "Field iPhones")])
+    )
+
+    // MARK: Mobile fixture 2 — blocked payload type (web clip)
+
+    static let ipadWebClip = profileXML(
+        platform: .mobile,
+        id: 202,
+        name: "Demo – iPad Help Desk Web Clip",
+        uuid: "6B5ECD21-0002-4000-8000-000000000202",
+        plist: plist("""
+        <key>PayloadUUID</key><string>6B5ECD21-0002-4000-8000-000000000202</string>
+        <key>PayloadType</key><string>Configuration</string>
+        <key>PayloadIdentifier</key><string>6B5ECD21-0002-4000-8000-000000000202</string>
+        <key>PayloadDisplayName</key><string>Demo – iPad Help Desk Web Clip</string>
+        <key>PayloadContent</key>
+        <array>
+          <dict>
+            <key>PayloadType</key><string>com.apple.webClip.managed</string>
+            <key>PayloadIdentifier</key><string>AB000000-0000-4000-8000-000000000002</string>
+            <key>PayloadUUID</key><string>AB000000-0000-4000-8000-000000000002</string>
+            <key>Label</key><string>Help Desk</string>
+            <key>URL</key><string>https://example.com/help</string>
+          </dict>
+        </array>
+        """),
+        scope: scopeXML(platform: .mobile, groups: [(13, "Classroom iPads")])
+    )
+
     // MARK: Collections
 
-    /// All demo profiles keyed by Classic ID.
+    /// macOS demo profiles keyed by Classic ID.
     static let profilesByID: [Int: String] = [
         101: managedLoginItems,
         102: securityBaseline,
@@ -312,22 +370,46 @@ nonisolated enum DemoFixtures {
         107: uploadedPPPC,
     ]
 
-    static var profileListXML: String {
-        let items = profilesByID.keys.sorted().compactMap { id -> String? in
-            guard let xml = profilesByID[id],
+    /// Mobile demo profiles keyed by Classic ID. IDs deliberately reuse no macOS ID,
+    /// except in tests that construct collisions on purpose.
+    static let mobileProfilesByID: [Int: String] = [
+        201: iphoneLockScreen,
+        202: ipadWebClip,
+    ]
+
+    /// All demo profiles of both platforms.
+    static let profilesByKey: [ProfileKey: String] = {
+        var all: [ProfileKey: String] = [:]
+        for (id, xml) in profilesByID { all[ProfileKey(platform: .macOS, id: id)] = xml }
+        for (id, xml) in mobileProfilesByID { all[ProfileKey(platform: .mobile, id: id)] = xml }
+        return all
+    }()
+
+    static func profileListXML(platform: ProfilePlatform) -> String {
+        let byID = platform == .macOS ? profilesByID : mobileProfilesByID
+        let items = byID.keys.sorted().compactMap { id -> String? in
+            guard let xml = byID[id],
                   let name = xml.firstMatch(of: /<general><id>\d+<\/id><name>([^<]*)<\/name>/)?.1 else { return nil }
-            return "<os_x_configuration_profile><id>\(id)</id><name>\(name)</name></os_x_configuration_profile>"
+            return "<\(platform.profileRootElement)><id>\(id)</id><name>\(name)</name></\(platform.profileRootElement)>"
         }
-        return #"<?xml version="1.0" encoding="UTF-8"?><os_x_configuration_profiles><size>\#(items.count)</size>\#(items.joined())</os_x_configuration_profiles>"#
+        return """
+        <?xml version="1.0" encoding="UTF-8"?><\(platform.listRootElement)><size>\(items.count)</size>\(items.joined())</\(platform.listRootElement)>
+        """
     }
 
-    /// Platform device groups for demo mode. "Designers" is deliberately ambiguous
-    /// and "Finance" deliberately missing.
+    static let fieldiPhonesPlatformGroupID = "ab12cd34-0001-4000-8000-5e6f7a8b9c0d"
+
+    /// Platform device groups for demo mode. "Designers" is deliberately ambiguous,
+    /// "Finance" deliberately missing, and "Engineers" also exists as a MOBILE group
+    /// so per-platform matching is exercised.
     static let platformGroups: [PlatformGroup] = [
         PlatformGroup(id: engineersPlatformGroupID, name: "Engineers", description: "", deviceType: .computer, groupType: .staticGroup, memberCount: 12),
         PlatformGroup(id: "7c3d9e1f-2a4b-4c5d-8e6f-7a8b9c0d1e2f", name: "Designers", description: "Smart", deviceType: .computer, groupType: .smart, memberCount: 5),
         PlatformGroup(id: "9e5f1a3b-4c6d-4e7f-8a9b-0c1d2e3f4a5b", name: "Designers", description: "Static", deviceType: .computer, groupType: .staticGroup, memberCount: 3),
         PlatformGroup(id: "1f2e3d4c-5b6a-4978-8a9b-c0d1e2f3a4b5", name: "All Managed Clients", description: "", deviceType: .computer, groupType: .smart, memberCount: 48),
+        PlatformGroup(id: fieldiPhonesPlatformGroupID, name: "Field iPhones", description: "", deviceType: .mobile, groupType: .smart, memberCount: 7),
+        PlatformGroup(id: "ab12cd34-0002-4000-8000-5e6f7a8b9c0d", name: "Classroom iPads", description: "", deviceType: .mobile, groupType: .staticGroup, memberCount: 24),
+        PlatformGroup(id: "ab12cd34-0003-4000-8000-5e6f7a8b9c0d", name: "Engineers", description: "Mobile twin of the computer group", deviceType: .mobile, groupType: .smart, memberCount: 4),
     ]
 
     // MARK: Builders
@@ -339,26 +421,28 @@ nonisolated enum DemoFixtures {
         """
     }
 
-    private static func scopeXML(groups: [(Int, String)]) -> String {
-        let groupXML = groups.map { "<computer_group><id>\($0.0)</id><name>\(escape($0.1))</name></computer_group>" }.joined()
+    private static func scopeXML(platform: ProfilePlatform = .macOS, groups: [(Int, String)]) -> String {
+        let entry = String(platform.deviceGroupsElement.dropLast(1))
+        let groupXML = groups.map { "<\(entry)><id>\($0.0)</id><name>\(escape($0.1))</name></\(entry)>" }.joined()
         return """
-        <scope><all_computers>false</all_computers><all_jss_users>false</all_jss_users><computers/><buildings/><departments/>\
-        <computer_groups>\(groupXML)</computer_groups><jss_users/><jss_user_groups/>\
+        <scope><\(platform.allDevicesElement)>false</\(platform.allDevicesElement)><all_jss_users>false</all_jss_users><\(platform.devicesElement)/><buildings/><departments/>\
+        <\(platform.deviceGroupsElement)>\(groupXML)</\(platform.deviceGroupsElement)><jss_users/><jss_user_groups/>\
         <limitations><users/><user_groups/><network_segments/><ibeacons/></limitations>\
-        <exclusions><computers/><buildings/><departments/><computer_groups/><users/><user_groups/><network_segments/><ibeacons/><jss_users/><jss_user_groups/></exclusions></scope>
+        <exclusions><\(platform.devicesElement)/><buildings/><departments/><\(platform.deviceGroupsElement)/><users/><user_groups/><network_segments/><ibeacons/><jss_users/><jss_user_groups/></exclusions></scope>
         """
     }
 
     private static func profileXML(
+        platform: ProfilePlatform = .macOS,
         id: Int, name: String, description: String = "", level: String = "System",
         uuid: String, plist: String, scope: String
     ) -> String {
         """
-        <?xml version="1.0" encoding="UTF-8"?><os_x_configuration_profile><general><id>\(id)</id><name>\(escape(name))</name>\
+        <?xml version="1.0" encoding="UTF-8"?><\(platform.profileRootElement)><general><id>\(id)</id><name>\(escape(name))</name>\
         <description>\(escape(description))</description><site><id>-1</id><name>None</name></site>\
         <category><id>-1</id><name>No category assigned</name></category><distribution_method>Install Automatically</distribution_method>\
         <user_removable>false</user_removable><level>\(level)</level><uuid>\(uuid)</uuid><redeploy_on_update>Newly Assigned</redeploy_on_update>\
-        <payloads>\(escape(plist))</payloads></general>\(scope)</os_x_configuration_profile>
+        <payloads>\(escape(plist))</payloads></general>\(scope)</\(platform.profileRootElement)>
         """
     }
 
@@ -372,33 +456,33 @@ nonisolated enum DemoFixtures {
 
 /// Mutable in-memory Classic "server" for demo mode, so unscope/restore can be tried.
 actor DemoClassicServer {
-    private var profilesXML: [Int: String] = DemoFixtures.profilesByID
-    private(set) var scopeWrites: [(id: Int, body: String)] = []
+    private var profilesXML: [ProfileKey: String] = DemoFixtures.profilesByKey
+    private(set) var scopeWrites: [(key: ProfileKey, body: String)] = []
 
-    func list() -> String { DemoFixtures.profileListXML }
+    func list(platform: ProfilePlatform) -> String { DemoFixtures.profileListXML(platform: platform) }
 
-    func profileXML(id: Int) throws -> String {
-        guard let xml = profilesXML[id] else {
-            throw APIError.http(status: 404, method: "GET", path: "proclassic/osxconfigurationprofiles/id/\(id)", body: nil, rawBody: nil)
+    func profileXML(key: ProfileKey) throws -> String {
+        guard let xml = profilesXML[key] else {
+            throw APIError.http(status: 404, method: "GET", path: "proclassic/\(key.platform.classicResource)/id/\(key.id)", body: nil, rawBody: nil)
         }
         return xml
     }
 
     /// Mimics a Classic partial update: replaces only `<scope>`.
-    func putScope(id: Int, body: Data) throws {
+    func putScope(key: ProfileKey, body: Data) throws {
         guard HTTPClient.isScopeOnlyProfileXML(body) else {
-            throw APIError.http(status: 400, method: "PUT", path: "proclassic/osxconfigurationprofiles/id/\(id)", body: nil, rawBody: "Not a scope-only body")
+            throw APIError.http(status: 400, method: "PUT", path: "proclassic/\(key.platform.classicResource)/id/\(key.id)", body: nil, rawBody: "Not a scope-only body")
         }
-        guard let xml = profilesXML[id],
+        guard let xml = profilesXML[key],
               let document = try? XMLDocument(xmlString: xml, options: [.nodePreserveWhitespace]),
               let root = document.rootElement(),
               let newScope = try? XMLDocument(data: body).rootElement()?.elements(forName: "scope").first?.copy() as? XMLElement else {
-            throw APIError.http(status: 404, method: "PUT", path: "proclassic/osxconfigurationprofiles/id/\(id)", body: nil, rawBody: nil)
+            throw APIError.http(status: 404, method: "PUT", path: "proclassic/\(key.platform.classicResource)/id/\(key.id)", body: nil, rawBody: nil)
         }
         if let old = root.elements(forName: "scope").first { root.removeChild(at: old.index) }
         root.addChild(newScope)
-        profilesXML[id] = document.xmlString
-        scopeWrites.append((id, String(decoding: body, as: UTF8.self)))
+        profilesXML[key] = document.xmlString
+        scopeWrites.append((key, String(decoding: body, as: UTF8.self)))
     }
 }
 
@@ -406,20 +490,20 @@ actor DemoClassicServer {
 nonisolated struct DemoClassicAPI: ClassicAPI {
     var server = DemoClassicServer()
 
-    func listProfiles() async throws -> [ClassicProfileSummary] {
-        try ClassicXMLParser.parseProfileList(Data(await server.list().utf8))
+    func listProfiles(platform: ProfilePlatform) async throws -> [ClassicProfileSummary] {
+        try ClassicXMLParser.parseProfileList(Data(await server.list(platform: platform).utf8), platform: platform)
     }
 
-    func profile(id: Int) async throws -> ClassicProfile {
-        try ClassicXMLParser.parseProfile(Data(try await server.profileXML(id: id).utf8))
+    func profile(key: ProfileKey) async throws -> ClassicProfile {
+        try ClassicXMLParser.parseProfile(Data(try await server.profileXML(key: key).utf8), platform: key.platform)
     }
 }
 
 nonisolated struct DemoClassicScopeWriter: ClassicScopeWriter {
     let server: DemoClassicServer
 
-    func replaceScope(profileID: Int, body: Data) async throws {
-        try await server.putScope(id: profileID, body: body)
+    func replaceScope(key: ProfileKey, body: Data) async throws {
+        try await server.putScope(key: key, body: body)
     }
 }
 

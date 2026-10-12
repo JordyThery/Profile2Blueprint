@@ -1,13 +1,13 @@
 import Foundation
 
-/// Maps classic computer groups to platform device groups by name.
+/// Maps classic scope groups to platform device groups of the same platform, by name.
 nonisolated enum ScopeMapper {
-    static func propose(for scope: ClassicScope, platformGroups: [PlatformGroup]) -> [ScopeMappingEntry] {
-        let computerGroups = platformGroups.filter { $0.deviceType == .computer }
-        return scope.computerGroups.map { classic in
-            let exact = computerGroups.filter { $0.name == classic.name }
+    static func propose(for scope: ClassicScope, platform: ProfilePlatform, platformGroups: [PlatformGroup]) -> [ScopeMappingEntry] {
+        let candidates = platformGroups.filter { $0.deviceType == platform.deviceGroupType }
+        return scope.deviceGroups.map { classic in
+            let exact = candidates.filter { $0.name == classic.name }
             let loose = exact.isEmpty
-                ? computerGroups.filter { normalize($0.name) == normalize(classic.name) }
+                ? candidates.filter { normalize($0.name) == normalize(classic.name) }
                 : []
             return ScopeMappingEntry(classicGroup: classic, exactMatches: exact, suggestions: loose)
         }

@@ -126,7 +126,7 @@ struct NetworkingTests {
                 : .json(200, pageJSON(page: 0, totalPages: 1, items: [1]))
         }
         let client = makeClient(tokens: makeTokens())
-        _ = try await LiveDeviceGroupsAPI(client: client).computerGroups()
+        _ = try await LiveDeviceGroupsAPI(client: client).allGroups()
 
         let apiRequest = try #require(MockURLProtocol.requests.last)
         #expect(apiRequest.header("Authorization") == "Bearer tok-h")
@@ -147,7 +147,7 @@ struct NetworkingTests {
             }
             return .json(200, pageJSON(page: 0, totalPages: 1, items: [1]))
         }
-        let groups = try await LiveDeviceGroupsAPI(client: makeClient(tokens: makeTokens())).computerGroups()
+        let groups = try await LiveDeviceGroupsAPI(client: makeClient(tokens: makeTokens())).allGroups()
 
         #expect(groups.count == 1)
         #expect(apiCalls.value == 2)
@@ -168,7 +168,7 @@ struct NetworkingTests {
             }
         }
         let sleeper = SleepRecorder()
-        let groups = try await LiveDeviceGroupsAPI(client: makeClient(tokens: makeTokens(), sleeper: sleeper)).computerGroups()
+        let groups = try await LiveDeviceGroupsAPI(client: makeClient(tokens: makeTokens(), sleeper: sleeper)).allGroups()
 
         #expect(groups.map(\.memberCount) == [7])
         // First wait from Retry-After, second from exponential backoff (attempt 1 → 2 s).
@@ -184,7 +184,7 @@ struct NetworkingTests {
         }
         let sleeper = SleepRecorder()
         await #expect(throws: APIError.self) {
-            _ = try await LiveDeviceGroupsAPI(client: makeClient(tokens: makeTokens(), sleeper: sleeper)).computerGroups()
+            _ = try await LiveDeviceGroupsAPI(client: makeClient(tokens: makeTokens(), sleeper: sleeper)).allGroups()
         }
         #expect(sleeper.recorded.count == RetryPolicy().maxRetries)
     }
@@ -210,7 +210,7 @@ struct NetworkingTests {
 
     // MARK: Device groups
 
-    @Test("Device groups follow every page with an RSQL COMPUTER filter")
+    @Test("Device groups follow every page; an RSQL filter is encoded strictly")
     func deviceGroupPagination() async throws {
         MockURLProtocol.install { request in
             if request.path == "/auth/token" { return .json(200, tokenJSON("tok")) }
@@ -218,7 +218,8 @@ struct NetworkingTests {
             let items = Array((page * 2 + 1)...(page * 2 + 2))
             return .json(200, pageJSON(page: page, totalPages: 3, items: items))
         }
-        let groups = try await LiveDeviceGroupsAPI(client: makeClient(tokens: makeTokens()), pageSize: 2).computerGroups()
+        let api = LiveDeviceGroupsAPI(client: makeClient(tokens: makeTokens()), pageSize: 2)
+        let groups = try await api.listGroups(filter: #"deviceType=="COMPUTER""#)
 
         #expect(groups.map(\.name) == (1...6).map { "Group \($0)" })
         let apiRequests = MockURLProtocol.requests.filter { $0.path != "/auth/token" }
@@ -227,6 +228,14 @@ struct NetworkingTests {
         #expect(apiRequests.allSatisfy { $0.queryValue("filter") == #"deviceType=="COMPUTER""# })
         // `=` and `"` inside the filter value must be percent-encoded on the wire.
         #expect(apiRequests[0].url.absoluteString.contains("filter=deviceType%3D%3D%22COMPUTER%22"))
+
+        // The workspace's unfiltered load sends no filter parameter at all.
+        MockURLProtocol.install { request in
+            request.path == "/auth/token" ? .json(200, tokenJSON("tok")) : .json(200, pageJSON(page: 0, totalPages: 1, items: [1]))
+        }
+        _ = try await LiveDeviceGroupsAPI(client: makeClient(tokens: makeTokens())).allGroups()
+        let unfiltered = MockURLProtocol.requests.filter { $0.path != "/auth/token" }
+        #expect(unfiltered.allSatisfy { $0.queryValue("filter") == nil })
     }
 
     @Test("Pagination stops at the safety limit")
@@ -237,6 +246,6 @@ struct NetworkingTests {
                 : .json(200, pageJSON(page: 0, totalPages: 99, items: [1]))
         }
         let api = LiveDeviceGroupsAPI(client: makeClient(tokens: makeTokens()), pageSize: 1, maxPages: 3)
-        await #expect(throws: APIError.self) { _ = try await api.computerGroups() }
+        await #expect(throws: APIError.self) { _ = try await api.allGroups() }
     }
 }

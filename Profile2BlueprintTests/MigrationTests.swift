@@ -3,7 +3,7 @@ import Testing
 @testable import Profile2Blueprint
 
 private func profile(_ xml: String) throws -> ClassicProfile {
-    try ClassicXMLParser.parseProfile(Data(xml.utf8))
+    try ClassicXMLParser.parseProfile(Data(xml.utf8), platform: .macOS)
 }
 
 private func check(_ xml: String, groups: [PlatformGroup] = DemoFixtures.platformGroups) throws -> EligibilityReport {
@@ -129,7 +129,7 @@ struct EligibilityTests {
     func allComputersAndExclusions() throws {
         let report = try check(DemoFixtures.wifiAllComputers)
         #expect(report.status == .needsAttention)
-        for kind: FindingKind in [.allComputers, .nonGroupTargets, .limitations, .exclusions, .noMappedGroup] {
+        for kind: FindingKind in [.allDevices, .nonGroupTargets, .limitations, .exclusions, .noMappedGroup] {
             #expect(report.has(kind), "\(kind)")
         }
         let exclusions = try #require(report.findings.first { $0.kind == .exclusions })
@@ -137,11 +137,14 @@ struct EligibilityTests {
         #expect(exclusions.detail.contains("KIOSK-01") && exclusions.detail.contains("Lab Machines"))
     }
 
-    @Test("Record UUID different from PayloadUUID needs attention")
+    @Test("Uploaded profile: record-UUID warning plus the payload UUID/identifier blocker")
     func recordUUIDMismatch() throws {
         let report = try check(DemoFixtures.uploadedPPPC)
-        #expect(report.status == .needsAttention)
         #expect(report.has(.recordUUIDMismatch))
+        // Its TCC payload's UUID differs from its identifier, which the API rewrites
+        // to match, so this profile can never be adopted in place.
+        #expect(report.status == .blocked)
+        #expect(report.findings.first { $0.kind == .payloadUUIDMismatch }?.severity == .blocker)
         #expect(!report.identityRulesHold)
     }
 
@@ -216,7 +219,7 @@ struct ScopeMapperTests {
     @Test("Exact names auto-match; case-only matches are suggestions; mobile groups are ignored")
     func mapping() {
         var scope = ClassicScope()
-        scope.computerGroups = [
+        scope.deviceGroups = [
             ClassicReference(id: 1, name: "Engineers"),
             ClassicReference(id: 2, name: "all managed  clients"),
             ClassicReference(id: 3, name: "iPads"),
@@ -224,7 +227,7 @@ struct ScopeMapperTests {
         let groups = DemoFixtures.platformGroups + [
             PlatformGroup(id: "m", name: "iPads", description: nil, deviceType: .mobile, groupType: .smart, memberCount: 9),
         ]
-        let entries = ScopeMapper.propose(for: scope, platformGroups: groups)
+        let entries = ScopeMapper.propose(for: scope, platform: .macOS, platformGroups: groups)
         #expect(entries[0].autoMatch?.name == "Engineers")
         #expect(entries[1].autoMatch == nil)
         #expect(entries[1].suggestions.map(\.name) == ["All Managed Clients"])
@@ -381,13 +384,13 @@ struct BlueprintNamingTests {
     @Test("Description tokens are substituted")
     func descriptionTokens() {
         let rendered = BlueprintBuilder.description("{name} came from #{id}. {name} again.",
-                                                    profileName: "Wi-Fi", profileID: 430)
+                                                    profileName: "Wi-Fi", profileID: 430, platform: .macOS)
         #expect(rendered == "Wi-Fi came from #430. Wi-Fi again.")
     }
 
     @Test("A template with no tokens is used as a constant description")
     func descriptionWithoutTokens() {
-        #expect(BlueprintBuilder.description("Managed by DDM.", profileName: "x", profileID: 1) == "Managed by DDM.")
+        #expect(BlueprintBuilder.description("Managed by DDM.", profileName: "x", profileID: 1, platform: .macOS) == "Managed by DDM.")
     }
 
     @Test("An empty template means no description, which is sent as null")
@@ -400,7 +403,7 @@ struct BlueprintNamingTests {
 
     @Test("An over-long description is trimmed to the API's limit")
     func descriptionTruncation() {
-        let rendered = BlueprintBuilder.description(String(repeating: "x", count: 3_000), profileName: "n", profileID: 1)
+        let rendered = BlueprintBuilder.description(String(repeating: "x", count: 3_000), profileName: "n", profileID: 1, platform: .macOS)
         #expect(rendered.count == BlueprintBuilder.maxDescriptionLength)
     }
 
@@ -628,7 +631,7 @@ struct PipelineTests {
     func happyPath() async throws {
         let server = DemoBlueprintServer(pollsToSucceed: 2)
         let pipeline = makePipeline(server: server)
-        _ = try await pipeline.fetch(profileID: 101)
+        _ = try await pipeline.fetch(key: ProfileKey(platform: .macOS, id: 101))
         #expect(await pipeline.state == .fetched)
         #expect(try await pipeline.validate(platformGroups: DemoFixtures.platformGroups).status == .ready)
         _ = try await pipeline.build(name: "Login items (migrated)", description: nil, deviceGroupIDs: [engineers.id], acknowledgedWarnings: false)
@@ -652,7 +655,7 @@ struct PipelineTests {
     func ordering() async throws {
         let pipeline = makePipeline()
         await #expect(throws: PipelineError.self) { try await pipeline.validate(platformGroups: []) }
-        _ = try await pipeline.fetch(profileID: 101)
+        _ = try await pipeline.fetch(key: ProfileKey(platform: .macOS, id: 101))
         await #expect(throws: PipelineError.self) { _ = try await pipeline.create() }
         await #expect(throws: PipelineError.self) { _ = try await pipeline.verify() }
         await #expect(throws: PipelineError.self) { _ = try await pipeline.deploy(confirmation: confirmation("x")) }
@@ -661,13 +664,13 @@ struct PipelineTests {
     @Test("Blocked profiles can't be built; warnings need acknowledgement")
     func gates() async throws {
         let pipeline = makePipeline()
-        _ = try await pipeline.fetch(profileID: 104)
+        _ = try await pipeline.fetch(key: ProfileKey(platform: .macOS, id: 104))
         _ = try await pipeline.validate(platformGroups: DemoFixtures.platformGroups)
         await #expect(throws: PipelineError.self) {
             _ = try await pipeline.build(name: "x", description: nil, deviceGroupIDs: [engineers.id], acknowledgedWarnings: true)
         }
 
-        _ = try await pipeline.fetch(profileID: 105)
+        _ = try await pipeline.fetch(key: ProfileKey(platform: .macOS, id: 105))
         _ = try await pipeline.validate(platformGroups: DemoFixtures.platformGroups)
         await #expect(throws: PipelineError.self) {
             _ = try await pipeline.build(name: "x", description: nil, deviceGroupIDs: [engineers.id], acknowledgedWarnings: false)
@@ -680,7 +683,7 @@ struct PipelineTests {
         let server = DemoBlueprintServer()
         _ = await server.seed(name: "Taken")
         let pipeline = makePipeline(server: server)
-        _ = try await pipeline.fetch(profileID: 101)
+        _ = try await pipeline.fetch(key: ProfileKey(platform: .macOS, id: 101))
         _ = try await pipeline.validate(platformGroups: DemoFixtures.platformGroups)
         _ = try await pipeline.build(name: "taken", description: nil, deviceGroupIDs: [engineers.id], acknowledgedWarnings: false)
         #expect(try await pipeline.existingBlueprints().count == 1)
@@ -696,7 +699,7 @@ struct PipelineTests {
     func confirmationMustMatch() async throws {
         let server = DemoBlueprintServer()
         let pipeline = makePipeline(server: server)
-        _ = try await pipeline.fetch(profileID: 101)
+        _ = try await pipeline.fetch(key: ProfileKey(platform: .macOS, id: 101))
         _ = try await pipeline.validate(platformGroups: DemoFixtures.platformGroups)
         _ = try await pipeline.build(name: "x", description: nil, deviceGroupIDs: [engineers.id], acknowledgedWarnings: false)
         _ = try await pipeline.create()
@@ -713,7 +716,7 @@ struct PipelineTests {
             (DemoBlueprintServer(pollsToSucceed: 1_000_000), false, Duration.milliseconds(50)),
         ] {
             let pipeline = makePipeline(server: server, timeout: timeout)
-            _ = try await pipeline.fetch(profileID: 101)
+            _ = try await pipeline.fetch(key: ProfileKey(platform: .macOS, id: 101))
             _ = try await pipeline.validate(platformGroups: DemoFixtures.platformGroups)
             _ = try await pipeline.build(name: "x", description: nil, deviceGroupIDs: [engineers.id], acknowledgedWarnings: false)
             let created = try await pipeline.create()
@@ -757,7 +760,7 @@ struct SafetyTests {
 
     @Test("Classic API protocol exposes no write methods")
     func classicIsReadOnly() {
-        // Compile-time property: ClassicAPI only declares listProfiles() and profile(id:).
+        // Compile-time property: ClassicAPI only declares listProfiles(platform:) and profile(key:).
         let api: any ClassicAPI = DemoClassicAPI()
         _ = api
     }
@@ -778,7 +781,7 @@ struct HistoryTests {
         #expect(lines.contains("| Timestamp | Tenant | Action | Source profile | Blueprint | Result | Details |"))
         let row = lines.last.map(String.init)
         #expect(row?.contains(#"Prod \| EU"#) == true, "pipes escaped")
-        #expect(row?.contains("Login Items (#101)") == true, "newlines flattened")
+        #expect(row?.contains("Login Items (macOS #101)") == true, "newlines flattened")
         #expect(row?.contains("`bp-1`") == true)
     }
 

@@ -90,8 +90,8 @@ nonisolated final class HTTPClient: Sendable {
     /// Safety net, checked before anything reaches the network. Allowed:
     /// - any GET;
     /// - POST to create a blueprint or deploy one;
-    /// - only with `.scopeOnly`: PUT to `proclassic/osxconfigurationprofiles/id/{n}` whose
-    ///   XML body contains nothing but `<scope>`.
+    /// - only with `.scopeOnly`: PUT to a classic profile (either platform's resource)
+    ///   whose XML body contains nothing but `<scope>`.
     /// Everything else (PATCH, DELETE, undeploy, device-group writes, payload edits) is refused.
     static func isPermitted(_ request: HTTPRequest, classicWrites: ClassicWritePolicy = .denied) -> Bool {
         switch request.method {
@@ -104,7 +104,7 @@ nonisolated final class HTTPClient: Sendable {
             return path.count == 3 || (path.count == 5 && path[4] == "deploy")
         case "PUT":
             guard classicWrites == .scopeOnly,
-                  request.path.wholeMatch(of: /proclassic\/osxconfigurationprofiles\/id\/\d+/) != nil,
+                  request.path.wholeMatch(of: /proclassic\/(?:osxconfigurationprofiles|mobiledeviceconfigurationprofiles)\/id\/\d+/) != nil,
                   let body = request.body else { return false }
             return isScopeOnlyProfileXML(body)
         default:
@@ -112,10 +112,11 @@ nonisolated final class HTTPClient: Sendable {
         }
     }
 
-    /// `<os_x_configuration_profile>` with exactly one child element, `<scope>`.
+    /// A classic profile root (either platform) with exactly one child element, `<scope>`.
     static func isScopeOnlyProfileXML(_ data: Data) -> Bool {
         guard let document = try? XMLDocument(data: data, options: []),
-              let root = document.rootElement(), root.name == "os_x_configuration_profile" else { return false }
+              let root = document.rootElement(), let name = root.name,
+              ProfilePlatform.allCases.contains(where: { $0.profileRootElement == name }) else { return false }
         let children = (root.children ?? []).compactMap { $0 as? XMLElement }
         return children.count == 1 && children[0].name == "scope"
     }

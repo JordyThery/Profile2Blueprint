@@ -31,7 +31,7 @@ nonisolated struct LiveBlueprintsAPI: BlueprintsAPI {
             if list.results.count < pageSize { break }
             if let total = list.totalCount, all.count >= total { break }
         }
-        return all.filter { $0.name.caseInsensitiveCompare(name) == .orderedSame }
+        return all.filter { $0.name?.caseInsensitiveCompare(name) == .orderedSame }
     }
 
     func create(_ request: BlueprintRequest) async throws -> BlueprintCreated {

@@ -3,7 +3,7 @@ import Testing
 @testable import Profile2Blueprint
 
 private func parse(_ xml: String) throws -> ClassicProfile {
-    try ClassicXMLParser.parseProfile(Data(xml.utf8))
+    try ClassicXMLParser.parseProfile(Data(xml.utf8), platform: .macOS)
 }
 
 private func document(_ xml: String) throws -> ProfileDocument {
@@ -22,8 +22,8 @@ struct ClassicParsingTests {
         #expect(profile.distributionMethod == "Install Automatically")
         #expect(profile.redeployOnUpdate == "Newly Assigned")
         #expect(profile.site == nil, "site id -1 means None")
-        #expect(profile.scope.computerGroups == [ClassicReference(id: 3, name: "Engineers")])
-        #expect(!profile.scope.allComputers && !profile.scope.hasExclusions)
+        #expect(profile.scope.deviceGroups == [ClassicReference(id: 3, name: "Engineers")])
+        #expect(!profile.scope.allDevices && !profile.scope.hasExclusions)
 
         let doc = try profile.document.get()
         #expect(doc.payloadUUID == DemoFixtures.managedLoginItemsTopUUID)
@@ -72,7 +72,7 @@ struct ClassicParsingTests {
     @Test("Scope: all computers, buildings, limitations and exclusions")
     func fixture5Scope() throws {
         let scope = try parse(DemoFixtures.wifiAllComputers).scope
-        #expect(scope.allComputers)
+        #expect(scope.allDevices)
         #expect(scope.buildings.map(\.name) == ["HQ"])
         #expect(scope.limitations.map(\.kind) == ["network_segments"])
         #expect(scope.exclusions.map(\.kind) == ["computers", "computer_groups"])
@@ -86,8 +86,8 @@ struct ClassicParsingTests {
 
     @Test("Profile list parses every summary")
     func list() throws {
-        let list = try ClassicXMLParser.parseProfileList(Data(DemoFixtures.profileListXML.utf8))
-        #expect(list.map(\.id) == [101, 102, 103, 104, 105, 106, 107])
+        let list = try ClassicXMLParser.parseProfileList(Data(DemoFixtures.profileListXML(platform: .macOS).utf8), platform: .macOS)
+        #expect(list.map(\.profileID) == [101, 102, 103, 104, 105, 106, 107])
         #expect(list.first?.name == "Classic – Managed Login Items")
     }
 
@@ -100,7 +100,7 @@ struct ClassicParsingTests {
 
     @Test("Non-profile XML is rejected with a decoding error")
     func wrongRoot() {
-        #expect(throws: APIError.self) { try ClassicXMLParser.parseProfile(Data("<computer/>".utf8)) }
+        #expect(throws: APIError.self) { try ClassicXMLParser.parseProfile(Data("<computer/>".utf8), platform: .macOS) }
     }
 }
 

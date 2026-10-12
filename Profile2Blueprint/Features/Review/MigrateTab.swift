@@ -257,8 +257,14 @@ extension MigrateTab {
                     }
                     .disabled(isDeployingOrDeployed || session.scopeBackup != nil)
 
-                    Label("When Jamf Pro unscopes a profile it removes it from devices. On Macs where the in-place transform didn't happen (no DDM, or not installed by MDM), the settings are lost. Try it with one profile and one device first.",
+                    Label("When Jamf Pro unscopes a profile it removes it from devices. On devices where the in-place transform didn't happen (no DDM, or not installed by MDM), the settings are lost. Try it with one profile and one device first.",
                           systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Label("After the transform, Jamf Pro logs a failed “Remove Configuration Profile” command for each device: the device refuses to let MDM remove a profile the blueprint now owns. That failure is expected.",
+                          systemImage: "info.circle")
                         .font(.caption)
                         .foregroundStyle(.orange)
                         .fixedSize(horizontal: false, vertical: true)
@@ -282,7 +288,7 @@ extension MigrateTab {
         .confirmationDialog("Unscope “\(session.profile.name)”?", isPresented: $confirmingUnscope) {
             Button("Unscope Classic Profile", role: .destructive) { Task { await session.unscopeClassic() } }
         } message: {
-            Text("Removes every scope target (all computers, computers, groups, buildings, departments, users) from classic profile #\(session.profile.id) in \(workspace.environment.displayName). Jamf Pro will then remove the classic profile from devices. The current scope is backed up first.")
+            Text("Removes every scope target from classic profile #\(session.profile.id) in \(workspace.environment.displayName). Jamf Pro will then remove the classic profile from devices. The current scope is backed up first.")
         }
         .confirmationDialog("Restore the scope of “\(session.profile.name)”?", isPresented: $confirmingRestore) {
             Button("Restore Scope") { Task { await session.restoreClassicScope() } }
@@ -406,7 +412,7 @@ private struct StepIndicator: View {
 #if DEBUG
 #Preview("Migrate – needs attention") {
     let workspace = Workspace.previewDemo()
-    MigrateTab(workspace: workspace, session: workspace.session(for: 105)!)
+    MigrateTab(workspace: workspace, session: workspace.session(for: ProfileKey(platform: .macOS, id: 105))!)
         .frame(width: 800, height: 800)
 }
 #endif

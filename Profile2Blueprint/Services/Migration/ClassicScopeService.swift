@@ -7,12 +7,51 @@ nonisolated struct ScopeBackup: Codable, Hashable, Sendable, Identifiable {
     var createdAt = Date()
     var environmentName: String
     var environmentID: String?
+    var platform: ProfilePlatform = .macOS
     var profileID: Int
     var profileName: String
     var blueprintID: String?
     /// The `<scope>` element exactly as Jamf Pro returned it.
     var scopeXML: String
     var restoredAt: Date?
+
+    var key: ProfileKey { ProfileKey(platform: platform, id: profileID) }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, createdAt, environmentName, environmentID, platform, profileID, profileName, blueprintID, scopeXML, restoredAt
+    }
+
+    /// Backups saved before mobile support decode as macOS.
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        environmentName = try container.decode(String.self, forKey: .environmentName)
+        environmentID = try container.decodeIfPresent(String.self, forKey: .environmentID)
+        platform = try container.decodeIfPresent(ProfilePlatform.self, forKey: .platform) ?? .macOS
+        profileID = try container.decode(Int.self, forKey: .profileID)
+        profileName = try container.decode(String.self, forKey: .profileName)
+        blueprintID = try container.decodeIfPresent(String.self, forKey: .blueprintID)
+        scopeXML = try container.decode(String.self, forKey: .scopeXML)
+        restoredAt = try container.decodeIfPresent(Date.self, forKey: .restoredAt)
+    }
+
+    init(
+        id: UUID = UUID(), createdAt: Date = Date(), environmentName: String, environmentID: String?,
+        platform: ProfilePlatform, profileID: Int, profileName: String, blueprintID: String?,
+        scopeXML: String, restoredAt: Date? = nil
+    ) {
+        self.id = id
+        self.createdAt = createdAt
+        self.environmentName = environmentName
+        self.environmentID = environmentID
+        self.platform = platform
+        self.profileID = profileID
+        self.profileName = profileName
+        self.blueprintID = blueprintID
+        self.scopeXML = scopeXML
+        self.restoredAt = restoredAt
+    }
 }
 
 /// Persists scope backups in Application Support (`scope-backups.json`). Never pruned.
@@ -38,9 +77,9 @@ actor ScopeBackupStore {
 
     /// The newest unrestored backup for a profile, matched by environment ID when
     /// one exists (tenant names can be edited) and by name otherwise (demo mode).
-    func latest(profileID: Int, environmentID: String?, environmentName: String) -> ScopeBackup? {
+    func latest(key: ProfileKey, environmentID: String?, environmentName: String) -> ScopeBackup? {
         backups.last {
-            $0.profileID == profileID && $0.restoredAt == nil
+            $0.key == key && $0.restoredAt == nil
                 && ($0.environmentID ?? $0.environmentName) == (environmentID ?? environmentName)
         }
     }
@@ -76,21 +115,26 @@ nonisolated struct ScopeChangeError: Error, LocalizedError, Sendable {
 /// Sequence: fresh GET → back up the raw `<scope>` → PUT a scope-only body → GET again
 /// and check the result. Payloads are never sent, so they can't be changed.
 nonisolated enum ClassicScopeService {
-    /// Scope with every target removed. Limitations and exclusions are left as they are.
-    static let unscopedBody = Data("""
-    <?xml version="1.0" encoding="UTF-8"?><os_x_configuration_profile><scope>\
-    <all_computers>false</all_computers><all_jss_users>false</all_jss_users>\
-    <computers/><computer_groups/><buildings/><departments/><jss_users/><jss_user_groups/>\
-    </scope></os_x_configuration_profile>
-    """.utf8)
+    /// Scope with every target removed, in the platform's element names.
+    /// Limitations and exclusions are left as they are.
+    static func unscopedBody(platform: ProfilePlatform) -> Data {
+        Data("""
+        <?xml version="1.0" encoding="UTF-8"?><\(platform.profileRootElement)><scope>\
+        <\(platform.allDevicesElement)>false</\(platform.allDevicesElement)><all_jss_users>false</all_jss_users>\
+        <\(platform.devicesElement)/><\(platform.deviceGroupsElement)/><buildings/><departments/><jss_users/><jss_user_groups/>\
+        </scope></\(platform.profileRootElement)>
+        """.utf8)
+    }
 
-    static func restoreBody(scopeXML: String) -> Data {
-        Data(#"<?xml version="1.0" encoding="UTF-8"?><os_x_configuration_profile>\#(scopeXML)</os_x_configuration_profile>"#.utf8)
+    static func restoreBody(platform: ProfilePlatform, scopeXML: String) -> Data {
+        Data("""
+        <?xml version="1.0" encoding="UTF-8"?><\(platform.profileRootElement)>\(scopeXML)</\(platform.profileRootElement)>
+        """.utf8)
     }
 
     /// Whether a scope still targets anything.
     static func hasTargets(_ scope: ClassicScope) -> Bool {
-        scope.allComputers || scope.allJSSUsers || !scope.computers.isEmpty || !scope.computerGroups.isEmpty
+        scope.allDevices || scope.allJSSUsers || !scope.devices.isEmpty || !scope.deviceGroups.isEmpty
             || !scope.buildings.isEmpty || !scope.departments.isEmpty || !scope.otherTargets.isEmpty
     }
 
@@ -101,7 +145,7 @@ nonisolated enum ClassicScopeService {
     }
 
     static func unscope(
-        profileID: Int,
+        key: ProfileKey,
         blueprintID: String?,
         environment: MigrationEnvironment,
         backups: ScopeBackupStore
@@ -109,17 +153,18 @@ nonisolated enum ClassicScopeService {
         guard let writer = environment.classicScopeWriter else {
             throw ScopeChangeError(message: "Classic scope changes are not enabled for this tenant.")
         }
-        let before = try await environment.classic.profile(id: profileID)
+        let before = try await environment.classic.profile(key: key)
         guard hasTargets(before.scope) else {
             throw ScopeChangeError(message: "The classic profile is already unscoped. Nothing was changed.")
         }
         let backup = ScopeBackup(environmentName: environment.displayName, environmentID: environment.environmentID,
-                                 profileID: profileID, profileName: before.name, blueprintID: blueprintID, scopeXML: before.rawScopeXML)
+                                 platform: key.platform, profileID: key.id, profileName: before.name,
+                                 blueprintID: blueprintID, scopeXML: before.rawScopeXML)
         try await backups.save(backup)
 
-        try await writer.replaceScope(profileID: profileID, body: unscopedBody)
+        try await writer.replaceScope(key: key, body: unscopedBody(platform: key.platform))
 
-        let after = try await environment.classic.profile(id: profileID)
+        let after = try await environment.classic.profile(key: key)
         guard !hasTargets(after.scope) else {
             throw ScopeChangeError(message: "Jamf Pro accepted the change, but the profile still has scope targets. Check it in Jamf Pro; the backup is saved.")
         }
@@ -135,9 +180,9 @@ nonisolated enum ClassicScopeService {
         func buckets(_ list: [ScopeBucket]) -> [String: Set<String>] {
             Dictionary(list.map { ($0.kind, ids($0.items)) }, uniquingKeysWith: { first, second in first.union(second) })
         }
-        return a.allComputers == b.allComputers && a.allJSSUsers == b.allJSSUsers
-            && ids(a.computerGroups) == ids(b.computerGroups)
-            && ids(a.computers) == ids(b.computers)
+        return a.allDevices == b.allDevices && a.allJSSUsers == b.allJSSUsers
+            && ids(a.deviceGroups) == ids(b.deviceGroups)
+            && ids(a.devices) == ids(b.devices)
             && ids(a.buildings) == ids(b.buildings)
             && ids(a.departments) == ids(b.departments)
             && buckets(a.otherTargets) == buckets(b.otherTargets)
@@ -153,11 +198,11 @@ nonisolated enum ClassicScopeService {
         guard let writer = environment.classicScopeWriter else {
             throw ScopeChangeError(message: "Classic scope changes are not enabled for this tenant.")
         }
-        guard let expected = try? ClassicXMLParser.parseScopeXML(backup.scopeXML) else {
+        guard let expected = try? ClassicXMLParser.parseScopeXML(backup.scopeXML, platform: backup.platform) else {
             throw ScopeChangeError(message: "The saved scope backup can't be read.")
         }
-        try await writer.replaceScope(profileID: backup.profileID, body: restoreBody(scopeXML: backup.scopeXML))
-        let after = try await environment.classic.profile(id: backup.profileID)
+        try await writer.replaceScope(key: backup.key, body: restoreBody(platform: backup.platform, scopeXML: backup.scopeXML))
+        let after = try await environment.classic.profile(key: backup.key)
         guard equivalent(after.scope, expected) else {
             throw ScopeChangeError(message: "Scope was sent back to Jamf Pro, but the result differs from the backup. Check the profile in Jamf Pro.")
         }

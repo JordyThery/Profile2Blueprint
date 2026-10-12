@@ -148,9 +148,17 @@ nonisolated enum FidelityVerifier {
         // A documented server rewrite is shown but does not block the deployment; only
         // an unexplained difference means the blueprint wouldn't match the source.
         var rows = differences.map { difference in
-            FidelityRow(
+            var note = difference.serverRewrite
+            if note == nil, difference.actual == "(missing)" {
+                // The API silently drops keys Apple's schema doesn't define for the
+                // payload type, and a dropped key stops being enforced once the
+                // blueprint owns the profile. Still a mismatch: deploying would
+                // silently weaken the profile.
+                note = "The server stores only keys in Apple's schema for this payload type. This key was dropped and would no longer be enforced after the transform."
+            }
+            return FidelityRow(
                 field: "\(label) \(difference.path)", classic: difference.expected, blueprint: difference.actual,
-                status: difference.serverRewrite == nil ? .mismatch : .info, note: difference.serverRewrite
+                status: difference.serverRewrite == nil ? .mismatch : .info, note: note
             )
         }
 

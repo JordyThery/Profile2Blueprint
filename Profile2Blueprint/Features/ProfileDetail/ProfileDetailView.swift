@@ -12,12 +12,12 @@ enum DetailTab: String, CaseIterable, Identifiable {
 
 struct ProfileDetailView: View {
     let workspace: Workspace
-    let profileID: Int
+    let profileKey: ProfileKey
     @State private var tab: DetailTab = .source
 
     var body: some View {
-        if let profile = workspace.profiles[profileID], let report = workspace.reports[profileID],
-           let session = workspace.session(for: profileID) {
+        if let profile = workspace.profiles[profileKey], let report = workspace.reports[profileKey],
+           let session = workspace.session(for: profileKey) {
             VStack(spacing: 0) {
                 header(profile: profile, report: session.effectiveReport, blueprintID: session.blueprintID)
                 Divider()
@@ -32,10 +32,10 @@ struct ProfileDetailView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
-        } else if let error = workspace.profileErrors[profileID] {
+        } else if let error = workspace.profileErrors[profileKey] {
             VStack(alignment: .leading, spacing: 12) {
                 APIErrorView(report: error)
-                Button("Retry") { Task { await workspace.reloadProfile(id: profileID) } }
+                Button("Retry") { Task { await workspace.reloadProfile(key: profileKey) } }
             }
             .padding()
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -50,17 +50,17 @@ struct ProfileDetailView: View {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(profile.name).font(.title2.weight(.semibold)).textSelection(.enabled)
-                    Text("Classic profile #\(profile.id) · ^[\(profile.document.payloadTypes.count) payload](inflect: true) · \(profile.level.displayName)")
+                    Text("\(profile.platform.displayName) · Classic profile #\(profile.id) · ^[\(profile.document.payloadTypes.count) payload](inflect: true) · \(profile.level.displayName)")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
                 EligibilityBadge(status: report.status)
                 if let links = workspace.environment.jamfProLinks {
-                    OpenInJamfProMenu(links: links, profileID: profile.id, blueprintID: blueprintID)
+                    OpenInJamfProMenu(links: links, profileKey: profileKey, blueprintID: blueprintID)
                 }
                 Button("Reload Profile", systemImage: "arrow.clockwise") {
-                    Task { await workspace.reloadProfile(id: profileID) }
+                    Task { await workspace.reloadProfile(key: profileKey) }
                 }
                 .labelStyle(.iconOnly)
                 .help("Re-read this profile from Jamf Pro (read-only)")
@@ -78,13 +78,13 @@ struct ProfileDetailView: View {
 /// Opens the configuration profile, and once created its blueprint, in Jamf Pro.
 private struct OpenInJamfProMenu: View {
     let links: JamfProLinks
-    let profileID: Int
+    let profileKey: ProfileKey
     let blueprintID: String?
     @Environment(\.openURL) private var openURL
 
     var body: some View {
         Menu("Open in Jamf Pro", systemImage: "arrow.up.forward.app") {
-            Button("Configuration Profile") { openURL(links.classicProfile(id: profileID)) }
+            Button("Configuration Profile") { openURL(links.classicProfile(platform: profileKey.platform, id: profileKey.id)) }
             Button("Blueprint") {
                 if let blueprintID { openURL(links.blueprint(id: blueprintID)) }
             }
@@ -135,7 +135,7 @@ struct SourceTab: View {
                     }
 
                     GroupBox("Scope") {
-                        ClassicScopeSummary(scope: profile.scope)
+                        ClassicScopeSummary(platform: profile.platform, scope: profile.scope)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(4)
                     }
@@ -179,14 +179,17 @@ struct SourceTab: View {
 }
 
 struct ClassicScopeSummary: View {
+    let platform: ProfilePlatform
     let scope: ClassicScope
+
+    private var deviceNoun: String { platform.deviceNoun.prefix(1).uppercased() + platform.deviceNoun.dropFirst() }
 
     var body: some View {
         Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
-            MetadataRow(label: "All computers", value: scope.allComputers ? "Yes" : "No")
-            MetadataRow(label: "Computer groups", value: scope.computerGroups.map(\.name).joined(separator: ", "))
-            if !scope.computers.isEmpty {
-                MetadataRow(label: "Computers", value: scope.computers.map(\.name).joined(separator: ", "))
+            MetadataRow(label: "All \(platform.deviceNoun)s", value: scope.allDevices ? "Yes" : "No")
+            MetadataRow(label: "\(deviceNoun) groups", value: scope.deviceGroups.map(\.name).joined(separator: ", "))
+            if !scope.devices.isEmpty {
+                MetadataRow(label: "\(deviceNoun)s", value: scope.devices.map(\.name).joined(separator: ", "))
             }
             if !scope.buildings.isEmpty {
                 MetadataRow(label: "Buildings", value: scope.buildings.map(\.name).joined(separator: ", "))
@@ -209,12 +212,12 @@ struct ClassicScopeSummary: View {
 
 #if DEBUG
 #Preview("Detail – Source") {
-    ProfileDetailView(workspace: .previewDemo(), profileID: 101)
+    ProfileDetailView(workspace: .previewDemo(), profileKey: ProfileKey(platform: .macOS, id: 101))
         .frame(width: 800, height: 760)
 }
 
-#Preview("Detail – Wi-Fi source") {
-    ProfileDetailView(workspace: .previewDemo(), profileID: 105)
+#Preview("Detail – mobile source") {
+    ProfileDetailView(workspace: .previewDemo(), profileKey: ProfileKey(platform: .mobile, id: 201))
         .frame(width: 800, height: 760)
 }
 #endif

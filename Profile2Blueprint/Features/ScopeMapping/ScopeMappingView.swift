@@ -8,6 +8,8 @@ struct ScopeMappingView: View {
 
     private var report: EligibilityReport { session.report }
     private var locked: Bool { session.blueprintID != nil }
+    private var platform: ProfilePlatform { session.platform }
+    private var platformGroups: [PlatformGroup] { workspace.groups(for: platform) }
 
     var body: some View {
         ScrollView {
@@ -17,9 +19,9 @@ struct ScopeMappingView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                GroupBox("Classic computer groups") {
+                GroupBox("Classic \(platform.deviceNoun) groups") {
                     if report.scopeMapping.isEmpty {
-                        Text("This profile isn't scoped to any computer group.")
+                        Text("This profile isn't scoped to any \(platform.deviceNoun) group.")
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(4)
@@ -46,9 +48,9 @@ struct ScopeMappingView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         TextField("Filter groups", text: $groupSearch)
                             .textFieldStyle(.roundedBorder)
-                        let groups = workspace.groups.filter { groupSearch.isEmpty || $0.name.localizedCaseInsensitiveContains(groupSearch) }
+                        let groups = platformGroups.filter { groupSearch.isEmpty || $0.name.localizedCaseInsensitiveContains(groupSearch) }
                         if groups.isEmpty {
-                            Text(workspace.groups.isEmpty ? "No computer groups loaded." : "No groups match “\(groupSearch)”.")
+                            Text(platformGroups.isEmpty ? "No \(platform.deviceNoun) groups loaded." : "No groups match “\(groupSearch)”.")
                                 .foregroundStyle(.secondary)
                         }
                         ForEach(groups.prefix(200)) { group in
@@ -80,7 +82,7 @@ struct ScopeMappingView: View {
 
     private func mappingRow(_ entry: ScopeMappingEntry) -> some View {
         let candidates = entry.exactMatches.isEmpty
-            ? (entry.suggestions.isEmpty ? workspace.groups : entry.suggestions)
+            ? (entry.suggestions.isEmpty ? platformGroups : entry.suggestions)
             : entry.exactMatches
         let selected = candidates.first { session.selectedGroupIDs.contains($0.id) }
 
@@ -121,7 +123,7 @@ struct ScopeMappingView: View {
     }
 
     private var scopeWarnings: some View {
-        let kinds: Set<FindingKind> = [.noMappedGroup, .unmatchedGroups, .ambiguousGroups, .allComputers, .nonGroupTargets, .limitations, .exclusions]
+        let kinds: Set<FindingKind> = [.noMappedGroup, .unmatchedGroups, .ambiguousGroups, .allDevices, .nonGroupTargets, .limitations, .exclusions]
         let findings = session.effectiveReport.findings.filter { kinds.contains($0.kind) }
         return Group {
             if !findings.isEmpty {
@@ -166,7 +168,7 @@ struct ScopeMappingView: View {
 #if DEBUG
 #Preview("Scope – ambiguous") {
     let workspace = Workspace.previewDemo()
-    ScopeMappingView(workspace: workspace, session: workspace.session(for: 102)!)
+    ScopeMappingView(workspace: workspace, session: workspace.session(for: ProfileKey(platform: .macOS, id: 102))!)
         .frame(width: 800, height: 700)
 }
 #endif

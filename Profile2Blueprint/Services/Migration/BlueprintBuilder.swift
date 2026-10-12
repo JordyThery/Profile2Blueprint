@@ -20,23 +20,30 @@ nonisolated enum BlueprintBuilder {
     static let descriptionTokens: [(token: String, meaning: String)] = [
         ("{name}", "the classic profile's name"),
         ("{id}", "its Jamf Pro ID"),
+        ("{platform}", "“macOS” or “mobile device”"),
     ]
 
-    /// The description used before the template was configurable, kept as the default.
+    /// Rendered for a macOS profile this matches the pre-{platform} wording exactly.
     static let defaultDescriptionTemplate =
+        "Migrated from Jamf Pro classic {platform} configuration profile ID {id} (“{name}”) by Profile2Blueprint."
+
+    /// The default before the {platform} token existed. Tenants still on it are
+    /// upgraded on load; see `Tenant.init(from:)`.
+    static let descriptionTemplateV1 =
         "Migrated from Jamf Pro classic macOS configuration profile ID {id} (“{name}”) by Profile2Blueprint."
 
     /// Fills in `descriptionTokens` and trims to the API's limit. An empty template
     /// yields an empty description, which `build` sends as null.
-    static func description(_ template: String, profileName: String, profileID: Int) -> String {
+    static func description(_ template: String, profileName: String, profileID: Int, platform: ProfilePlatform) -> String {
         let filled = template
             .replacingOccurrences(of: "{name}", with: profileName)
             .replacingOccurrences(of: "{id}", with: String(profileID))
+            .replacingOccurrences(of: "{platform}", with: platform.descriptionNoun)
         return String(filled.prefix(maxDescriptionLength))
     }
 
     static func defaultDescription(for profile: ClassicProfile, template: String = defaultDescriptionTemplate) -> String {
-        description(template, profileName: profile.name, profileID: profile.id)
+        description(template, profileName: profile.name, profileID: profile.id, platform: profile.platform)
     }
 
     /// The `configuration` object of the `com.jamf.ddm-configuration-profile` component.
@@ -80,7 +87,7 @@ nonisolated enum BlueprintBuilder {
         case let .failure(error):
             problems.append(error.message)
         }
-        if profile.level != .system { problems.append("Only computer-level (System) profiles can be migrated.") }
+        if profile.level != .system { problems.append("Only device-level (System) profiles can be migrated.") }
 
         guard problems.isEmpty, let document else { throw BlueprintBuildError(problems: problems) }
 

@@ -21,8 +21,9 @@ enum DuplicateResolution {
 /// of each pipeline stage. Every network action goes through `MigrationPipeline`.
 @Observable
 final class MigrationSession: Identifiable {
-    let profileID: Int
-    var id: Int { profileID }
+    let key: ProfileKey
+    var id: ProfileKey { key }
+    var platform: ProfilePlatform { key.platform }
     private(set) var profile: ClassicProfile
     private(set) var report: EligibilityReport
     /// Weak back-reference: the workspace owns its sessions. Groups are snapshotted
@@ -79,7 +80,7 @@ final class MigrationSession: Identifiable {
     private(set) var isRestoring = false
 
     init(profile: ClassicProfile, report: EligibilityReport, workspace: Workspace) {
-        profileID = profile.id
+        key = profile.key
         self.profile = profile
         self.report = report
         self.workspace = workspace
@@ -92,16 +93,16 @@ final class MigrationSession: Identifiable {
         blueprintName = BlueprintBuilder.defaultName(for: profile, naming: workspace.environment.naming)
         blueprintDescription = BlueprintBuilder.defaultDescription(for: profile, template: workspace.environment.descriptionTemplate)
         selectedGroupIDs = ScopeMapper.automaticSelection(report.scopeMapping)
-        let profileID = profile.id
+        let key = profile.key
         let environment = workspace.environment
         let environmentKey = environment.environmentID ?? environment.displayName
         Task { [scopeBackups, sessionStates] in
-            if let existing = await scopeBackups.latest(profileID: profileID, environmentID: environment.environmentID,
+            if let existing = await scopeBackups.latest(key: key, environmentID: environment.environmentID,
                                                         environmentName: environment.displayName) {
                 self.scopeBackup = existing
                 self.unscopeStatus = .unscoped(existing.createdAt)
             }
-            if let saved = await sessionStates.record(environmentKey: environmentKey, profileID: profileID) {
+            if let saved = await sessionStates.record(environmentKey: environmentKey, key: key) {
                 await self.restore(from: saved)
             }
         }
@@ -213,8 +214,13 @@ final class MigrationSession: Identifiable {
             createdName = request.name
             persistSessionRecord()
             state = await pipeline.state
+            var message = "Created, not deployed. Scope: \(selectedGroups.map(\.name).joined(separator: ", "))."
+            let unlisted = profile.document.unrecognisedPayloadTypes
+            if !unlisted.isEmpty {
+                message += " The API accepted \(unlisted.joined(separator: ", ")), which the app's payload-type registry doesn't list; the registry may have grown."
+            }
             history.record(.create, environment: environment, profile: profile, blueprintID: created.id, blueprintName: request.name,
-                                     result: .success, message: "Created, not deployed. Scope: \(selectedGroups.map(\.name).joined(separator: ", ")).")
+                                     result: .success, message: message)
             try await verifyStage()
         }
     }
@@ -232,7 +238,7 @@ final class MigrationSession: Identifiable {
             await perform { [self] in
                 try await pipeline.adoptExisting(id: existing.id)
                 blueprintID = existing.id
-                createdName = existing.name
+                createdName = existing.name ?? blueprintName
                 persistSessionRecord()
                 state = await pipeline.state
                 history.record(.adoptExisting, environment: environment, profile: profile, blueprintID: existing.id,
@@ -301,7 +307,7 @@ final class MigrationSession: Identifiable {
 
     private func unscopeStage() async throws {
         do {
-            let result = try await ClassicScopeService.unscope(profileID: profileID, blueprintID: blueprintID,
+            let result = try await ClassicScopeService.unscope(key: key, blueprintID: blueprintID,
                                                               environment: environment, backups: scopeBackups)
             scopeBackup = result.backup
             unscopeStatus = .unscoped(result.backup.createdAt)
@@ -345,7 +351,8 @@ final class MigrationSession: Identifiable {
         guard let blueprintID else { return }
         let record = PersistedMigration(
             environmentKey: environmentKey,
-            profileID: profileID,
+            platform: platform,
+            profileID: key.id,
             blueprintID: blueprintID,
             blueprintName: createdName ?? blueprintName,
             selectedGroupIDs: selectedGroupIDs,
@@ -375,7 +382,7 @@ final class MigrationSession: Identifiable {
                 try await verifyStage()
             } catch {
                 if case APIError.http(404, _, _, _, _) = error {
-                    await sessionStates.remove(environmentKey: environmentKey, profileID: profileID)
+                    await sessionStates.remove(environmentKey: environmentKey, key: key)
                     blueprintID = nil
                     createdName = nil
                     state = .fetched
@@ -512,4 +519,15 @@ final class MigrationSession: Identifiable {
 
 extension Result<ProfileDocument, PlistParseError> {
     nonisolated var payloadCount: Int { (try? get())?.payloads.count ?? 0 }
+
+    /// Payload types outside the app's known registry (neither supported nor blocked).
+    nonisolated var unrecognisedPayloadTypes: [String] {
+        let types = (try? get())?.payloads.compactMap(\.type) ?? []
+        var seen = Set<String>()
+        return types.filter {
+            !EligibilityChecker.supportedPayloadTypes.contains($0)
+                && !EligibilityChecker.blockedPayloadTypes.contains($0)
+                && seen.insert($0).inserted
+        }
+    }
 }

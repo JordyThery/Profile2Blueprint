@@ -23,6 +23,22 @@ struct ProfilesView: View {
     }
 }
 
+enum PlatformFilter: String, CaseIterable, Identifiable {
+    case all = "All"
+    case macOS = "macOS"
+    case mobile = "Mobile"
+
+    var id: String { rawValue }
+
+    func includes(_ platform: ProfilePlatform) -> Bool {
+        switch self {
+        case .all: true
+        case .macOS: platform == .macOS
+        case .mobile: platform == .mobile
+        }
+    }
+}
+
 enum StatusFilter: String, CaseIterable, Identifiable {
     case all = "All"
     case ready = "Ready"
@@ -43,18 +59,20 @@ enum StatusFilter: String, CaseIterable, Identifiable {
 
 private struct ProfilesContent: View {
     let workspace: Workspace
-    @State private var selection = Set<Int>()
+    @State private var selection = Set<ProfileKey>()
     @State private var search = ""
     @State private var filter: StatusFilter = .all
+    @State private var platformFilter: PlatformFilter = .all
     @State private var showingBatch = false
 
     private var filtered: [ClassicProfileSummary] {
         workspace.summaries.filter { summary in
-            filter.includes(workspace.status(for: summary.id))
+            platformFilter.includes(summary.platform)
+                && filter.includes(workspace.status(for: summary.key))
                 && (search.isEmpty
                     || summary.name.localizedCaseInsensitiveContains(search)
-                    || String(summary.id) == search
-                    || (workspace.profiles[summary.id]?.document.payloadTypes.contains { $0.localizedCaseInsensitiveContains(search) } ?? false))
+                    || String(summary.profileID) == search
+                    || (workspace.profiles[summary.key]?.document.payloadTypes.contains { $0.localizedCaseInsensitiveContains(search) } ?? false))
         }
     }
 
@@ -83,7 +101,7 @@ private struct ProfilesContent: View {
             }
         }
         .sheet(isPresented: $showingBatch) {
-            BatchMigrationView(workspace: workspace, profileIDs: selection.sorted())
+            BatchMigrationView(workspace: workspace, profileKeys: selection.sorted())
         }
         .onAppear { workspace.loadIfNeeded() }
     }
@@ -98,6 +116,15 @@ private struct ProfilesContent: View {
             .pickerStyle(.segmented)
             .labelsHidden()
 
+            Picker("Platform", selection: $platformFilter) {
+                ForEach(PlatformFilter.allCases) { option in
+                    Text(option.rawValue).tag(option)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .help("Show macOS profiles, mobile device profiles, or both")
+
             switch workspace.listPhase {
             case .loading:
                 ProgressView("Loading profiles…").controlSize(.small)
@@ -108,7 +135,7 @@ private struct ProfilesContent: View {
                     Text("Checking \(workspace.detailsLoaded) of \(workspace.summaries.count) profiles…").font(.caption)
                 }
             default:
-                Text("\(workspace.summaries.count) profiles · \(workspace.groups.count) computer groups")
+                Text("\(workspace.summaries.count) profiles · \(workspace.groups.count) device groups")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -135,17 +162,17 @@ private struct ProfilesContent: View {
         List(filtered, selection: $selection) { summary in
             ProfileRow(
                 summary: summary,
-                profile: workspace.profiles[summary.id],
-                report: workspace.reports[summary.id],
-                error: workspace.profileErrors[summary.id],
+                profile: workspace.profiles[summary.key],
+                report: workspace.reports[summary.key],
+                error: workspace.profileErrors[summary.key],
                 isChecked: Binding(
-                    get: { selection.contains(summary.id) },
+                    get: { selection.contains(summary.key) },
                     set: { checked in
-                        if checked { selection.insert(summary.id) } else { selection.remove(summary.id) }
+                        if checked { selection.insert(summary.key) } else { selection.remove(summary.key) }
                     }
                 )
             )
-            .tag(summary.id)
+            .tag(summary.key)
         }
         .overlay {
             if workspace.listPhase == .loaded && filtered.isEmpty {
@@ -156,9 +183,9 @@ private struct ProfilesContent: View {
 
     @ViewBuilder
     private var detail: some View {
-        if selection.count == 1, let id = selection.first {
-            ProfileDetailView(workspace: workspace, profileID: id)
-                .id(id)
+        if selection.count == 1, let key = selection.first {
+            ProfileDetailView(workspace: workspace, profileKey: key)
+                .id(key)
         } else if selection.count > 1 {
             ContentUnavailableView {
                 Label("\(selection.count) Profiles Selected", systemImage: "square.stack.3d.up")
@@ -172,7 +199,7 @@ private struct ProfilesContent: View {
             ContentUnavailableView(
                 "Select a Profile",
                 systemImage: "doc.badge.gearshape",
-                description: Text("Choose a classic macOS configuration profile to inspect and migrate. The app reads Jamf Pro; it never changes it unless classic scope cleanup is explicitly enabled.")
+                description: Text("Choose a classic configuration profile to inspect and migrate. The app reads Jamf Pro; it never changes it unless classic scope cleanup is explicitly enabled.")
             )
         }
     }
@@ -199,6 +226,11 @@ private struct ProfileRow: View {
             } else {
                 EligibilityBadge(status: report?.status, compact: true)
             }
+            Image(systemName: summary.platform.symbol)
+                .foregroundStyle(.secondary)
+                .frame(width: 18)
+                .help(summary.platform.displayName)
+                .accessibilityLabel(summary.platform.displayName)
             VStack(alignment: .leading, spacing: 2) {
                 Text(summary.name)
                     .lineLimit(2)
@@ -219,7 +251,7 @@ private struct ProfileRow: View {
     }
 
     private var subtitle: String {
-        var parts = ["#\(summary.id)"]
+        var parts = ["#\(summary.profileID)"]
         if let profile {
             let types = profile.document.payloadTypes
             parts.append("\(types.count) payload\(types.count == 1 ? "" : "s")")

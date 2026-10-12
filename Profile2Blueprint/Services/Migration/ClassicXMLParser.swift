@@ -1,20 +1,20 @@
 import Foundation
 
-/// Parses Classic API XML (`/osxconfigurationprofiles…`) into models.
+/// Parses Classic API XML (both profile families) into models.
 ///
 /// The payload plist arrives XML-escaped inside `general/payloads`; reading the
 /// element's string value unescapes it before `PlistParser` sees it.
 nonisolated enum ClassicXMLParser {
-    static func parseProfileList(_ data: Data) throws -> [ClassicProfileSummary] {
-        let root = try rootElement(data, expected: "os_x_configuration_profiles")
-        return root.elements(forName: "os_x_configuration_profile").compactMap { element in
+    static func parseProfileList(_ data: Data, platform: ProfilePlatform) throws -> [ClassicProfileSummary] {
+        let root = try rootElement(data, expected: platform.listRootElement)
+        return root.elements(forName: platform.profileRootElement).compactMap { element in
             guard let id = element.intValue(of: "id") else { return nil }
-            return ClassicProfileSummary(id: id, name: element.textValue(of: "name") ?? "")
+            return ClassicProfileSummary(platform: platform, profileID: id, name: element.textValue(of: "name") ?? "")
         }
     }
 
-    static func parseProfile(_ data: Data) throws -> ClassicProfile {
-        let root = try rootElement(data, expected: "os_x_configuration_profile")
+    static func parseProfile(_ data: Data, platform: ProfilePlatform) throws -> ClassicProfile {
+        let root = try rootElement(data, expected: platform.profileRootElement)
         guard let general = root.child("general") else {
             throw APIError.decoding("Profile XML has no <general> element.")
         }
@@ -40,6 +40,7 @@ nonisolated enum ClassicXMLParser {
         }
 
         return ClassicProfile(
+            platform: platform,
             id: id,
             name: general.textValue(of: "name") ?? "",
             description: general.textValue(of: "description") ?? "",
@@ -51,7 +52,7 @@ nonisolated enum ClassicXMLParser {
             redeployOnUpdate: general.textValue(of: "redeploy_on_update") ?? "",
             uuid: general.textValue(of: "uuid") ?? "",
             payloadsPlist: payloads,
-            scope: root.child("scope").map(parseScope) ?? ClassicScope(),
+            scope: root.child("scope").map { parseScope($0, platform: platform) } ?? ClassicScope(),
             rawScopeXML: root.child("scope")?.xmlString ?? "<scope/>",
             document: document
         )
@@ -60,25 +61,28 @@ nonisolated enum ClassicXMLParser {
     // MARK: - Scope
 
     /// Parses a standalone `<scope>` element (e.g. a saved backup).
-    static func parseScopeXML(_ xml: String) throws -> ClassicScope {
+    static func parseScopeXML(_ xml: String, platform: ProfilePlatform) throws -> ClassicScope {
         let document = try XMLDocument(xmlString: xml, options: [.nodePreserveWhitespace])
         guard let root = document.rootElement(), root.name == "scope" else {
             throw APIError.decoding("Not a <scope> element.")
         }
-        return parseScope(root)
+        return parseScope(root, platform: platform)
     }
 
+    /// Scope children with a dedicated field, for either platform: everything else
+    /// lands in `otherTargets`.
     private static let primaryScopeKinds: Set<String> = [
-        "all_computers", "all_jss_users", "computers", "computer_groups", "buildings",
-        "departments", "limitations", "exclusions",
+        "all_computers", "computers", "computer_groups",
+        "all_mobile_devices", "mobile_devices", "mobile_device_groups",
+        "all_jss_users", "buildings", "departments", "limitations", "exclusions",
     ]
 
-    private static func parseScope(_ element: XMLElement) -> ClassicScope {
+    private static func parseScope(_ element: XMLElement, platform: ProfilePlatform) -> ClassicScope {
         var scope = ClassicScope()
-        scope.allComputers = element.textValue(of: "all_computers") == "true"
+        scope.allDevices = element.textValue(of: platform.allDevicesElement) == "true"
         scope.allJSSUsers = element.textValue(of: "all_jss_users") == "true"
-        scope.computerGroups = references(in: element.child("computer_groups"))
-        scope.computers = references(in: element.child("computers"))
+        scope.deviceGroups = references(in: element.child(platform.deviceGroupsElement))
+        scope.devices = references(in: element.child(platform.devicesElement))
         scope.buildings = references(in: element.child("buildings"))
         scope.departments = references(in: element.child("departments"))
         scope.otherTargets = buckets(in: element) { !primaryScopeKinds.contains($0) }

@@ -72,8 +72,8 @@ nonisolated struct JamfProLinks: Hashable, Sendable {
     }
 
     /// Opens read-only (`o=r`).
-    func classicProfile(id: Int) -> URL {
-        base.appending(path: "OSXConfigurationProfiles.html")
+    func classicProfile(platform: ProfilePlatform, id: Int) -> URL {
+        base.appending(path: platform.jamfProProfilePage)
             .appending(queryItems: [URLQueryItem(name: "id", value: String(id)), URLQueryItem(name: "o", value: "r")])
     }
 
@@ -151,6 +151,11 @@ nonisolated struct Tenant: Codable, Hashable, Identifiable, Sendable {
         naming = try container.decodeIfPresent(BlueprintNaming.self, forKey: .naming) ?? .default
         descriptionTemplate = try container.decodeIfPresent(String.self, forKey: .descriptionTemplate)
             ?? BlueprintBuilder.defaultDescriptionTemplate
+        // Tenants still on the pre-{platform} default move to the new one; edited
+        // templates are left alone.
+        if descriptionTemplate == BlueprintBuilder.descriptionTemplateV1 {
+            descriptionTemplate = BlueprintBuilder.defaultDescriptionTemplate
+        }
         jamfProURL = try container.decodeIfPresent(String.self, forKey: .jamfProURL) ?? ""
     }
 

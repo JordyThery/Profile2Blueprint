@@ -129,7 +129,7 @@ private struct HistoryDetailPane: View {
             Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 3) {
                 GridRow {
                     field("Tenant", record.tenantName)
-                    field("Source profile", "\(record.sourceProfileName) (#\(record.sourceProfileID))")
+                    field("Source profile", "\(record.sourceProfileName) (\(record.platform.displayName) #\(record.sourceProfileID))")
                     field("Result", record.result.rawValue.capitalized)
                 }
                 if record.blueprintName != nil || record.blueprintID != nil {
@@ -165,6 +165,7 @@ private struct HistoryDetailPane: View {
             "Time: \(record.timestamp.formatted(.iso8601))",
             "Tenant: \(record.tenantName)",
             "Action: \(record.action.title)",
+            "Platform: \(record.platform.displayName)",
             "Source profile: \(record.sourceProfileName) (#\(record.sourceProfileID))",
             "Result: \(record.result.rawValue)",
         ]

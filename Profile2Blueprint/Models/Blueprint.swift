@@ -60,14 +60,17 @@ nonisolated struct DeploymentState: Decodable, Hashable, Sendable {
     }
 }
 
-/// Entry of `GET /blueprints/v1/blueprints`.
+/// Entry of `GET /blueprints/v1/blueprints`. `name` can be null on the wire
+/// (seen live); a nameless blueprint is never a duplicate of anything.
 nonisolated struct BlueprintOverview: Decodable, Hashable, Sendable, Identifiable {
     var id: String
-    var name: String
+    var name: String?
     var description: String?
     var created: String?
     var updated: String?
     var deploymentState: DeploymentState?
+
+    var displayName: String { name?.isEmpty == false ? name! : "Unnamed blueprint" }
 }
 
 nonisolated struct BlueprintList: Decodable, Sendable {
@@ -93,7 +96,7 @@ nonisolated struct BlueprintStepDetail: Decodable, Hashable, Sendable {
 /// `GET /blueprints/v1/blueprints/{id}`.
 nonisolated struct BlueprintDetail: Decodable, Hashable, Sendable, Identifiable {
     var id: String
-    var name: String
+    var name: String?
     var description: String?
     var scope: BlueprintScope?
     var created: String?

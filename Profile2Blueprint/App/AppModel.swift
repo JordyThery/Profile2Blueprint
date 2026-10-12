@@ -235,13 +235,13 @@ final class AppModel {
         )
     }
 
-    /// Requests a token and lists computer device groups.
+    /// Requests a token and lists platform device groups.
     func testConnection(_ tenant: Tenant, secretOverride: String? = nil) async {
         connectionStates[tenant.id] = .testing
         activity.app("Testing connection to “\(tenant.displayName)”.", environment: tenant.displayName)
         do {
             let client = try makeClient(for: tenant, secretOverride: secretOverride)
-            let groups = try await LiveDeviceGroupsAPI(client: client).computerGroups()
+            let groups = try await LiveDeviceGroupsAPI(client: client).allGroups()
             connectionStates[tenant.id] = .succeeded(groups: groups, at: Date())
         } catch is CancellationError {
             connectionStates[tenant.id] = .idle

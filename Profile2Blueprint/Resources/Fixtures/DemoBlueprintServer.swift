@@ -38,7 +38,7 @@ actor DemoBlueprintServer {
 
     func list(named name: String) -> [BlueprintOverview] {
         blueprints.values.map(\.detail)
-            .filter { $0.name.caseInsensitiveCompare(name) == .orderedSame }
+            .filter { $0.name?.caseInsensitiveCompare(name) == .orderedSame }
             .map { BlueprintOverview(id: $0.id, name: $0.name, description: $0.description, created: $0.created, updated: $0.updated, deploymentState: $0.deploymentState) }
     }
 
@@ -131,6 +131,9 @@ actor DemoBlueprintServer {
             // Observed live: these payload-level keys are not stored.
             item["PayloadDescription"] = nil
             item["PayloadEnabled"] = nil
+            // Observed live (via jamf-cli's wire probes): the API overwrites each
+            // payload's UUID with its identifier.
+            if let identifier = item["payloadIdentifier"] { item["payloadUUID"] = identifier }
             if item["payloadVersion"] == nil { item["payloadVersion"] = .integer(1) }
             if item["payloadOrganization"] == nil { item["payloadOrganization"] = .string("Jamf") }
             if item["payloadDisplayName"] == nil {

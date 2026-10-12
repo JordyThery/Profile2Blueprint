@@ -9,13 +9,17 @@ nonisolated struct ClassicReference: Hashable, Sendable, Identifiable {
     var identity: String { id.map(String.init) ?? "name:\(name)" }
 }
 
-/// Entry in `GET /osxconfigurationprofiles`.
+/// Entry in a classic profile list (`GET /proclassic/{resource}`).
 nonisolated struct ClassicProfileSummary: Hashable, Sendable, Identifiable {
-    var id: Int
+    var platform: ProfilePlatform
+    var profileID: Int
     var name: String
+
+    var key: ProfileKey { ProfileKey(platform: platform, id: profileID) }
+    var id: ProfileKey { key }
 }
 
-/// `general/level`. The Classic API reports computer-level profiles as `System`.
+/// `general/level`. The Classic API reports device-level profiles as `System`.
 nonisolated enum ProfileLevel: Hashable, Sendable {
     case system
     case user
@@ -23,7 +27,7 @@ nonisolated enum ProfileLevel: Hashable, Sendable {
 
     init(_ raw: String) {
         switch raw.lowercased() {
-        case "system", "computer": self = .system
+        case "system", "computer", "device", "device level": self = .system
         case "user": self = .user
         default: self = .other(raw)
         }
@@ -31,7 +35,7 @@ nonisolated enum ProfileLevel: Hashable, Sendable {
 
     var displayName: String {
         switch self {
-        case .system: "Computer (System)"
+        case .system: "Device (System)"
         case .user: "User"
         case let .other(raw): raw
         }
@@ -52,11 +56,13 @@ nonisolated struct ScopeBucket: Hashable, Sendable, Identifiable {
     }
 }
 
+/// Scope targets, with the platform-specific element names mapped onto one shape:
+/// `all_computers`/`all_mobile_devices` → `allDevices`, and so on.
 nonisolated struct ClassicScope: Hashable, Sendable {
-    var allComputers = false
+    var allDevices = false
     var allJSSUsers = false
-    var computerGroups: [ClassicReference] = []
-    var computers: [ClassicReference] = []
+    var deviceGroups: [ClassicReference] = []
+    var devices: [ClassicReference] = []
     var buildings: [ClassicReference] = []
     var departments: [ClassicReference] = []
     /// Other non-empty targets (JSS users / user groups).
@@ -70,9 +76,10 @@ nonisolated struct ClassicScope: Hashable, Sendable {
     var hasLimitations: Bool { !limitations.isEmpty }
 }
 
-/// A Jamf Pro classic macOS configuration profile as returned by
-/// `GET /osxconfigurationprofiles/id/{id}`.
+/// A Jamf Pro classic configuration profile as returned by
+/// `GET /proclassic/{resource}/id/{id}`.
 nonisolated struct ClassicProfile: Hashable, Sendable, Identifiable {
+    var platform: ProfilePlatform
     var id: Int
     var name: String
     var description: String
@@ -92,6 +99,8 @@ nonisolated struct ClassicProfile: Hashable, Sendable, Identifiable {
 
     /// The parsed payload plist, or the reason it couldn't be parsed.
     var document: Result<ProfileDocument, PlistParseError>
+
+    var key: ProfileKey { ProfileKey(platform: platform, id: id) }
 }
 
 /// One entry of `PayloadContent`.

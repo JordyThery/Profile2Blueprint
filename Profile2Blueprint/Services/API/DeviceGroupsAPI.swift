@@ -6,9 +6,10 @@ nonisolated protocol DeviceGroupsAPI: Sendable {
 }
 
 extension DeviceGroupsAPI {
-    /// macOS migrations only target computer groups.
-    nonisolated func computerGroups() async throws -> [PlatformGroup] {
-        try await listGroups(filter: #"deviceType=="COMPUTER""#)
+    /// Every group, unfiltered. Migrations match each profile against groups of its
+    /// own platform; fetching once avoids a second paginated request per load.
+    nonisolated func allGroups() async throws -> [PlatformGroup] {
+        try await listGroups(filter: nil)
     }
 }
 
