@@ -29,7 +29,7 @@ struct AboutView: View {
                     .font(.title3.weight(.medium))
                     .padding(.top, 6)
 
-                Text("Migrates Jamf Pro classic macOS configuration profiles into Jamf Platform Blueprints using the Apple-supported in-place Classic → DDM transform — reviewable, verifiable and non-destructive.")
+                Text("Migrates Jamf Pro classic configuration profiles — macOS and mobile device — into Jamf Platform Blueprints using the Apple-supported in-place Classic → DDM transform — reviewable, verifiable and non-destructive.")
                     .multilineTextAlignment(.center)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: 480)
