@@ -1,4 +1,5 @@
 import AppKit
+import JTKit
 import SwiftUI
 
 @main struct Profile2BlueprintApp: App {

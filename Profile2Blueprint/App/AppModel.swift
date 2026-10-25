@@ -1,4 +1,5 @@
 import Foundation
+import JTKit
 import Observation
 
 /// Result of the most recent "Test connection" for a tenant.
@@ -53,7 +54,10 @@ final class AppModel {
         let activityLog = ActivityLog(store: activity)
         self.activity = activityLog
         self.history = HistoryLog(store: history, activity: activityLog)
-        updates = UpdateChecker(activity: activityLog)
+        updates = UpdateChecker(configuration: .profile2Blueprint) { line in
+            // JTKit reports plain lines; failures keep their warning level in Activity.
+            activityLog.app(line, level: line.hasPrefix("Update check failed") ? .warning : .info)
+        }
         let configuration = store.load()
         tenants = configuration.tenants
         currentTenantID = configuration.currentTenantID.flatMap { id in
@@ -249,4 +253,14 @@ final class AppModel {
             connectionStates[tenant.id] = .failed(ErrorReport(error))
         }
     }
+}
+
+extension UpdateConfiguration {
+    /// Where Profile2Blueprint's releases live. The saved-settings keys keep JTKit's
+    /// defaults, which are the names this app has always used.
+    static let profile2Blueprint = UpdateConfiguration(
+        owner: "JordyThery",
+        repository: "Profile2Blueprint",
+        appName: "Profile2Blueprint"
+    )
 }

@@ -6,6 +6,10 @@
 	objectVersion = 90;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		087B2E9C308E37F000D0CB8A /* JTKit in Frameworks */ = {isa = PBXBuildFile; productRef = 0A0000000000000000000002 /* JTKit */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		000000000000000000000120 /* Profile2Blueprint.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Profile2Blueprint.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		08540C31306E587800F03FA7 /* Profile2BlueprintTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = Profile2BlueprintTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -28,6 +32,7 @@
 		000000000000000130000000 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
+				087B2E9C308E37F000D0CB8A /* JTKit in Frameworks */,
 			);
 		};
 		08540C2E306E587800F03FA7 /* Frameworks */ = {
@@ -73,6 +78,9 @@
 				000000000000000000000010 /* Profile2Blueprint */,
 			);
 			name = Profile2Blueprint;
+			packageProductDependencies = (
+				0A0000000000000000000002 /* JTKit */,
+			);
 			productName = Profile2Blueprint;
 			productReference = 000000000000000000000120 /* Profile2Blueprint.app */;
 			productType = "com.apple.product-type.application";
@@ -122,6 +130,9 @@
 			);
 			mainGroup = 000000000000000000000001;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				0A0000000000000000000001 /* XCRemoteSwiftPackageReference "JTKit" */,
+			);
 			preferredProjectObjectVersion = 90;
 			productRefGroup = 000000000000000000000020 /* Products */;
 			projectDirPath = "";
@@ -432,6 +443,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		0A0000000000000000000001 /* XCRemoteSwiftPackageReference "JTKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/JordyThery/JTKit.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.2.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		0A0000000000000000000002 /* JTKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0A0000000000000000000001 /* XCRemoteSwiftPackageReference "JTKit" */;
+			productName = JTKit;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 000000000000000000000000 /* Project object */;
 }

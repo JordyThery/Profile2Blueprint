@@ -1,4 +1,5 @@
 import AppKit
+import JTKit
 import SwiftUI
 
 /// App information and credits.
@@ -71,7 +72,7 @@ struct AboutView: View {
 #if DEBUG
 #Preview {
     AboutView()
-        .environment(UpdateChecker())
+        .environment(UpdateChecker(configuration: .profile2Blueprint))
         .frame(width: 700, height: 560)
 }
 #endif
