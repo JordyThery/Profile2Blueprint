@@ -45,20 +45,27 @@ struct TenantPicker: View {
     }
 }
 
-/// The same choice in the menu bar's Tenant menu, as every toolbar item needs a
-/// menu bar command too.
+/// The same choice in the menu bar, as every toolbar item needs a menu bar
+/// command too: JTKit's shared Connection menu (the tenants, then Edit
+/// Tenants…), and Offline Demo Mode in the View menu.
 struct TenantCommands: Commands {
     let model: AppModel
 
     var body: some Commands {
-        CommandMenu("Tenant") {
-            TenantMenuItems(model: model)
+        ConnectionCommands(store: model.connections,
+                           selection: tenantSelection(model),
+                           editTitle: "Edit Tenants…",
+                           itemTitle: \.displayName)
+        CommandGroup(after: .toolbar) {
+            Toggle("Offline Demo Mode", isOn: Binding(
+                get: { model.isDemoMode },
+                set: { model.isDemoMode = $0 }))
         }
     }
 }
 
-/// The tenants (one checked), Offline Demo Mode and Edit Tenants…, shared by
-/// the toolbar picker and the Tenant menu.
+/// The tenants (one checked), Offline Demo Mode and Edit Tenants…, for the
+/// toolbar picker.
 private struct TenantMenuItems: View {
     let model: AppModel
 
@@ -68,7 +75,7 @@ private struct TenantMenuItems: View {
         if model.tenants.isEmpty {
             Text("No tenants yet")
         } else {
-            Picker("Tenant", selection: tenantSelection) {
+            Picker("Tenant", selection: tenantSelection(model)) {
                 ForEach(model.tenants) { tenant in
                     Text(tenant.displayName).tag(Optional(tenant.id))
                 }
@@ -82,16 +89,18 @@ private struct TenantMenuItems: View {
             Text("Edit Tenants…")
         }
     }
+}
 
-    /// No tenant is checked in demo mode. Choosing one leaves demo mode; the
-    /// current tenant itself stays as it was while demo mode is on.
-    private var tenantSelection: Binding<UUID?> {
-        Binding(
-            get: { model.isDemoMode ? nil : model.currentTenantID },
-            set: { id in
-                guard let id else { return }
-                if model.isDemoMode { model.isDemoMode = false }
-                model.makeCurrent(id)
-            })
-    }
+/// The current tenant, as the toolbar picker and the Connection menu choose
+/// it. No tenant is checked in demo mode. Choosing one leaves demo mode; the
+/// current tenant itself stays as it was while demo mode is on.
+@MainActor
+private func tenantSelection(_ model: AppModel) -> Binding<UUID?> {
+    Binding(
+        get: { model.isDemoMode ? nil : model.currentTenantID },
+        set: { id in
+            guard let id else { return }
+            if model.isDemoMode { model.isDemoMode = false }
+            model.makeCurrent(id)
+        })
 }
