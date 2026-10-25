@@ -1,4 +1,3 @@
-import AppKit
 import JTKit
 import SwiftUI
 
@@ -15,25 +14,24 @@ import SwiftUI
         }
         .defaultSize(width: 1100, height: 720)
         .commands {
-            CommandGroup(replacing: .appInfo) {
-                Button("About Profile2Blueprint") {
-                    NSApplication.shared.orderFrontStandardAboutPanel(options: [
-                        .credits: NSAttributedString(
-                            string: "Created by Jordy Thery",
-                            attributes: [.font: NSFont.systemFont(ofSize: 11), .paragraphStyle: centered]
-                        ),
-                    ])
-                }
-            }
-            CommandGroup(after: .appInfo) {
-                Button("Check for Updates…") { model.updates.checkManually() }
-            }
+            AppInfoCommands(appName: "Profile2Blueprint") { model.updates.checkManually() }
         }
+        // General (Appearance) and Updates; tenants stay in the sidebar for now.
+        SettingsWindow(updates: model.updates)
+        AboutWindow(configuration: .profile2Blueprint)
     }
+}
 
-    private var centered: NSParagraphStyle {
-        let style = NSMutableParagraphStyle()
-        style.alignment = .center
-        return style
-    }
+/// What the About window shows (JTKit's `AboutWindow`).
+extension AboutConfiguration {
+    static let profile2Blueprint = AboutConfiguration(
+        appName: "Profile2Blueprint",
+        copyright: AboutCopyright(year: "2026", holder: "Jordy Thery"),
+        author: "Created by Jordy Thery",
+        summary: "Migrates Jamf Pro classic configuration profiles — macOS and mobile device — into Jamf Platform Blueprints using the Apple-supported in-place Classic → DDM transform — reviewable, verifiable and non-destructive.",
+        links: [
+            AboutLink("github.com/JordyThery/Profile2Blueprint", address: "https://github.com/JordyThery/Profile2Blueprint"),
+        ].compactMap { $0 },
+        disclaimer: "Verify every migration on a test device before fleet-wide use."
+    )
 }

@@ -7,7 +7,6 @@ enum SidebarItem: Hashable {
     case profiles
     case history
     case activity
-    case about
 }
 
 struct ContentView: View {
@@ -49,11 +48,6 @@ struct ContentView: View {
                     Label("Activity", systemImage: "list.bullet.rectangle")
                         .tag(SidebarItem.activity)
                 }
-
-                Section {
-                    Label("About", systemImage: "info.circle")
-                        .tag(SidebarItem.about)
-                }
             }
             .safeAreaInset(edge: .bottom) {
                 Toggle(isOn: $model.isDemoMode) {
@@ -80,8 +74,6 @@ struct ContentView: View {
                 HistoryView()
             case .activity:
                 ActivityView()
-            case .about:
-                AboutView()
             case nil:
                 ContentUnavailableView(
                     "Connect a Tenant",
