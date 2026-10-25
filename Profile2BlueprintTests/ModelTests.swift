@@ -28,46 +28,6 @@ struct TenantTests {
         #expect(valid.validationIssues.isEmpty)
         #expect(valid.normalizedEnvironmentID == "e77c1408-10c8-4007-b177-abc9157fbcaa")
     }
-
-    @Test("Tenant store round-trips without writing secrets")
-    func storeRoundTrip() throws {
-        let url = FileManager.default.temporaryDirectory.appending(path: "p2b-\(UUID().uuidString)/tenants.json")
-        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
-        let store = TenantStore(fileURL: url)
-        let tenant = Tenant(name: "Prod", region: .eu, environmentID: UUID().uuidString, clientID: "client")
-        try store.save(TenantConfiguration(tenants: [tenant], currentTenantID: tenant.id))
-
-        #expect(store.load() == TenantConfiguration(tenants: [tenant], currentTenantID: tenant.id))
-        let text = try String(contentsOf: url, encoding: .utf8)
-        #expect(!text.localizedCaseInsensitiveContains("secret"))
-    }
-
-    @MainActor
-    @Test("AppModel stores the secret in the secret store, not the tenant file")
-    func appModelSecrets() throws {
-        let url = FileManager.default.temporaryDirectory.appending(path: "p2b-\(UUID().uuidString)/tenants.json")
-        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
-        let secrets = InMemorySecretStore()
-        let model = AppModel(
-            store: TenantStore(fileURL: url),
-            secrets: secrets,
-            history: HistoryStore(fileURL: url.deletingLastPathComponent().appending(path: "history.json")),
-            demoMode: false
-        )
-
-        var tenant = model.addTenant()
-        #expect(model.currentTenantID == tenant.id)
-        tenant.clientID = "client"
-        model.save(tenant, secret: "hunter2")
-
-        #expect(try secrets.secret(for: tenant.id.uuidString) == "hunter2")
-        #expect(model.hasStoredSecret(for: tenant.id))
-        #expect(try !String(contentsOf: url, encoding: .utf8).contains("hunter2"))
-
-        model.delete(tenant.id)
-        #expect(try secrets.secret(for: tenant.id.uuidString) == nil)
-        #expect(model.currentTenantID == nil)
-    }
 }
 
 @Suite("Redaction")

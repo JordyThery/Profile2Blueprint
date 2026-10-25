@@ -15,9 +15,13 @@ import SwiftUI
         .defaultSize(width: 1100, height: 720)
         .commands {
             AppInfoCommands(appName: "Profile2Blueprint") { model.updates.checkManually() }
+            TenantCommands(model: model)
         }
-        // General (Appearance) and Updates; tenants stay in the sidebar for now.
-        SettingsWindow(updates: model.updates)
+        // General (Appearance), Connections (the tenants) and Updates. Every tab
+        // has a name, so "Edit Tenants…" can open Connections.
+        SettingsWindow(updates: model.updates, opensTabsByName: true) {
+            TenantSettingsTab(model: model)
+        }
         AboutWindow(configuration: .profile2Blueprint)
     }
 }

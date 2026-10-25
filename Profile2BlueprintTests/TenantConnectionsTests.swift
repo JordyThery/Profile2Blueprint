@@ -1,0 +1,260 @@
+import Foundation
+import JTKit
+import JTKitTestSupport
+import Testing
+@testable import Profile2Blueprint
+
+/// tenants.json as the app wrote it before JTKit's connections (same shape and
+/// formatting as a real one, with made-up values).
+private let savedBeforeJTKit = #"""
+{
+  "currentTenantID" : "CF96D75C-0E79-4B25-ADD2-6F98E1E819C7",
+  "tenants" : [
+    {
+      "allowClassicScopeChanges" : true,
+      "clientID" : "11111111-aaaa-bbbb-cccc-222222222222",
+      "descriptionTemplate" : "Migrated from Jamf Pro classic {platform} configuration profile ID {id} (“{name}”) by Profile2Blueprint.",
+      "environmentID" : "e77c1408-10c8-4007-b177-abc9157fbcaa",
+      "id" : "2593A69B-7002-4E7B-83CC-D3BE4527E817",
+      "jamfProURL" : "https:\/\/example.jamfcloud.com",
+      "name" : "Jamf Pro",
+      "naming" : {
+        "prefix" : "",
+        "suffix" : " (migrated)"
+      },
+      "region" : "eu"
+    },
+    {
+      "allowClassicScopeChanges" : false,
+      "clientID" : "33333333-aaaa-bbbb-cccc-444444444444",
+      "descriptionTemplate" : "Migrated from Jamf Pro classic {platform} configuration profile ID {id} (“{name}”) by Profile2Blueprint.",
+      "environmentID" : "a1b2c3d4-10c8-4007-b177-abc9157fbcaa",
+      "hostOverride" : "us1.api.stage.platform.jamflabs.com",
+      "id" : "CF96D75C-0E79-4B25-ADD2-6F98E1E819C7",
+      "jamfProURL" : "",
+      "name" : "Sandbox",
+      "naming" : {
+        "prefix" : "TEST - ",
+        "suffix" : ""
+      },
+      "region" : "us"
+    }
+  ]
+}
+"""#
+
+private let jamfProID = UUID(uuidString: "2593A69B-7002-4E7B-83CC-D3BE4527E817")!
+private let sandboxID = UUID(uuidString: "CF96D75C-0E79-4B25-ADD2-6F98E1E819C7")!
+
+@MainActor
+@Suite("Tenants in JTKit's connections")
+struct TenantConnectionsTests {
+    let folder = FileManager.default.temporaryDirectory.appending(path: "p2b-connections-\(UUID().uuidString)")
+    var fileURL: URL { folder.appending(path: "tenants.json") }
+
+    private func writeSavedFile(_ text: String = savedBeforeJTKit) throws {
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data(text.utf8).write(to: fileURL)
+    }
+
+    private func makeModel(secrets: InMemorySecretStore = InMemorySecretStore()) -> AppModel {
+        AppModel(
+            store: TenantStore(fileURL: fileURL),
+            secrets: secrets,
+            history: HistoryStore(fileURL: folder.appending(path: "history.json")),
+            activity: ActivityStore(fileURL: folder.appending(path: "activity.json")),
+            demoMode: false
+        )
+    }
+
+    private func fileText() throws -> String {
+        try String(contentsOf: fileURL, encoding: .utf8)
+    }
+
+    @Test func tenantsAndTheCurrentTenantSavedBeforeJTKitAreRead() throws {
+        try writeSavedFile()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let model = makeModel()
+
+        #expect(model.connections.problem == nil)
+        #expect(model.tenants.map(\.name) == ["Jamf Pro", "Sandbox"])
+        #expect(model.currentTenantID == sandboxID)
+        let sandbox = try #require(model.tenant(id: sandboxID))
+        #expect(sandbox.hostOverride == "us1.api.stage.platform.jamflabs.com")
+        #expect(sandbox.naming == BlueprintNaming(prefix: "TEST - ", suffix: ""))
+        #expect(model.tenant(id: jamfProID)?.allowClassicScopeChanges == true)
+        #expect(model.tenant(id: jamfProID)?.jamfProURL == "https://example.jamfcloud.com")
+    }
+
+    @Test func savingAnUnchangedTenantWritesTheSameBytes() throws {
+        try writeSavedFile()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let model = makeModel()
+
+        try model.connections.save(try #require(model.tenant(id: jamfProID)))
+        #expect(try fileText() == savedBeforeJTKit)
+    }
+
+    @Test func editingTheNameChangesOnlyThatLineAndKeepsTheCurrentTenant() throws {
+        try writeSavedFile()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let model = makeModel()
+
+        var tenant = try #require(model.tenant(id: jamfProID))
+        tenant.connection.name = "Jamf Pro Production"
+        try model.connections.save(tenant)
+
+        let expected = savedBeforeJTKit.replacingOccurrences(of: #""name" : "Jamf Pro","#,
+                                                             with: #""name" : "Jamf Pro Production","#)
+        #expect(try fileText() == expected)
+        #expect(model.currentTenantID == sandboxID)
+    }
+
+    @Test func readingAndSettingTheConnectionLeavesEveryTenantUnchanged() throws {
+        try writeSavedFile()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        for var tenant in makeModel().tenants {
+            let before = tenant
+            tenant.connection = tenant.connection
+            #expect(tenant == before)
+        }
+    }
+
+    @Test func connectionFieldsMapToTheTenantsOwnFields() {
+        var tenant = Tenant(name: "Prod", region: .eu, environmentID: "env", clientID: "client", jamfProURL: "jamf.example.com")
+        let connection = tenant.connection
+        #expect(connection.service == .jamfPlatform)
+        #expect(connection.region == .eu)
+        #expect(connection.hostOverride.isEmpty)
+        #expect(connection.jamfProWebURL == "jamf.example.com")
+
+        var edited = connection
+        edited.hostOverride = "staging.example.com"
+        tenant.connection = edited
+        #expect(tenant.hostOverride == "staging.example.com")
+        #expect(tenant.listBadge != nil)
+        edited.hostOverride = ""
+        tenant.connection = edited
+        // no override is saved as a missing key, as before
+        #expect(tenant.hostOverride == nil)
+    }
+
+    @Test func changingTheCurrentTenantKeepsTheTenants() throws {
+        try writeSavedFile()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let model = makeModel()
+
+        model.makeCurrent(jamfProID)
+        let expected = savedBeforeJTKit.replacingOccurrences(of: #""currentTenantID" : "CF96D75C-0E79-4B25-ADD2-6F98E1E819C7""#,
+                                                             with: #""currentTenantID" : "2593A69B-7002-4E7B-83CC-D3BE4527E817""#)
+        #expect(try fileText() == expected)
+        #expect(makeModel().currentTenantID == jamfProID)
+    }
+
+    @Test func theFirstSaveBacksUpTheOriginalOnce() throws {
+        try writeSavedFile()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let model = makeModel()
+        let backup = fileURL.appendingPathExtension("backup")
+
+        model.makeCurrent(jamfProID)
+        #expect(try String(contentsOf: backup, encoding: .utf8) == savedBeforeJTKit)
+        var tenant = try #require(model.tenant(id: jamfProID))
+        tenant.name = "Renamed"
+        try model.connections.save(tenant)
+        // still the data as it was before JTKit first saved it
+        #expect(try String(contentsOf: backup, encoding: .utf8) == savedBeforeJTKit)
+    }
+
+    @Test func anUnreadableFileIsKeptCopiedAndNeverSavedOver() throws {
+        let broken = String(savedBeforeJTKit.dropLast(20))
+        try writeSavedFile(broken)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let model = makeModel()
+
+        #expect(model.connections.problem != nil)
+        #expect(model.persistenceError != nil)
+        #expect(model.tenants.isEmpty)
+        #expect(throws: ConnectionStoreError.self) {
+            try model.connections.save(Tenant(name: "New tenant"))
+        }
+        model.makeCurrent(nil)
+        #expect(try fileText() == broken)
+        let copies = try FileManager.default.contentsOfDirectory(atPath: folder.path)
+            .filter { $0.hasPrefix("tenants.json.unreadable-") }
+        #expect(copies.count == 1)
+    }
+
+    @Test func secretsGoToTheKeychainItemsTheyAlwaysUsedNeverTheFile() throws {
+        try writeSavedFile()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        // as stored by the build before JTKit: account = tenant id
+        let secrets = InMemorySecretStore([sandboxID.uuidString: "stored-before"])
+        let model = makeModel(secrets: secrets)
+        let sandbox = try #require(model.tenant(id: sandboxID))
+        #expect(model.connections.secret(for: sandbox.connection) == "stored-before")
+
+        try model.connections.save(sandbox, secrets: [.main: "hunter2"])
+        #expect(secrets.secret(for: sandboxID.uuidString) == "hunter2")
+        #expect(try !fileText().contains("hunter2"))
+        #expect(model.activity.events.contains { $0.message.contains("Stored a new client secret") && $0.message.contains("Sandbox") })
+    }
+
+    @Test func theFirstTenantAddedBecomesCurrentAndDeletingMovesToTheNext() throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let secrets = InMemorySecretStore()
+        let model = makeModel(secrets: secrets)
+        #expect(model.currentTenantID == nil)
+
+        let first = Tenant(name: "First")
+        try model.connections.save(first, secrets: [.main: "one"])
+        let second = Tenant(name: "Second")
+        try model.connections.save(second)
+        #expect(model.currentTenantID == first.id)
+
+        try model.connections.delete(id: first.id)
+        #expect(secrets.secret(for: first.id.uuidString) == nil)
+        #expect(model.currentTenantID == second.id)
+        try model.connections.delete(id: second.id)
+        #expect(model.currentTenantID == nil)
+        #expect(makeModel().currentTenantID == nil)
+    }
+
+    @Test func turningClassicCleanupOffIsLoggedAndRebuildsTheWorkspace() throws {
+        try writeSavedFile()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let model = makeModel()
+        model.makeCurrent(jamfProID)
+        let generation = model.workspaceGeneration
+
+        var tenant = try #require(model.tenant(id: jamfProID))
+        tenant.allowClassicScopeChanges = false
+        try model.connections.save(tenant)
+        #expect(model.workspaceGeneration > generation)
+        #expect(model.activity.events.contains { $0.category == .classicWrite && $0.message.contains("disabled") })
+    }
+
+    @Test func demoModeIsNeverPartOfTheTenantList() throws {
+        try writeSavedFile()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        // demo mode on from the start, so the test leaves the app's own demo setting alone
+        let model = AppModel(
+            store: TenantStore(fileURL: fileURL),
+            secrets: InMemorySecretStore(),
+            history: HistoryStore(fileURL: folder.appending(path: "history.json")),
+            activity: ActivityStore(fileURL: folder.appending(path: "activity.json")),
+            demoMode: true
+        )
+
+        #expect(try model.activeWorkspace().environment.isDemo)
+        #expect(model.currentTenantID == sandboxID)
+        #expect(model.tenants.count == 2)
+        #expect(try fileText() == savedBeforeJTKit)
+    }
+
+    @Test func aFailedTestShowsTheSameDetailsAsTheErrorPanel() throws {
+        let body = try #require(APIErrorBody.parse(Data(#"{"httpStatus":403,"traceId":"trace-1","errors":[{"code":"FORBIDDEN","field":"scope","description":"Missing permission"}]}"#.utf8)))
+        let error = ConnectionTestError(report: ErrorReport(APIError.http(status: 403, method: "GET", path: "/groups", body: body, rawBody: nil)))
+        #expect(error.failureReason == "httpStatus: 403\nerrors.code: FORBIDDEN\nerrors.field: scope\nerrors.description: Missing permission\ntraceId: trace-1")
+    }
+}

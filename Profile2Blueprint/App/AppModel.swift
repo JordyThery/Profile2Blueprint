@@ -2,24 +2,17 @@ import Foundation
 import JTKit
 import Observation
 
-/// Result of the most recent "Test connection" for a tenant.
-enum ConnectionState: Equatable {
-    case idle
-    case testing
-    case succeeded(groups: [PlatformGroup], at: Date)
-    case failed(ErrorReport)
-}
-
 /// App-wide state: saved tenants, the current tenant, and connection checks.
 @Observable
 final class AppModel {
-    private(set) var tenants: [Tenant] = []
+    /// The saved tenants, edited in Settings › Connections (JTKit's shared list).
+    let connections: ConnectionStore<Tenant>
     private(set) var currentTenantID: UUID?
-    private(set) var connectionStates: [UUID: ConnectionState] = [:]
     /// Set when persisting tenants or secrets fails, shown as an alert.
     var persistenceError: String?
 
     /// Offline demo mode runs everything against bundled fixtures; no tenant is contacted.
+    /// It is a setting of its own, never a tenant in the list.
     var isDemoMode: Bool {
         didSet {
             UserDefaults.standard.set(isDemoMode, forKey: Self.demoModeKey)
@@ -35,21 +28,22 @@ final class AppModel {
     /// Cache only; views observe `isDemoMode` / `currentTenantID`, which drive rebuilds.
     @ObservationIgnored private var workspace: Workspace?
 
-    private let store: TenantStore
-    private let secrets: any SecretStore
+    @ObservationIgnored private let store: TenantStore
+    @ObservationIgnored private let secrets: RecordingSecretStore
     private let session: URLSession
     private static let demoModeKey = "demoMode"
 
     init(
         store: TenantStore = .appDefault(),
-        secrets: any SecretStore = KeychainStore(),
+        secrets: any SecretStore = KeychainSecretStore.profile2Blueprint(),
         session: URLSession = .shared,
         history: HistoryStore = .appDefault(),
         activity: ActivityStore = .appDefault(),
         demoMode: Bool? = nil
     ) {
         self.store = store
-        self.secrets = secrets
+        let recording = RecordingSecretStore(secrets)
+        self.secrets = recording
         self.session = session
         let activityLog = ActivityLog(store: activity)
         self.activity = activityLog
@@ -58,12 +52,20 @@ final class AppModel {
             // JTKit reports plain lines; failures keep their warning level in Activity.
             activityLog.app(line, level: line.hasPrefix("Update check failed") ? .warning : .info)
         }
-        let configuration = store.load()
-        tenants = configuration.tenants
-        currentTenantID = configuration.currentTenantID.flatMap { id in
-            configuration.tenants.contains { $0.id == id } ? id : nil
+        let connections = ConnectionStore<Tenant>(
+            storage: store,
+            secrets: [.main: SecretLocation(store: recording)],
+            log: { activityLog.app($0, level: .warning) }
+        )
+        self.connections = connections
+        currentTenantID = store.currentTenantID.flatMap { id in
+            connections.record(id: id) != nil ? id : nil
         }
+        persistenceError = connections.problem?.localizedDescription
         isDemoMode = demoMode ?? UserDefaults.standard.bool(forKey: Self.demoModeKey)
+        store.didSaveTenants = { [weak self] old, new in
+            self?.tenantsSaved(old: old, new: new)
+        }
     }
 
     // MARK: - Workspace
@@ -114,89 +116,72 @@ final class AppModel {
     /// Bumped whenever the active workspace is replaced; views key on it.
     private(set) var workspaceGeneration = 0
 
+    var tenants: [Tenant] { connections.records }
+
     var currentTenant: Tenant? {
         tenants.first { $0.id == currentTenantID }
     }
 
     func tenant(id: UUID) -> Tenant? {
-        tenants.first { $0.id == id }
-    }
-
-    func connectionState(for id: UUID) -> ConnectionState {
-        connectionStates[id] ?? .idle
+        connections.record(id: id)
     }
 
     // MARK: - Tenant management
 
-    @discardableResult
-    func addTenant() -> Tenant {
-        let tenant = Tenant(name: "New tenant")
-        tenants.append(tenant)
-        activity.app("Added tenant “\(tenant.displayName)”.")
-        if currentTenantID == nil { currentTenantID = tenant.id }
-        persist()
-        return tenant
+    /// Makes a saved tenant the current one, from the toolbar picker or
+    /// "Use This Connection" in Settings.
+    func makeCurrent(_ id: UUID?) {
+        setCurrent(id, among: tenants)
     }
 
-    /// Saves tenant settings. A non-empty `secret` replaces the stored Keychain secret.
-    func save(_ tenant: Tenant, secret: String?) {
-        let previous = self.tenant(id: tenant.id)
-        if previous?.allowClassicScopeChanges != tenant.allowClassicScopeChanges, previous != nil || tenant.allowClassicScopeChanges {
-            activity.app("Classic scope changes \(tenant.allowClassicScopeChanges ? "ENABLED" : "disabled") for “\(tenant.displayName)”.",
-                         environment: tenant.displayName, level: tenant.allowClassicScopeChanges ? .warning : .info, category: .classicWrite)
+    private func setCurrent(_ id: UUID?, among tenants: [Tenant]) {
+        guard id != currentTenantID, id == nil || tenants.contains(where: { $0.id == id }) else { return }
+        do {
+            try store.saveCurrentTenantID(id)
+        } catch {
+            persistenceError = "Could not save the current tenant: \(error.localizedDescription)"
+            return
         }
-        if let index = tenants.firstIndex(where: { $0.id == tenant.id }) {
-            tenants[index] = tenant
-        } else {
-            tenants.append(tenant)
+        currentTenantID = id
+        if let tenant = tenants.first(where: { $0.id == id }) {
+            activity.app("Current tenant is now “\(tenant.displayName)”.")
         }
-        if let secret, !secret.isEmpty {
-            do {
-                try secrets.setSecret(secret, for: tenant.id.uuidString)
+        invalidateWorkspace(for: nil)
+    }
+
+    /// Called after Settings › Connections wrote the tenants: logs what changed,
+    /// rebuilds the workspace when the current tenant changed, and keeps a
+    /// current tenant, as before (the first one added; the next one after a delete).
+    private func tenantsSaved(old: [Tenant], new: [Tenant]) {
+        let newSecrets = secrets.takeWrittenAccounts()
+        let previous = Dictionary(old.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let remaining = Set(new.map(\.id))
+        for tenant in new {
+            guard let before = previous[tenant.id] else {
+                activity.app("Added tenant “\(tenant.displayName)”.")
+                continue
+            }
+            if before.allowClassicScopeChanges != tenant.allowClassicScopeChanges {
+                activity.app("Classic scope changes \(tenant.allowClassicScopeChanges ? "ENABLED" : "disabled") for “\(tenant.displayName)”.",
+                             environment: tenant.displayName, level: tenant.allowClassicScopeChanges ? .warning : .info, category: .classicWrite)
+            }
+            let hasNewSecret = newSecrets.contains(tenant.id.uuidString)
+            if hasNewSecret {
                 activity.app("Stored a new client secret in the Keychain for “\(tenant.displayName)” (value not logged).", category: .auth)
-            } catch {
-                persistenceError = error.localizedDescription
+            }
+            if before != tenant || hasNewSecret {
+                activity.app("Saved settings for “\(tenant.displayName)” (\(tenant.host)).")
+                invalidateWorkspace(for: tenant.id)
             }
         }
-        connectionStates[tenant.id] = .idle
-        activity.app("Saved settings for “\(tenant.displayName)” (\(tenant.host)).")
-        invalidateWorkspace(for: tenant.id)
-        persist()
-    }
-
-    func delete(_ id: UUID) {
-        if let removed = tenant(id: id) {
+        for removed in old where !remaining.contains(removed.id) {
             activity.app("Deleted tenant “\(removed.displayName)” and its Keychain secret from this Mac.")
+            invalidateWorkspace(for: removed.id)
         }
-        tenants.removeAll { $0.id == id }
-        connectionStates[id] = nil
-        do {
-            try secrets.deleteSecret(for: id.uuidString)
-        } catch {
-            persistenceError = error.localizedDescription
-        }
-        invalidateWorkspace(for: id)
-        if currentTenantID == id { currentTenantID = tenants.first?.id }
-        persist()
-    }
-
-    func makeCurrent(_ id: UUID) {
-        guard tenants.contains(where: { $0.id == id }) else { return }
-        currentTenantID = id
-        activity.app("Current tenant is now “\(currentTenant?.displayName ?? "?")”.")
-        invalidateWorkspace(for: nil)
-        persist()
-    }
-
-    func hasStoredSecret(for id: UUID) -> Bool {
-        ((try? secrets.secret(for: id.uuidString)) ?? nil)?.isEmpty == false
-    }
-
-    private func persist() {
-        do {
-            try store.save(TenantConfiguration(tenants: tenants, currentTenantID: currentTenantID))
-        } catch {
-            persistenceError = "Could not save tenants: \(error.localizedDescription)"
+        if let current = currentTenantID, !remaining.contains(current) {
+            setCurrent(new.first?.id, among: new)
+        } else if currentTenantID == nil, let added = new.first(where: { previous[$0.id] == nil }) {
+            setCurrent(added.id, among: new)
         }
     }
 
@@ -219,7 +204,7 @@ final class AppModel {
             clientID: tenant.clientID.trimmingCharacters(in: .whitespacesAndNewlines),
             secret: {
                 if let override { return override }
-                guard let stored = try secrets.secret(for: account), !stored.isEmpty else {
+                guard let stored = secrets.secret(for: account), !stored.isEmpty else {
                     throw APIError.missingSecret
                 }
                 return stored
@@ -239,18 +224,20 @@ final class AppModel {
         )
     }
 
-    /// Requests a token and lists platform device groups.
-    func testConnection(_ tenant: Tenant, secretOverride: String? = nil) async {
-        connectionStates[tenant.id] = .testing
+    /// Test Connection in Settings › Connections: requests a token and lists
+    /// platform device groups, with the values in the editor, saved or not.
+    func testConnection(_ tenant: Tenant, secretOverride: String? = nil) async throws -> String {
         activity.app("Testing connection to “\(tenant.displayName)”.", environment: tenant.displayName)
         do {
             let client = try makeClient(for: tenant, secretOverride: secretOverride)
             let groups = try await LiveDeviceGroupsAPI(client: client).allGroups()
-            connectionStates[tenant.id] = .succeeded(groups: groups, at: Date())
+            let computers = groups.count(where: { $0.deviceType == .computer })
+            let mobile = groups.count(where: { $0.deviceType == .mobile })
+            return "Connected · \(groups.count) device group\(groups.count == 1 ? "" : "s") (\(computers) computer, \(mobile) mobile)"
         } catch is CancellationError {
-            connectionStates[tenant.id] = .idle
+            throw CancellationError()
         } catch {
-            connectionStates[tenant.id] = .failed(ErrorReport(error))
+            throw ConnectionTestError(report: ErrorReport(error))
         }
     }
 }

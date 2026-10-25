@@ -1,4 +1,5 @@
 import Foundation
+import JTKit
 
 /// Jamf Platform API Gateway region. Tokens are region-locked, so the token host
 /// and the API host must always match.
@@ -211,5 +212,41 @@ nonisolated struct Tenant: Codable, Hashable, Identifiable, Sendable {
             issues.append("Host override is not a valid host name.")
         }
         return issues
+    }
+}
+
+/// The shared connections list (Settings › Connections) edits the connection
+/// fields of a tenant; naming, description and classic cleanup are the app's
+/// own section. tenants.json keeps its field names.
+nonisolated extension Tenant: ConnectionRecord {
+    var connection: Connection {
+        get {
+            Connection(id: id,
+                       name: name,
+                       service: .jamfPlatform,
+                       signIn: .apiClient,
+                       region: JamfRegion(rawValue: region.rawValue) ?? .us,
+                       environmentID: environmentID,
+                       hostOverride: hostOverride ?? "",
+                       jamfProWebURL: jamfProURL,
+                       clientID: clientID)
+        }
+        set {
+            // Only fields that changed are written, so setting back what was
+            // read leaves the tenant exactly as it was.
+            if name != newValue.name { name = newValue.name }
+            if let newRegion = Region(rawValue: newValue.region.rawValue), newRegion != region { region = newRegion }
+            if environmentID != newValue.environmentID { environmentID = newValue.environmentID }
+            if clientID != newValue.clientID { clientID = newValue.clientID }
+            // no override is saved as a missing key, as before
+            if (hostOverride ?? "") != newValue.hostOverride {
+                hostOverride = newValue.hostOverride.isEmpty ? nil : newValue.hostOverride
+            }
+            if jamfProURL != newValue.jamfProWebURL { jamfProURL = newValue.jamfProWebURL }
+        }
+    }
+
+    var listBadge: (systemImage: String, help: String)? {
+        usesHostOverride ? ("exclamationmark.triangle.fill", "Non-production host override") : nil
     }
 }

@@ -1,3 +1,4 @@
+import JTKit
 import SwiftUI
 
 /// Entry point for the Profiles sidebar item: resolves the active workspace.
@@ -15,6 +16,7 @@ struct ProfilesView: View {
                 } description: {
                     Text(error.localizedDescription)
                 } actions: {
+                    SettingsTabLink(SettingsTabName.connections) { Text("Edit Tenants…") }
                     Button("Use Offline Demo") { model.isDemoMode = true }
                 }
             }

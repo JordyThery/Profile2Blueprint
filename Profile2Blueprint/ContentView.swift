@@ -3,7 +3,6 @@ import SwiftUI
 
 /// Sidebar destinations.
 enum SidebarItem: Hashable {
-    case tenant(UUID)
     case profiles
     case history
     case activity
@@ -12,8 +11,7 @@ enum SidebarItem: Hashable {
 struct ContentView: View {
     @Environment(AppModel.self) private var model
     @Environment(UpdateChecker.self) private var updates
-    @State private var selection: SidebarItem?
-    @State private var tenantPendingDeletion: Tenant?
+    @State private var selection: SidebarItem? = .profiles
 
     var body: some View {
         @Bindable var model = model
@@ -21,25 +19,6 @@ struct ContentView: View {
 
         NavigationSplitView {
             List(selection: $selection) {
-                Section("Tenants") {
-                    ForEach(model.tenants) { tenant in
-                        TenantRow(tenant: tenant, isCurrent: tenant.id == model.currentTenantID)
-                            .tag(SidebarItem.tenant(tenant.id))
-                            .contextMenu {
-                                Button("Make Current Tenant") { model.makeCurrent(tenant.id) }
-                                    .disabled(tenant.id == model.currentTenantID)
-                                Divider()
-                                Button("Delete Tenant…", role: .destructive) { tenantPendingDeletion = tenant }
-                            }
-                    }
-                    Button {
-                        selection = .tenant(model.addTenant().id)
-                    } label: {
-                        Label("Add Tenant", systemImage: "plus")
-                    }
-                    .buttonStyle(.borderless)
-                }
-
                 Section("Migration") {
                     Label("Profiles", systemImage: "doc.badge.gearshape")
                         .tag(SidebarItem.profiles)
@@ -61,13 +40,6 @@ struct ContentView: View {
             .navigationSplitViewColumnWidth(min: 200, ideal: 240)
         } detail: {
             switch selection {
-            case let .tenant(id):
-                if let tenant = model.tenant(id: id) {
-                    ConnectView(tenant: tenant)
-                        .id(id)
-                } else {
-                    ContentUnavailableView("Tenant Removed", systemImage: "building.2")
-                }
             case .profiles:
                 ProfilesView()
             case .history:
@@ -76,29 +48,19 @@ struct ContentView: View {
                 ActivityView()
             case nil:
                 ContentUnavailableView(
-                    "Connect a Tenant",
-                    systemImage: "network",
-                    description: Text("Add a tenant in the sidebar, enter its OAuth client, and test the connection.")
+                    "Choose a Section",
+                    systemImage: "sidebar.left",
+                    description: Text("Select Profiles, History or Activity in the sidebar.")
                 )
+            }
+        }
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                TenantPicker()
             }
         }
         .sheet(isPresented: $updates.isPresented) {
             UpdateView()
-        }
-        .confirmationDialog(
-            "Delete \u{201c}\(tenantPendingDeletion?.displayName ?? "")\u{201d}?",
-            isPresented: Binding(
-                get: { tenantPendingDeletion != nil },
-                set: { if !$0 { tenantPendingDeletion = nil } }
-            ),
-            presenting: tenantPendingDeletion
-        ) { tenant in
-            Button("Delete Tenant and Keychain Secret", role: .destructive) {
-                if selection == .tenant(tenant.id) { selection = nil }
-                model.delete(tenant.id)
-            }
-        } message: { tenant in
-            Text("Removes \u{201c}\(tenant.displayName)\u{201d} and its client secret from this Mac only. Nothing changes in Jamf.")
         }
         .alert(
             "Couldn't Save",
@@ -111,50 +73,14 @@ struct ContentView: View {
         } message: {
             Text(model.persistenceError ?? "")
         }
-        .onAppear {
-            if selection == nil, let first = model.currentTenant ?? model.tenants.first {
-                selection = .tenant(first.id)
-            }
-        }
     }
 }
-
-private struct TenantRow: View {
-    let tenant: Tenant
-    let isCurrent: Bool
-
-    var body: some View {
-        Label {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(tenant.displayName)
-                if tenant.usesHostOverride {
-                    Label(tenant.host, systemImage: "exclamationmark.triangle.fill")
-                        .labelStyle(.titleAndIcon)
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                        .help("Non-production host override")
-                } else {
-                    Text(tenant.region.rawValue.uppercased())
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-        } icon: {
-            Image(systemName: isCurrent ? "checkmark.circle.fill" : "building.2")
-                .foregroundStyle(isCurrent ? Color.green : Color.secondary)
-        }
-        .accessibilityLabel(isCurrent ? "\(tenant.displayName), current tenant" : tenant.displayName)
-    }
-}
-
-/// Always-visible indicator of which tenant actions will run against.
-
 
 #if DEBUG
 #Preview {
     let model = AppModel(
         store: TenantStore(fileURL: FileManager.default.temporaryDirectory.appending(path: "preview-tenants.json")),
-        secrets: InMemorySecretStore()
+        secrets: KeychainSecretStore(service: "be.jordythery.profile2blueprint.preview")
     )
     ContentView()
         .environment(model)

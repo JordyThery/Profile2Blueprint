@@ -1,3 +1,4 @@
+import JTKit
 import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
@@ -230,7 +231,7 @@ private struct ActivityDetailPane: View {
     let temp = FileManager.default.temporaryDirectory
     let model = AppModel(
         store: TenantStore(fileURL: temp.appending(path: "preview-tenants-\(UUID().uuidString).json")),
-        secrets: InMemorySecretStore(),
+        secrets: KeychainSecretStore(service: "be.jordythery.profile2blueprint.preview"),
         history: HistoryStore(fileURL: temp.appending(path: "preview-history-\(UUID().uuidString).json")),
         activity: ActivityStore(fileURL: temp.appending(path: "preview-activity-\(UUID().uuidString).json")),
         demoMode: true

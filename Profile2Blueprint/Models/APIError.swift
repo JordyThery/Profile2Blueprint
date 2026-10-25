@@ -116,3 +116,31 @@ nonisolated struct ErrorReport: Hashable, Sendable {
         }
     }
 }
+
+nonisolated extension ErrorReport {
+    /// What `APIErrorView` shows below the title, as plain text for copying:
+    /// the HTTP status, each error's code, field and description, the trace ID
+    /// and a response body that couldn't be read as an error. Nil when there
+    /// is nothing beyond the title.
+    var detailText: String? {
+        var lines = [String]()
+        if let httpStatus { lines.append("httpStatus: \(httpStatus)") }
+        for detail in details {
+            lines.append("errors.code: \(detail.code)")
+            if let field = detail.field { lines.append("errors.field: \(field)") }
+            if !detail.description.isEmpty { lines.append("errors.description: \(detail.description)") }
+        }
+        if let traceId { lines.append("traceId: \(traceId)") }
+        if let rawBody { lines.append("Response body (redacted):\n\(rawBody)") }
+        return lines.isEmpty ? nil : lines.joined(separator: "\n")
+    }
+}
+
+/// A failed Test Connection in Settings › Connections. JTKit's editor shows the
+/// title and then the details in full, selectable for copying.
+nonisolated struct ConnectionTestError: LocalizedError, Sendable {
+    let report: ErrorReport
+
+    var errorDescription: String? { report.title }
+    var failureReason: String? { report.detailText }
+}
