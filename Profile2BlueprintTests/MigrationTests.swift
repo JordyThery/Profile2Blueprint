@@ -1,5 +1,6 @@
 import Foundation
 import JTKit
+import JTKitTestSupport
 import Testing
 @testable import Profile2Blueprint
 
@@ -7,7 +8,7 @@ private func profile(_ xml: String) throws -> ClassicProfile {
     try ClassicXMLParser.parseProfile(Data(xml.utf8), platform: .macOS)
 }
 
-private func check(_ xml: String, groups: [PlatformGroup] = DemoFixtures.platformGroups) throws -> EligibilityReport {
+private func check(_ xml: String, groups: [JamfPlatform.DeviceGroup] = DemoFixtures.platformGroups) throws -> EligibilityReport {
     EligibilityChecker.check(try profile(xml), platformGroups: groups)
 }
 
@@ -226,7 +227,7 @@ struct ScopeMapperTests {
             ClassicReference(id: 3, name: "iPads"),
         ]
         let groups = DemoFixtures.platformGroups + [
-            PlatformGroup(id: "m", name: "iPads", description: nil, deviceType: .mobile, groupType: .smart, memberCount: 9),
+            JamfPlatform.DeviceGroup(id: "m", name: "iPads", description: nil, deviceType: .mobile, groupType: .smart, memberCount: 9),
         ]
         let entries = ScopeMapper.propose(for: scope, platform: .macOS, platformGroups: groups)
         #expect(entries[0].autoMatch?.name == "Engineers")
@@ -292,7 +293,7 @@ struct BlueprintBuilderTests {
           ]
         }
         """
-        #expect(request.body.serialized() == expected)
+        #expect(request.body.prettyText == expected)
     }
 
     @Test("Fixture 2 keeps payload order; fixture 3 encodes data and dates")
@@ -304,7 +305,7 @@ struct BlueprintBuilderTests {
         let certs = try BlueprintBuilder.build(profile: profile(DemoFixtures.certificatesAndDates), name: "x", description: nil, deviceGroupIDs: ["g"])
         let payloads = try #require(certs.configuration["payloadContent"]?.arrayValue)
         #expect(payloads[0].objectValue?["PayloadContent"] == .string(DemoFixtures.certificateDER.base64EncodedString()))
-        let text = certs.body.serialized(pretty: false)
+        let text = certs.body.serializedString()
         #expect(text.contains(#""Deadline":"2026-01-15T00:00:00Z""#))
         #expect(text.contains(#""Ratio":0.75"#))
     }
@@ -332,7 +333,7 @@ struct BlueprintBuilderTests {
 
         let deduped = try BlueprintBuilder.build(profile: fixture1, name: "a", description: "  ", deviceGroupIDs: ["g", "h", "g"])
         #expect(deduped.deviceGroupIDs == ["g", "h"])
-        #expect(deduped.description == nil, "blank description is sent as null")
+        #expect(deduped.description == nil, "a blank description is left out")
         #expect(BlueprintBuilder.defaultName(for: fixture1) == "Classic – Managed Login Items (migrated)")
     }
 }
@@ -394,12 +395,14 @@ struct BlueprintNamingTests {
         #expect(BlueprintBuilder.description("Managed by DDM.", profileName: "x", profileID: 1, platform: .macOS) == "Managed by DDM.")
     }
 
-    @Test("An empty template means no description, which is sent as null")
+    @Test("An empty template means no description, which is left out of the body (as JTKit sends it)")
     func emptyDescription() throws {
         let fixture = try profile(DemoFixtures.managedLoginItems)
         #expect(BlueprintBuilder.defaultDescription(for: fixture, template: "").isEmpty)
         let request = try BlueprintBuilder.build(profile: fixture, name: "n", description: "", deviceGroupIDs: ["g"])
         #expect(request.description == nil)
+        #expect(request.body["description"] == nil)
+        #expect(request.body.objectValue?.keys == ["name", "scope", "steps"])
     }
 
     @Test("An over-long description is trimmed to the API's limit")
@@ -431,21 +434,29 @@ struct BlueprintNamingTests {
 
 // MARK: - Verifier
 
-private func detail(for request: BlueprintRequest, transform: (inout JSONObject) -> Void = { _ in }, groups: [String]? = nil) -> BlueprintDetail {
+private func detail(
+    for request: BlueprintRequest, transform: (inout LosslessJSON.Object) -> Void = { _ in }, groups: [String]? = nil
+) throws -> JamfPlatform.BlueprintDetail {
     var configuration = request.configuration
     transform(&configuration)
-    return BlueprintDetail(
-        id: "bp", name: request.name, description: nil,
-        scope: BlueprintScope(deviceGroups: groups ?? request.deviceGroupIDs),
-        created: nil, updated: nil,
-        deploymentState: DeploymentState(state: "NOT_DEPLOYED", lastDeployment: nil),
-        steps: [BlueprintStepDetail(name: "s", components: [BlueprintComponentDetail(identifier: BlueprintBuilder.componentIdentifier, configuration: .object(configuration))])]
-    )
+    return try blueprintDetail(name: request.name, deviceGroups: groups ?? request.deviceGroupIDs, configuration: configuration)
 }
 
-private func mutatePayload(_ index: Int, _ configuration: inout JSONObject, _ change: (inout JSONObject) -> Void) {
+/// The same JSON with every object's keys in another order, all the way down.
+private func reorderedKeys(_ value: LosslessJSON, _ order: ([LosslessJSON.Object.Member]) -> [LosslessJSON.Object.Member]) -> LosslessJSON {
+    switch value {
+    case let .object(object):
+        return .object(LosslessJSON.Object(order(object.members).map { .init(key: $0.key, value: reorderedKeys($0.value, order)) }))
+    case let .array(values):
+        return .array(values.map { reorderedKeys($0, order) })
+    default:
+        return value
+    }
+}
+
+private func mutatePayload(_ index: Int, _ configuration: inout LosslessJSON.Object, _ change: (inout LosslessJSON.Object) -> Void) {
     var payloads = configuration["payloadContent"]?.arrayValue ?? []
-    var payload = payloads[index].objectValue ?? JSONObject()
+    var payload = payloads[index].objectValue ?? LosslessJSON.Object()
     change(&payload)
     payloads[index] = .object(payload)
     configuration["payloadContent"] = .array(payloads)
@@ -454,7 +465,7 @@ private func mutatePayload(_ index: Int, _ configuration: inout JSONObject, _ ch
 @Suite("Server string rewrites")
 struct ServerRewriteTests {
 
-    private func compare(_ plist: PlistValue, _ json: JSONValue) -> [ValueDifference] {
+    private func compare(_ plist: PlistValue, _ json: LosslessJSON) -> [ValueDifference] {
         var options = PlistJSONComparator.Options()
         options.tolerateServerRewrites = true
         return PlistJSONComparator.differences(plist: plist, json: json, options: options)
@@ -487,7 +498,7 @@ struct ServerRewriteTests {
     @Test("An omitted empty value is a harmless omission; an omitted real value is not")
     func omittedValues() throws {
         let source = PlistDictionary([.init(key: "Empty", value: .array([])), .init(key: "Real", value: .string("x"))])
-        let differences = compare(.dict(source), .object(JSONObject()))
+        let differences = compare(.dict(source), .object(LosslessJSON.Object()))
         #expect(differences.count == 2)
         #expect(differences.first { $0.path == "Empty" }?.serverRewrite != nil)
         #expect(differences.first { $0.path == "Real" }?.serverRewrite == nil)
@@ -514,15 +525,15 @@ struct FidelityVerifierTests {
     }
 
     @Test("Identical read-back passes")
-    func identical() {
-        let report = FidelityVerifier.verify(document: document, expectedGroupIDs: request.deviceGroupIDs, detail: detail(for: request))
+    func identical() throws {
+        let report = FidelityVerifier.verify(document: document, expectedGroupIDs: request.deviceGroupIDs, detail: try detail(for: request))
         #expect(report.passed)
         #expect(report.caseChanges.isEmpty)
     }
 
     @Test("Expected server canonicalisation is tolerated")
-    func canonicalisation() {
-        let canonical = detail(for: request) { configuration in
+    func canonicalisation() throws {
+        let canonical = try detail(for: request) { configuration in
             configuration["payloadDisplayName"] = .string("Classic - Security Baseline")
             for index in 0..<3 {
                 mutatePayload(index, &configuration) { payload in
@@ -543,37 +554,37 @@ struct FidelityVerifierTests {
     }
 
     @Test("Changed UUID, reordered payloads, count, values and scope each fail")
-    func failures() {
-        let changedUUID = detail(for: request) { c in mutatePayload(0, &c) { $0["payloadUUID"] = .string("OTHER") } }
+    func failures() throws {
+        let changedUUID = try detail(for: request) { c in mutatePayload(0, &c) { $0["payloadUUID"] = .string("OTHER") } }
         #expect(FidelityVerifier.verify(document: document, expectedGroupIDs: request.deviceGroupIDs, detail: changedUUID)
             .mismatches.map(\.field) == ["Payload 1 payloadUUID"])
 
-        let reordered = detail(for: request) { c in
+        let reordered = try detail(for: request) { c in
             var payloads = c["payloadContent"]!.arrayValue!
             payloads.swapAt(0, 1)
             c["payloadContent"] = .array(payloads)
         }
         #expect(!FidelityVerifier.verify(document: document, expectedGroupIDs: request.deviceGroupIDs, detail: reordered).passed)
 
-        let dropped = detail(for: request) { c in c["payloadContent"] = .array(Array(c["payloadContent"]!.arrayValue!.prefix(2))) }
+        let dropped = try detail(for: request) { c in c["payloadContent"] = .array(Array(c["payloadContent"]!.arrayValue!.prefix(2))) }
         let droppedReport = FidelityVerifier.verify(document: document, expectedGroupIDs: request.deviceGroupIDs, detail: dropped)
         #expect(droppedReport.mismatches.contains { $0.field == "Payload count" })
 
-        let changedValue = detail(for: request) { c in
+        let changedValue = try detail(for: request) { c in
             mutatePayload(2, &c) { payload in
-                payload["PayloadContent"] = .object(JSONObject(["com.apple.screensaver": .object(JSONObject(["Forced": .array([.object(JSONObject([
-                    "mcx_preference_settings": .object(JSONObject(["askForPassword": .bool(false), "askForPasswordDelay": .integer(0), "idleTime": .integer(600)])),
+                payload["PayloadContent"] = .object(LosslessJSON.Object(["com.apple.screensaver": .object(LosslessJSON.Object(["Forced": .array([.object(LosslessJSON.Object([
+                    "mcx_preference_settings": .object(LosslessJSON.Object(["askForPassword": .bool(false), "askForPasswordDelay": .integer(0), "idleTime": .integer(600)])),
                 ]))])]))]))
             }
         }
         let valueReport = FidelityVerifier.verify(document: document, expectedGroupIDs: request.deviceGroupIDs, detail: changedValue)
         #expect(valueReport.mismatches.map(\.field) == ["Payload 3 PayloadContent.com.apple.screensaver.Forced[0].mcx_preference_settings.askForPassword"])
 
-        let otherScope = detail(for: request, groups: ["someone-else"])
+        let otherScope = try detail(for: request, groups: ["someone-else"])
         #expect(FidelityVerifier.verify(document: document, expectedGroupIDs: request.deviceGroupIDs, detail: otherScope)
             .mismatches.map(\.field) == ["Scope device groups"])
 
-        let changedTop = detail(for: request) { $0["payloadIdentifier"] = .string("x") }
+        let changedTop = try detail(for: request) { $0["payloadIdentifier"] = .string("x") }
         #expect(FidelityVerifier.verify(document: document, expectedGroupIDs: request.deviceGroupIDs, detail: changedTop)
             .mismatches.map(\.field) == ["payloadIdentifier (top level)"])
     }
@@ -586,7 +597,7 @@ struct FidelityVerifierTests {
         let source = try profile(xml)
         let document = try source.document.get()
         let request = try BlueprintBuilder.build(profile: source, name: "n", description: nil, deviceGroupIDs: ["g"])
-        let dropped = detail(for: request) { c in
+        let dropped = try detail(for: request) { c in
             mutatePayload(0, &c) { $0["PayloadDescription"] = nil; $0["PayloadEnabled"] = nil }
         }
         let report = FidelityVerifier.verify(document: document, expectedGroupIDs: ["g"], detail: dropped)
@@ -595,10 +606,60 @@ struct FidelityVerifierTests {
     }
 
     @Test("Missing component fails")
-    func missingComponent() {
-        var empty = detail(for: request)
-        empty.steps = []
+    func missingComponent() throws {
+        let empty = try blueprintDetail(deviceGroups: request.deviceGroupIDs, configuration: nil)
         #expect(!FidelityVerifier.verify(document: document, expectedGroupIDs: request.deviceGroupIDs, detail: empty).passed)
+    }
+
+    @Test("Key order never changes a verdict: a read-back in another order than the source gets the same rows")
+    func keyOrder() throws {
+        // Unchanged, canonicalised by the server (passes, with info and casing rows),
+        // and with a changed value and scope (fails).
+        let cases: [(LosslessJSON.Object) -> LosslessJSON.Object] = [
+            { $0 },
+            { configuration in
+                var c = configuration
+                for index in 0..<3 {
+                    mutatePayload(index, &c) { payload in
+                        payload["payloadVersion"] = .integer(1)
+                        payload["payloadOrganization"] = .string("Jamf")
+                    }
+                }
+                mutatePayload(1, &c) { payload in
+                    if let rules = payload["Rules"] { payload["Rules"] = nil; payload["rules"] = rules }
+                }
+                return c
+            },
+            { configuration in
+                var c = configuration
+                mutatePayload(0, &c) { $0["payloadUUID"] = .string("OTHER") }
+                mutatePayload(2, &c) { $0["PayloadContent"] = .object(LosslessJSON.Object()) }
+                return c
+            },
+        ]
+        for (index, change) in cases.enumerated() {
+            let configuration = change(request.configuration)
+            let groups = index == 2 ? ["someone-else"] : request.deviceGroupIDs
+            func verdicts(_ order: @escaping ([LosslessJSON.Object.Member]) -> [LosslessJSON.Object.Member]) throws -> FidelityReport {
+                let reordered = try #require(reorderedKeys(.object(configuration), order).objectValue)
+                // Read through JTKit from the text, as from a real server.
+                let detail = try blueprintDetail(deviceGroups: groups, configuration: reordered)
+                let readBack = try #require(detail.components.first?.json["configuration"]?.objectValue)
+                #expect(readBack.keys == reordered.keys, "JTKit keeps the order it was sent in")
+                return FidelityVerifier.verify(document: document, expectedGroupIDs: request.deviceGroupIDs, detail: detail)
+            }
+            let sourceOrder = try verdicts { $0 }
+            let reversed = try verdicts { $0.reversed() }
+            let alphabetical = try verdicts { $0.sorted { $0.key < $1.key } } // what the app saw before JTKit
+            if index == 0 { #expect(try #require(reversed.rows.first).field == sourceOrder.rows.first?.field) }
+            #expect(sourceOrder.passed == (index < 2), "case \(index)")
+            for report in [reversed, alphabetical] {
+                #expect(report.passed == sourceOrder.passed, "case \(index)")
+                #expect(Set(report.rows.map { "\($0.field)|\($0.status)" }) == Set(sourceOrder.rows.map { "\($0.field)|\($0.status)" }), "case \(index)")
+                #expect(report.mismatches.map(\.field).sorted() == sourceOrder.mismatches.map(\.field).sorted(), "case \(index)")
+                #expect(report.caseChanges.map(\.blueprint) == sourceOrder.caseChanges.map(\.blueprint), "case \(index)")
+            }
+        }
     }
 
     @Test("Five-rule checklist: rules 1–2 need confirmation, 3–5 pass for a built body")
@@ -618,8 +679,9 @@ struct PipelineTests {
     private func makePipeline(server: DemoBlueprintServer = DemoBlueprintServer(pollsToSucceed: 2), timeout: Duration = .seconds(300)) -> MigrationPipeline {
         MigrationPipeline(
             classic: DemoClassicAPI(),
-            blueprints: DemoBlueprintsAPI(server: server),
-            polling: PollingPolicy(initialInterval: .milliseconds(1), maxInterval: .milliseconds(2), timeout: timeout),
+            blueprints: JamfPlatform.Blueprints(client: server.client(log: nil)),
+            watch: WatchPolicy(deployment: JamfPlatform.PollingPolicy(
+                firstInterval: .milliseconds(1), longestInterval: .milliseconds(2), timeLimit: timeout)),
             sleep: { _ in await Task.yield() }
         )
     }
@@ -639,16 +701,16 @@ struct PipelineTests {
         #expect(await pipeline.state == .built)
 
         let created = try await pipeline.create()
-        #expect(await pipeline.state == .created(blueprintID: created.id))
-        #expect(await server.deployCount == 0, "create must not deploy")
+        #expect(await pipeline.state == .created(blueprintID: created))
+        #expect(server.deployCount == 0, "create must not deploy")
 
         let fidelity = try await pipeline.verify()
         #expect(fidelity.passed, "\(fidelity.mismatches)")
 
-        let outcome = try await pipeline.deploy(confirmation: confirmation(created.id))
+        let outcome = try await pipeline.deploy(confirmation: confirmation(created))
         guard case let .succeeded(report) = outcome else { Issue.record("\(outcome)"); return }
         #expect(report?.total == 12)
-        #expect(await server.deployCount == 1)
+        #expect(server.deployCount == 1)
         guard case .deployed = await pipeline.state else { Issue.record("not deployed"); return }
     }
 
@@ -682,18 +744,18 @@ struct PipelineTests {
     @Test("Duplicate names are refused at create time")
     func duplicate() async throws {
         let server = DemoBlueprintServer()
-        _ = await server.seed(name: "Taken")
+        _ = server.seed(name: "Taken")
         let pipeline = makePipeline(server: server)
         _ = try await pipeline.fetch(key: ProfileKey(platform: .macOS, id: 101))
         _ = try await pipeline.validate(platformGroups: DemoFixtures.platformGroups)
         _ = try await pipeline.build(name: "taken", description: nil, deviceGroupIDs: [engineers.id], acknowledgedWarnings: false)
         #expect(try await pipeline.existingBlueprints().count == 1)
         await #expect(throws: DuplicateNameError.self) { _ = try await pipeline.create() }
-        #expect(await server.createCount == 0)
+        #expect(server.createCount == 0)
         // The duplicate leaves the pipeline at .built, so renaming and retrying works.
         _ = try await pipeline.build(name: "now free", description: nil, deviceGroupIDs: [engineers.id], acknowledgedWarnings: false)
         _ = try await pipeline.create()
-        #expect(await server.createCount == 1)
+        #expect(server.createCount == 1)
     }
 
     @Test("Deploy requires a confirmation for this exact blueprint")
@@ -706,7 +768,7 @@ struct PipelineTests {
         _ = try await pipeline.create()
         _ = try await pipeline.verify()
         await #expect(throws: PipelineError.self) { _ = try await pipeline.deploy(confirmation: confirmation("some-other-id")) }
-        #expect(await server.deployCount == 0)
+        #expect(server.deployCount == 0)
     }
 
     @Test("Deployment failure and timeout are reported")
@@ -722,12 +784,58 @@ struct PipelineTests {
             _ = try await pipeline.build(name: "x", description: nil, deviceGroupIDs: [engineers.id], acknowledgedWarnings: false)
             let created = try await pipeline.create()
             _ = try await pipeline.verify()
-            let outcome = try await pipeline.deploy(confirmation: confirmation(created.id))
+            let outcome = try await pipeline.deploy(confirmation: confirmation(created))
             switch outcome {
             case .failed: #expect(expectFailure)
             case .timedOut: #expect(!expectFailure)
             case .succeeded: Issue.record("unexpected success")
             }
+        }
+    }
+
+    @Test("Deploying again waits for the new deployment instead of taking the previous one's success")
+    func redeployWaitsForTheNewDeployment() async throws {
+        let server = DemoBlueprintServer(pollsToSucceed: 2)
+        let pipeline = makePipeline(server: server)
+        _ = try await pipeline.fetch(key: ProfileKey(platform: .macOS, id: 101))
+        _ = try await pipeline.validate(platformGroups: DemoFixtures.platformGroups)
+        _ = try await pipeline.build(name: "x", description: nil, deviceGroupIDs: [engineers.id], acknowledgedWarnings: false)
+        let created = try await pipeline.create()
+        _ = try await pipeline.verify()
+        guard case .succeeded = try await pipeline.deploy(confirmation: confirmation(created)) else { Issue.record("first deploy"); return }
+        let firstStart = try #require(try await JamfPlatform.Blueprints(client: server.client(log: nil)).detail(id: created)
+            .overview.deploymentState?.lastDeploymentStarted)
+
+        // The Blueprint now says DEPLOYED / SUCCEEDED; a second deploy must not stop there.
+        _ = try await pipeline.verify()
+        let seen = StatusRecorder()
+        let outcome = try await pipeline.deploy(confirmation: confirmation(created)) { await seen.add($0) }
+        guard case .succeeded = outcome else { Issue.record("\(outcome)"); return }
+        #expect(server.deployCount == 2)
+        #expect(await seen.jobStates.first == "PENDING", "the new deployment is followed from its start")
+        let started = await seen.started
+        #expect(!started.isEmpty && !started.contains(firstStart), "only the new deployment counts")
+    }
+
+    @Test("Create sends exactly the body the Preview tab shows")
+    func createSendsThePreview() async throws {
+        let server = MockServer { request in
+            request.method == "POST" ? .json(201, #"{"id":"new-id"}"#) : .json(200, #"{"totalCount":0,"results":[]}"#)
+        }
+        let client = try JamfPlatform.Client(
+            baseURL: URL(string: "https://us.api.jamfcloud.com")!, scope: .environment(DemoBlueprintServer.environmentID),
+            tokens: FixedToken(), recorder: RequestRecorder(session: server.session, log: nil),
+            permits: { RequestPolicy.isPermitted($0) })
+        let pipeline = MigrationPipeline(classic: DemoClassicAPI(), blueprints: JamfPlatform.Blueprints(client: client))
+        _ = try await pipeline.fetch(key: ProfileKey(platform: .macOS, id: 101))
+        _ = try await pipeline.validate(platformGroups: DemoFixtures.platformGroups)
+        for description in ["Migrated by Profile2Blueprint", ""] {
+            let request = try await pipeline.build(name: "Login items", description: description, deviceGroupIDs: [engineers.id], acknowledgedWarnings: false)
+            #expect(try await pipeline.create() == "new-id")
+            let sent = try #require(server.requests.last { $0.method == "POST" })
+            #expect(sent.body == request.body.serialized(), "byte for byte")
+            _ = try await pipeline.fetch(key: ProfileKey(platform: .macOS, id: 101))
+            _ = try await pipeline.validate(platformGroups: DemoFixtures.platformGroups)
         }
     }
 
@@ -756,7 +864,7 @@ struct SafetyTests {
         ("POST", "device-groups/v1/device-groups", false),
     ])
     func permitted(method: String, path: String, allowed: Bool) {
-        #expect(PlatformClient.isPermitted(HTTPRequest(method: method, path: path)) == allowed)
+        #expect(RequestPolicy.isPermitted(HTTPRequest(method: method, path: path)) == allowed)
     }
 
     @Test("Classic API protocol exposes no write methods")
@@ -805,4 +913,18 @@ struct HistoryTests {
         let messages = await reloaded.all.map(\.message)
         #expect(messages == ["token Bearer \(Redaction.placeholder)"])
     }
+}
+
+/// Deployment progress seen by a test.
+private actor StatusRecorder {
+    private(set) var statuses: [JamfPlatform.DeploymentStatus] = []
+    func add(_ status: JamfPlatform.DeploymentStatus) { statuses.append(status) }
+    var jobStates: [String] { statuses.compactMap(\.jobState) }
+    var started: [String] { statuses.compactMap(\.jobStarted) }
+}
+
+/// A token source that never signs in.
+private struct FixedToken: BearerTokenSource {
+    func token() async throws -> String { "token" }
+    func forgetToken() async {}
 }

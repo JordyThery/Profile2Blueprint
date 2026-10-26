@@ -1,4 +1,5 @@
 import Foundation
+import JTKit
 import Observation
 
 /// The APIs and identity of the place migrations run against: a live tenant or offline demo.
@@ -13,8 +14,9 @@ nonisolated struct MigrationEnvironment: Sendable {
     /// Links into the Jamf Pro console, when the tenant has its address set.
     let jamfProLinks: JamfProLinks?
     let classic: any ClassicAPI
-    let groups: any DeviceGroupsAPI
-    let blueprints: any BlueprintsAPI
+    /// JTKit's Jamf Platform API client: device groups and Blueprints. In demo
+    /// mode its requests are answered by `DemoBlueprintServer`, inside the app.
+    let platform: JamfPlatform.Client
     /// Present only when classic scope changes are explicitly enabled for the tenant.
     let classicScopeWriter: (any ClassicScopeWriter)?
 
@@ -23,7 +25,7 @@ nonisolated struct MigrationEnvironment: Sendable {
         naming: BlueprintNaming = .default,
         descriptionTemplate: String = BlueprintBuilder.defaultDescriptionTemplate,
         jamfProLinks: JamfProLinks? = nil,
-        classic: any ClassicAPI, groups: any DeviceGroupsAPI, blueprints: any BlueprintsAPI,
+        classic: any ClassicAPI, platform: JamfPlatform.Client,
         classicScopeWriter: (any ClassicScopeWriter)? = nil
     ) {
         self.displayName = displayName
@@ -33,22 +35,26 @@ nonisolated struct MigrationEnvironment: Sendable {
         self.descriptionTemplate = descriptionTemplate
         self.jamfProLinks = jamfProLinks
         self.classic = classic
-        self.groups = groups
-        self.blueprints = blueprints
+        self.platform = platform
         self.classicScopeWriter = classicScopeWriter
     }
 
+    var blueprints: JamfPlatform.Blueprints { JamfPlatform.Blueprints(client: platform) }
+
     /// Offline demo. Classic scope changes are enabled here (in memory only) so the
     /// full flow, including unscope and restore, can be tried without a tenant.
-    static func demo() -> MigrationEnvironment {
-        let classicServer = DemoClassicServer()
-        return MigrationEnvironment(
+    /// With a log, the demo's Platform API requests show in the activity log.
+    static func demo(
+        log: ActivityLog? = nil,
+        server: DemoBlueprintServer = DemoBlueprintServer(),
+        classicServer: DemoClassicServer = DemoClassicServer()
+    ) -> MigrationEnvironment {
+        MigrationEnvironment(
             displayName: "Offline demo",
             isDemo: true,
             environmentID: nil,
             classic: DemoClassicAPI(server: classicServer),
-            groups: DemoDeviceGroupsAPI(),
-            blueprints: DemoBlueprintsAPI(server: DemoBlueprintServer()),
+            platform: server.client(log: log),
             classicScopeWriter: DemoClassicScopeWriter(server: classicServer)
         )
     }
@@ -71,7 +77,7 @@ final class Workspace {
 
     private(set) var summaries: [ClassicProfileSummary] = []
     private(set) var listPhase: LoadPhase = .idle
-    private(set) var groups: [PlatformGroup] = []
+    private(set) var groups: [JamfPlatform.DeviceGroup] = []
     private(set) var groupsError: ErrorReport?
     private(set) var profiles: [ProfileKey: ClassicProfile] = [:]
     private(set) var profileErrors: [ProfileKey: ErrorReport] = [:]
@@ -101,7 +107,7 @@ final class Workspace {
     func status(for key: ProfileKey) -> EligibilityStatus? { reports[key]?.status }
 
     /// Groups a profile of this platform can target.
-    func groups(for platform: ProfilePlatform) -> [PlatformGroup] {
+    func groups(for platform: ProfilePlatform) -> [JamfPlatform.DeviceGroup] {
         groups.filter { $0.deviceType == platform.deviceGroupType }
     }
 
@@ -129,10 +135,12 @@ final class Workspace {
         groupsError = nil
 
         let classic = environment.classic
-        let groupsAPI = environment.groups
+        let platform = environment.platform
         async let macResult = Result { try await classic.listProfiles(platform: .macOS) }
         async let mobileResult = Result { try await classic.listProfiles(platform: .mobile) }
-        async let groupResult = Result { try await groupsAPI.allGroups() }
+        // Every group, unfiltered: migrations match each profile against groups of
+        // its own platform, and one paged read serves both.
+        async let groupResult = Result { try await platform.deviceGroups() }
 
         switch await groupResult {
         case let .success(groups): self.groups = groups

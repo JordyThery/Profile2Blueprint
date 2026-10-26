@@ -251,8 +251,11 @@ struct TenantConnectionsTests {
     }
 
     @Test func aFailedTestShowsTheSameDetailsAsTheErrorPanel() throws {
-        let body = try #require(APIErrorBody.parse(Data(#"{"httpStatus":403,"traceId":"trace-1","errors":[{"code":"FORBIDDEN","field":"scope","description":"Missing permission"}]}"#.utf8)))
-        let error = ConnectionTestError(report: ErrorReport(APIError.http(status: 403, method: "GET", path: "/groups", body: body, rawBody: nil)))
-        #expect(error.failureReason == "httpStatus: 403\nerrors.code: FORBIDDEN\nerrors.field: scope\nerrors.description: Missing permission\ntraceId: trace-1")
+        let body = try #require(JamfPlatform.ErrorBody(data: Data(#"{"httpStatus":403,"traceId":"trace-1","errors":[{"code":"FORBIDDEN","field":"scope","description":"Missing permission"}]}"#.utf8)))
+        let report = ErrorReport(JamfPlatformError(.status(403, body: body, text: nil, method: "GET", path: "/groups")))
+        let error = ConnectionTestError(report: report)
+        #expect(error.errorDescription == report.title)
+        #expect(error.failureReason == report.detailText)
+        #expect(error.failureReason?.hasPrefix("FORBIDDEN (scope): Missing permission\nTrace ID: trace-1\n") == true)
     }
 }

@@ -1,18 +1,19 @@
 import SwiftUI
+import JTKit
 
 /// One blueprint awaiting deploy confirmation.
 struct DeployItem: Identifiable, Hashable {
     let blueprintID: String
     let blueprintName: String
     let sourceName: String
-    let groups: [PlatformGroup]
+    let groups: [JamfPlatform.DeviceGroup]
     /// Fidelity case-change warnings to surface next to the item.
     let warnings: Int
     /// When set, the classic profile (this label) is unscoped after a clean deploy.
     var unscopeClassicProfile: String? = nil
 
     var id: String { blueprintID }
-    var deviceCount: Int { groups.reduce(0) { $0 + $1.memberCount } }
+    var deviceCount: Int { groups.reduce(0) { $0 + $1.members } }
 }
 
 /// The single explicit confirmation before deploying. Lists every blueprint, its
@@ -52,7 +53,7 @@ struct DeployConfirmationSheet: View {
                                     Image(systemName: "person.3")
                                     Text(group.name)
                                     Spacer()
-                                    Text("^[\(group.memberCount) device](inflect: true)").monospacedDigit()
+                                    Text("^[\(group.members) device](inflect: true)").monospacedDigit()
                                 }
                                 .font(.callout)
                             }

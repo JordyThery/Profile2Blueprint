@@ -77,7 +77,7 @@ final class AppModel {
         if let workspace { return workspace }
         let environment: MigrationEnvironment
         if isDemoMode {
-            environment = .demo()
+            environment = .demo(log: activity)
         } else {
             guard let tenant = currentTenant else {
                 throw APIError.invalidConfiguration("Choose a current tenant, or turn on offline demo mode.")
@@ -91,8 +91,7 @@ final class AppModel {
                 descriptionTemplate: tenant.descriptionTemplate,
                 jamfProLinks: tenant.jamfProLinks,
                 classic: LiveClassicAPI(client: client),
-                groups: LiveDeviceGroupsAPI(client: client),
-                blueprints: LiveBlueprintsAPI(client: client),
+                platform: client,
                 classicScopeWriter: tenant.allowClassicScopeChanges ? LiveClassicScopeWriter(client: client) : nil
             )
         }
@@ -188,53 +187,78 @@ final class AppModel {
 
     // MARK: - Networking
 
-    /// Builds an authenticated client for a tenant. `secretOverride` lets the
-    /// Connect screen test unsaved credentials without writing them to the Keychain.
-    func makeClient(for tenant: Tenant, secretOverride: String? = nil) throws -> PlatformClient {
+    /// Builds JTKit's client for a tenant, with the app's list of allowed
+    /// requests. `secretOverride` lets the Connect screen test unsaved
+    /// credentials without writing them to the Keychain.
+    func makeClient(for tenant: Tenant, secretOverride: String? = nil) throws -> JamfPlatform.Client {
         if let issue = tenant.validationIssues.first {
             throw APIError.invalidConfiguration(issue)
         }
         guard let baseURL = tenant.baseURL else {
             throw APIError.invalidConfiguration("Invalid host.")
         }
-        let secrets = self.secrets
-        let account = tenant.id.uuidString
-        let override = secretOverride.flatMap { $0.isEmpty ? nil : $0 }
         let recorder = RequestRecorder(session: session, log: activity,
                                        service: ConnectionService.jamfPlatform.displayName,
                                        connection: tenant.displayName)
         let tokens: JamfTokenProvider
         do {
-            tokens = try JamfTokenProvider(
-                connection: tenant.connection,
-                secret: {
-                    if let override { return override }
-                    guard let stored = secrets.secret(for: account), !stored.isEmpty else {
-                        throw APIError.missingSecret
-                    }
-                    return stored
-                },
-                recorder: recorder
-            )
+            tokens = try JamfTokenProvider(connection: tenant.connection, secret: secret(for: tenant, override: secretOverride),
+                                           recorder: recorder)
         } catch let error as HTTPError {
-            throw APIError(error)
+            throw JamfPlatformError(error)
         }
-        return PlatformClient.live(
+        let classicWrites: ClassicWritePolicy = tenant.allowClassicScopeChanges ? .scopeOnly : .denied
+        return try JamfPlatform.Client(
             baseURL: baseURL,
-            environmentID: tenant.normalizedEnvironmentID,
+            scope: .environment(tenant.normalizedEnvironmentID),
             tokens: tokens,
             recorder: recorder,
-            classicWritePolicy: tenant.allowClassicScopeChanges ? .scopeOnly : .denied
+            permits: { RequestPolicy.isPermitted($0, classicWrites: classicWrites) },
+            hints: RequestPolicy.hints(for:)
         )
     }
 
-    /// Test Connection in Settings › Connections: requests a token and lists
-    /// platform device groups, with the values in the editor, saved or not.
+    /// The tenant's client secret, read when signing in: a typed one first,
+    /// else the one in the Keychain.
+    private func secret(for tenant: Tenant, override: String?) -> @Sendable () throws -> String {
+        let secrets = self.secrets
+        let account = tenant.id.uuidString
+        let override = override.flatMap { $0.isEmpty ? nil : $0 }
+        return {
+            if let override { return override }
+            guard let stored = secrets.secret(for: account), !stored.isEmpty else {
+                throw APIError.missingSecret
+            }
+            return stored
+        }
+    }
+
+    /// The read permissions Test Connection checks. Write permissions can't be
+    /// checked without writing, so they stay in the footer.
+    static let readChecks: [JamfPlatform.PermissionCheck] = [
+        .deviceGroupsRead,
+        .blueprintsRead,
+        JamfPlatform.PermissionCheck("Read classic configuration profiles", path: "proclassic/osxconfigurationprofiles",
+                                     query: [], permission: "configuration-profiles:read"),
+    ]
+
+    /// Test Connection in Settings › Connections: signs in, checks that the
+    /// lists the app reads can be read, and counts the platform device groups,
+    /// with the values in the editor, saved or not.
     func testConnection(_ tenant: Tenant, secretOverride: String? = nil) async throws -> String {
         activity.app("Testing connection to “\(tenant.displayName)”.", environment: tenant.displayName)
+        let client: JamfPlatform.Client
         do {
-            let client = try makeClient(for: tenant, secretOverride: secretOverride)
-            let groups = try await LiveDeviceGroupsAPI(client: client).allGroups()
+            client = try makeClient(for: tenant, secretOverride: secretOverride)
+            try await client.signIn()
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            throw ConnectionTestError(report: ErrorReport(error))
+        }
+        if let problem = JamfPlatform.PermissionProblem(await client.checkPermissions(Self.readChecks)) { throw problem }
+        do {
+            let groups = try await client.deviceGroups()
             let computers = groups.count(where: { $0.deviceType == .computer })
             let mobile = groups.count(where: { $0.deviceType == .mobile })
             return "Connected · \(groups.count) device group\(groups.count == 1 ? "" : "s") (\(computers) computer, \(mobile) mobile)"
@@ -243,6 +267,17 @@ final class AppModel {
         } catch {
             throw ConnectionTestError(report: ErrorReport(error))
         }
+    }
+
+    /// Load Environments in Settings › Connections: the environments the
+    /// editor's integration can see. No Environment ID is needed for this.
+    func environments(for tenant: Tenant, secretOverride: String? = nil) async throws -> [JamfPlatform.Environment] {
+        let recorder = RequestRecorder(session: session, log: activity,
+                                       service: ConnectionService.jamfPlatform.displayName,
+                                       connection: tenant.displayName)
+        return try await JamfPlatform.environments(
+            for: tenant.connection, secret: secret(for: tenant, override: secretOverride), recorder: recorder,
+            permits: { RequestPolicy.isPermitted($0) })
     }
 }
 

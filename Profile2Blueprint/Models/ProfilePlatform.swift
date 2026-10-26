@@ -1,4 +1,5 @@
 import Foundation
+import JTKit
 
 /// The classic profile family: Jamf Pro keeps macOS and mobile device profiles in
 /// two separate Classic APIs with their own IDs, XML element names and scope shape.
@@ -80,7 +81,7 @@ nonisolated enum ProfilePlatform: String, Codable, Hashable, Sendable, CaseItera
     }
 
     /// The platform device-group type a profile of this family can target.
-    var deviceGroupType: DeviceType {
+    var deviceGroupType: JamfPlatform.DeviceGroup.DeviceType {
         switch self {
         case .macOS: .computer
         case .mobile: .mobile

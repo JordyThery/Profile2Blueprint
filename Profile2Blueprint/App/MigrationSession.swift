@@ -1,4 +1,5 @@
 import Foundation
+import JTKit
 import Observation
 
 /// Progress of the optional classic-profile cleanup.
@@ -14,7 +15,7 @@ enum UnscopeStatus: Equatable {
 enum DuplicateResolution {
     case skip
     case rename
-    case openExisting(BlueprintOverview)
+    case openExisting(JamfPlatform.BlueprintOverview)
 }
 
 /// Main-actor state for migrating one profile: the editable draft plus the results
@@ -31,7 +32,7 @@ final class MigrationSession: Identifiable {
     private weak var workspace: Workspace?
     private let environment: MigrationEnvironment
     private let history: HistoryLog
-    private let groupsSnapshot: [PlatformGroup]
+    private let groupsSnapshot: [JamfPlatform.DeviceGroup]
     private let pipeline: MigrationPipeline
     private let scopeBackups: ScopeBackupStore
     private let sessionStates: SessionStateStore
@@ -62,13 +63,13 @@ final class MigrationSession: Identifiable {
     private(set) var lastError: ErrorReport?
     private(set) var dryRunSummary: String?
     /// Same-named blueprints found right before create; non-nil means "ask the user".
-    private(set) var duplicates: [BlueprintOverview]?
+    private(set) var duplicates: [JamfPlatform.BlueprintOverview]?
     private(set) var blueprintID: String?
-    private(set) var readBack: BlueprintDetail?
+    private(set) var readBack: JamfPlatform.BlueprintDetail?
     private(set) var fidelity: FidelityReport?
-    private(set) var deployment: DeploymentState?
+    private(set) var deployment: JamfPlatform.DeploymentStatus?
     private(set) var outcome: DeploymentOutcome?
-    private(set) var deviceReport: BlueprintReport?
+    private(set) var deviceReport: JamfPlatform.BlueprintReport?
     /// Name that was actually sent on create (the draft may be edited afterwards).
     private(set) var createdName: String?
     /// The most recent unrestored scope backup for this profile, if any.
@@ -109,7 +110,7 @@ final class MigrationSession: Identifiable {
     }
 
     /// Live groups from the workspace, or the snapshot if it has gone away.
-    private var platformGroups: [PlatformGroup] {
+    private var platformGroups: [JamfPlatform.DeviceGroup] {
         workspace?.groups ?? groupsSnapshot
     }
 
@@ -122,10 +123,10 @@ final class MigrationSession: Identifiable {
         }
     }
 
-    var selectedGroups: [PlatformGroup] { selectedGroupIDs.compactMap { id in platformGroups.first { $0.id == id } } }
+    var selectedGroups: [JamfPlatform.DeviceGroup] { selectedGroupIDs.compactMap { id in platformGroups.first { $0.id == id } } }
 
     /// Sum of member counts. Groups can overlap, so this is an upper bound when > 1 group.
-    var deviceCount: Int { selectedGroups.reduce(0) { $0 + $1.memberCount } }
+    var deviceCount: Int { selectedGroups.reduce(0) { $0 + $1.members } }
 
     /// Eligibility with the pick-a-group findings resolved by the current selection.
     /// Warnings about information loss (exclusions, limitations, …) remain.
@@ -202,15 +203,15 @@ final class MigrationSession: Identifiable {
         guard canCreate else { return }
         await perform { [self] in
             let request = try await prepareRequest()
-            let created: BlueprintCreated
+            let createdID: String
             do {
-                created = try await pipeline.create()
+                createdID = try await pipeline.create()
             } catch let duplicate as DuplicateNameError {
                 duplicates = duplicate.existing
                 state = await pipeline.state
                 return
             }
-            blueprintID = created.id
+            blueprintID = createdID
             createdName = request.name
             persistSessionRecord()
             state = await pipeline.state
@@ -219,7 +220,7 @@ final class MigrationSession: Identifiable {
             if !unlisted.isEmpty {
                 message += " The API accepted \(unlisted.joined(separator: ", ")), which the app's payload-type registry doesn't list; the registry may have grown."
             }
-            history.record(.create, environment: environment, profile: profile, blueprintID: created.id, blueprintName: request.name,
+            history.record(.create, environment: environment, profile: profile, blueprintID: createdID, blueprintName: request.name,
                                      result: .success, message: message)
             try await verifyStage()
         }
@@ -238,7 +239,7 @@ final class MigrationSession: Identifiable {
             await perform { [self] in
                 try await pipeline.adoptExisting(id: existing.id)
                 blueprintID = existing.id
-                createdName = existing.name ?? blueprintName
+                createdName = existing.name
                 persistSessionRecord()
                 state = await pipeline.state
                 history.record(.adoptExisting, environment: environment, profile: profile, blueprintID: existing.id,
@@ -381,7 +382,7 @@ final class MigrationSession: Identifiable {
                 state = await pipeline.state
                 try await verifyStage()
             } catch {
-                if case APIError.http(404, _, _, _, _) = error {
+                if let error = error as? JamfPlatformError, error.status == 404 {
                     await sessionStates.remove(environmentKey: environmentKey, key: key)
                     blueprintID = nil
                     createdName = nil
@@ -420,7 +421,7 @@ final class MigrationSession: Identifiable {
         reportMonitorActive = false
     }
 
-    private func reportBecameFinal(_ report: BlueprintReport?) async {
+    private func reportBecameFinal(_ report: JamfPlatform.BlueprintReport?) async {
         if let report {
             deviceReport = report
             outcome = .succeeded(report)
@@ -476,8 +477,8 @@ final class MigrationSession: Identifiable {
         state = await pipeline.state
         // An already-deployed blueprint (restored session, or adopted duplicate) resumes
         // at the deployed stage, with the report refreshing until it is clean.
-        if let detail = readBack, detail.deploymentState.isDeployedSuccessfully {
-            let report = try? await environment.blueprints.report(id: detail.id)
+        if let detail = readBack, detail.overview.deploymentState?.isDeployedSuccessfully == true {
+            let report = await environment.blueprints.reportIfAny(id: detail.id)
             deviceReport = report
             outcome = .succeeded(report)
             state = .deployed(report)

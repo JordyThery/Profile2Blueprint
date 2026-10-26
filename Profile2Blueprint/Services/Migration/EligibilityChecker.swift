@@ -1,4 +1,5 @@
 import Foundation
+import JTKit
 
 /// Decides whether a classic profile can be transformed in place into a DDM
 /// legacy-profile blueprint. Pure: no I/O, so the whole table is unit-tested.
@@ -110,7 +111,7 @@ nonisolated enum EligibilityChecker {
         "PayloadUUID", "PayloadIdentifier", "PayloadDisplayName", "PayloadContent", "PayloadType", "PayloadVersion",
     ]
 
-    static func check(_ profile: ClassicProfile, platformGroups: [PlatformGroup]) -> EligibilityReport {
+    static func check(_ profile: ClassicProfile, platformGroups: [JamfPlatform.DeviceGroup]) -> EligibilityReport {
         var findings: [EligibilityFinding] = []
         func add(_ kind: FindingKind, _ severity: FindingSeverity, _ title: String, _ detail: String) {
             findings.append(EligibilityFinding(kind: kind, severity: severity, title: title, detail: detail))

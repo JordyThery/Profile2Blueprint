@@ -1,4 +1,5 @@
 import Foundation
+import JTKit
 
 nonisolated enum FidelityStatus: Hashable, Sendable {
     /// Required to match and does.
@@ -50,7 +51,7 @@ nonisolated enum FidelityVerifier {
     static func verify(
         document: ProfileDocument,
         expectedGroupIDs: [String],
-        detail: BlueprintDetail
+        detail: JamfPlatform.BlueprintDetail
     ) -> FidelityReport {
         var rows: [FidelityRow] = []
         func row(_ field: String, _ classic: String?, _ blueprint: String?, required: Bool = true, note: String? = nil) {
@@ -60,8 +61,8 @@ nonisolated enum FidelityVerifier {
         }
 
         // Locate the configuration-profile component.
-        let components = detail.steps.flatMap(\.components).filter { $0.identifier == BlueprintBuilder.componentIdentifier }
-        guard components.count == 1, let configuration = components[0].configuration?.objectValue else {
+        let components = detail.components.filter { $0.identifier == BlueprintBuilder.componentIdentifier }
+        guard components.count == 1, let configuration = components[0].json["configuration"]?.objectValue else {
             rows.append(FidelityRow(
                 field: "Component \(BlueprintBuilder.componentIdentifier)",
                 classic: "1", blueprint: String(components.count), status: .mismatch,
@@ -121,8 +122,8 @@ nonisolated enum FidelityVerifier {
         return FidelityReport(rows: rows)
     }
 
-    private static func scopeRow(_ expected: [String], _ detail: BlueprintDetail) -> FidelityRow {
-        let actual = detail.scope?.deviceGroups ?? []
+    private static func scopeRow(_ expected: [String], _ detail: JamfPlatform.BlueprintDetail) -> FidelityRow {
+        let actual = detail.scopeDeviceGroups
         let normalizedExpected = Set(expected.map { $0.lowercased() })
         let normalizedActual = Set(actual.map { $0.lowercased() })
         return FidelityRow(
@@ -135,9 +136,9 @@ nonisolated enum FidelityVerifier {
     }
 
     /// Compares the non-wrapper keys of one payload.
-    private static func settingsRows(label: String, source: PlistDictionary, returned: JSONObject) -> [FidelityRow] {
+    private static func settingsRows(label: String, source: PlistDictionary, returned: LosslessJSON.Object) -> [FidelityRow] {
         let sourceSettings = PlistDictionary(source.entries.filter { !wrapperKeys.contains($0.key) })
-        let returnedSettings = JSONObject(returned.entries.filter { entry in
+        let returnedSettings = LosslessJSON.Object(returned.members.filter { entry in
             !wrapperKeys.contains { $0.caseInsensitiveCompare(entry.key) == .orderedSame }
         })
 
@@ -200,8 +201,8 @@ nonisolated enum FidelityVerifier {
 
     /// Apple's five conditions for a seamless in-place transform, evaluated against a
     /// `com.jamf.ddm-configuration-profile` configuration (built locally or read back).
-    static func ruleChecklist(document: ProfileDocument, configuration: JSONObject) -> [RuleCheck] {
-        func string(_ object: JSONObject, _ key: String) -> String? {
+    static func ruleChecklist(document: ProfileDocument, configuration: LosslessJSON.Object) -> [RuleCheck] {
+        func string(_ object: LosslessJSON.Object, _ key: String) -> String? {
             object.value(forKeyIgnoringCase: key)?.value.stringValue
         }
         let payloads = configuration.value(forKeyIgnoringCase: "payloadContent")?.value.arrayValue?.compactMap(\.objectValue) ?? []
@@ -237,7 +238,7 @@ nonisolated enum FidelityVerifier {
     }
 
     /// Keys whose value matched case-insensitively but whose spelling changed.
-    static func keyCaseChanges(_ plist: PlistValue, _ json: JSONValue, path: String) -> [ValueDifference] {
+    static func keyCaseChanges(_ plist: PlistValue, _ json: LosslessJSON, path: String) -> [ValueDifference] {
         switch (plist, json) {
         case let (.dict(dict), .object(object)):
             return dict.entries.flatMap { entry -> [ValueDifference] in

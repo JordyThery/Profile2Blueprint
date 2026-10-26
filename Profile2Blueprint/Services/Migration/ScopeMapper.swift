@@ -1,8 +1,9 @@
 import Foundation
+import JTKit
 
 /// Maps classic scope groups to platform device groups of the same platform, by name.
 nonisolated enum ScopeMapper {
-    static func propose(for scope: ClassicScope, platform: ProfilePlatform, platformGroups: [PlatformGroup]) -> [ScopeMappingEntry] {
+    static func propose(for scope: ClassicScope, platform: ProfilePlatform, platformGroups: [JamfPlatform.DeviceGroup]) -> [ScopeMappingEntry] {
         let candidates = platformGroups.filter { $0.deviceType == platform.deviceGroupType }
         return scope.deviceGroups.map { classic in
             let exact = candidates.filter { $0.name == classic.name }

@@ -1,4 +1,5 @@
 import SwiftUI
+import JTKit
 
 /// Review & create → Verify → Deploy, with an explicit confirmation before deploy.
 struct MigrateTab: View {
@@ -77,7 +78,7 @@ struct MigrateTab: View {
                     MetadataRow(label: "Source", value: "\(session.profile.name) (#\(session.profile.id)) — left untouched")
                     MetadataRow(label: "Blueprint", value: session.blueprintName)
                     MetadataRow(label: "Payloads", value: "\(session.profile.document.payloadCount)")
-                    MetadataRow(label: "Target groups", value: session.selectedGroups.map { "\($0.name) (\($0.memberCount))" }.joined(separator: ", "))
+                    MetadataRow(label: "Target groups", value: session.selectedGroups.map { "\($0.name) (\($0.members))" }.joined(separator: ", "))
                     MetadataRow(label: "Devices", value: session.selectedGroups.isEmpty ? "" : "\(session.selectedGroups.count > 1 ? "up to " : "")\(session.deviceCount)")
                     GridRow {
                         Text("Eligibility").foregroundStyle(.secondary).gridColumnAlignment(.trailing)
@@ -146,7 +147,7 @@ struct MigrateTab: View {
         return nil
     }
 
-    private func duplicatePrompt(_ duplicates: [BlueprintOverview]) -> some View {
+    private func duplicatePrompt(_ duplicates: [JamfPlatform.BlueprintOverview]) -> some View {
         GroupBox {
             VStack(alignment: .leading, spacing: 10) {
                 Label("A blueprint named “\(session.blueprintName)” already exists", systemImage: "doc.on.doc.fill")
@@ -322,7 +323,7 @@ extension MigrateTab {
 }
 
 struct DeviceReportView: View {
-    let report: BlueprintReport
+    let report: JamfPlatform.BlueprintReport
 
     var body: some View {
         HStack(spacing: 18) {

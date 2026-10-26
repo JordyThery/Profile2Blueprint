@@ -1,4 +1,5 @@
 import Foundation
+import JTKit
 import OSLog
 
 /// A saved copy of a classic profile's scope, taken right before it was changed.
