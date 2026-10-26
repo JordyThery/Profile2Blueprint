@@ -239,7 +239,8 @@ final class AppModel {
         .deviceGroupsRead,
         .blueprintsRead,
         JamfPlatform.PermissionCheck("Read classic configuration profiles", path: "proclassic/osxconfigurationprofiles",
-                                     query: [], permission: "configuration-profiles:read"),
+                                     query: [], permission: "configuration-profiles:read",
+                                     jamfProPrivilege: ProfilePlatform.macOS.readPrivilege.rawValue),
     ]
 
     /// Test Connection in Settings › Connections: signs in, checks that the

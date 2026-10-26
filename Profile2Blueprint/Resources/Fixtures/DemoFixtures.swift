@@ -386,16 +386,18 @@ nonisolated enum DemoFixtures {
         return all
     }()
 
-    static func profileListXML(platform: ProfilePlatform) -> String {
+    /// The list as Jamf Pro answers it when asked for JSON.
+    static func profileListJSON(platform: ProfilePlatform) -> String {
         let byID = platform == .macOS ? profilesByID : mobileProfilesByID
         let items = byID.keys.sorted().compactMap { id -> String? in
             guard let xml = byID[id],
                   let name = xml.firstMatch(of: /<general><id>\d+<\/id><name>([^<]*)<\/name>/)?.1 else { return nil }
-            return "<\(platform.profileRootElement)><id>\(id)</id><name>\(name)</name></\(platform.profileRootElement)>"
+            let item = LosslessJSON.object(LosslessJSON.Object([
+                "id": .number(LosslessJSON.Number(id)), "name": .string(unescape(String(name))),
+            ]))
+            return item.serializedString()
         }
-        return """
-        <?xml version="1.0" encoding="UTF-8"?><\(platform.listRootElement)><size>\(items.count)</size>\(items.joined())</\(platform.listRootElement)>
-        """
+        return #"{"\#(platform.listRootElement)":[\#(items.joined(separator: ","))]}"#
     }
 
     static let fieldiPhonesPlatformGroupID = "ab12cd34-0001-4000-8000-5e6f7a8b9c0d"
@@ -447,6 +449,13 @@ nonisolated enum DemoFixtures {
         """
     }
 
+    private static func unescape(_ text: String) -> String {
+        text.replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&gt;", with: ">")
+            .replacingOccurrences(of: "&lt;", with: "<")
+            .replacingOccurrences(of: "&amp;", with: "&")
+    }
+
     private static func escape(_ text: String) -> String {
         text.replacingOccurrences(of: "&", with: "&amp;")
             .replacingOccurrences(of: "<", with: "&lt;")
@@ -460,11 +469,11 @@ actor DemoClassicServer {
     private var profilesXML: [ProfileKey: String] = DemoFixtures.profilesByKey
     private(set) var scopeWrites: [(key: ProfileKey, body: String)] = []
 
-    func list(platform: ProfilePlatform) -> String { DemoFixtures.profileListXML(platform: platform) }
+    func list(platform: ProfilePlatform) -> String { DemoFixtures.profileListJSON(platform: platform) }
 
     func profileXML(key: ProfileKey) throws -> String {
         guard let xml = profilesXML[key] else {
-            throw JamfPlatformError(.status(404, body: nil, text: nil, method: "GET", path: "proclassic/\(key.platform.classicResource)/id/\(key.id)"))
+            throw JamfPlatformError(.status(404, body: nil, text: nil, method: "GET", path: JamfClassic.path(key.platform.classicResource, id: String(key.id))))
         }
         return xml
     }
@@ -472,13 +481,13 @@ actor DemoClassicServer {
     /// Mimics a Classic partial update: replaces only `<scope>`.
     func putScope(key: ProfileKey, body: Data) throws {
         guard RequestPolicy.isScopeOnlyProfileXML(body) else {
-            throw JamfPlatformError(.status(400, body: nil, text: "Not a scope-only body", method: "PUT", path: "proclassic/\(key.platform.classicResource)/id/\(key.id)"))
+            throw JamfPlatformError(.status(400, body: nil, text: "Not a scope-only body", method: "PUT", path: JamfClassic.path(key.platform.classicResource, id: String(key.id))))
         }
         guard let xml = profilesXML[key],
               let document = try? XMLDocument(xmlString: xml, options: [.nodePreserveWhitespace]),
               let root = document.rootElement(),
               let newScope = try? XMLDocument(data: body).rootElement()?.elements(forName: "scope").first?.copy() as? XMLElement else {
-            throw JamfPlatformError(.status(404, body: nil, text: nil, method: "PUT", path: "proclassic/\(key.platform.classicResource)/id/\(key.id)"))
+            throw JamfPlatformError(.status(404, body: nil, text: nil, method: "PUT", path: JamfClassic.path(key.platform.classicResource, id: String(key.id))))
         }
         if let old = root.elements(forName: "scope").first { root.removeChild(at: old.index) }
         root.addChild(newScope)
@@ -492,7 +501,7 @@ nonisolated struct DemoClassicAPI: ClassicAPI {
     var server = DemoClassicServer()
 
     func listProfiles(platform: ProfilePlatform) async throws -> [ClassicProfileSummary] {
-        try ClassicXMLParser.parseProfileList(Data(await server.list(platform: platform).utf8), platform: platform)
+        try ClassicProfileList.parse(Data(await server.list(platform: platform).utf8), platform: platform)
     }
 
     func profile(key: ProfileKey) async throws -> ClassicProfile {

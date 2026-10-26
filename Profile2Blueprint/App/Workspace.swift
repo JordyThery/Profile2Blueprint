@@ -213,7 +213,7 @@ final class Workspace {
         )
         workspace.groups = DemoFixtures.platformGroups
         workspace.summaries = ProfilePlatform.allCases.flatMap { platform in
-            (try? ClassicXMLParser.parseProfileList(Data(DemoFixtures.profileListXML(platform: platform).utf8), platform: platform)) ?? []
+            (try? ClassicProfileList.parse(Data(DemoFixtures.profileListJSON(platform: platform).utf8), platform: platform)) ?? []
         }
         for summary in workspace.summaries {
             if let xml = DemoFixtures.profilesByKey[summary.key],

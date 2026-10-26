@@ -32,10 +32,10 @@ struct MobileProfileTests {
         #expect(ProfileLevel(raw) == .system)
     }
 
-    @Test("The mobile list parses with its own root element")
+    @Test("The mobile list parses with its own list key")
     func list() throws {
-        let list = try ClassicXMLParser.parseProfileList(
-            Data(DemoFixtures.profileListXML(platform: .mobile).utf8), platform: .mobile)
+        let list = try ClassicProfileList.parse(
+            Data(DemoFixtures.profileListJSON(platform: .mobile).utf8), platform: .mobile)
         #expect(list.map(\.profileID) == [201, 202])
         #expect(list.allSatisfy { $0.platform == .mobile })
     }
