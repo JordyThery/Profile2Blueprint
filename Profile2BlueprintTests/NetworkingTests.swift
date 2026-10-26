@@ -30,13 +30,16 @@ private func makeTokens(clock: TestClock = TestClock()) -> JamfTokenProvider {
     )
 }
 
-/// No randomness in the waits, so they can be compared exactly.
-private func makeClient(tokens: JamfTokenProvider, sleeper: SleepRecorder = SleepRecorder()) -> PlatformClient {
-    PlatformClient.live(
+/// JTKit's client as the app builds it (its allow-list and hints), with no
+/// randomness in the waits, so they can be compared exactly.
+private func makeClient(tokens: JamfTokenProvider, sleeper: SleepRecorder = SleepRecorder()) throws -> JamfPlatform.Client {
+    try JamfPlatform.Client(
         baseURL: base,
-        environmentID: environmentID,
+        scope: .environment(environmentID),
         tokens: tokens,
         recorder: RequestRecorder(session: MockURLProtocol.makeSession(), log: nil),
+        permits: { RequestPolicy.isPermitted($0) },
+        hints: RequestPolicy.hints(for:),
         sleep: { try await sleeper.sleep($0) },
         random: { 0 }
     )
@@ -109,15 +112,13 @@ struct NetworkingTests {
             _ = try await makeTokens().token()
             Issue.record("Expected failure")
         } catch let jtkitError as HTTPError {
-            let error = APIError(jtkitError)
-            let report = ErrorReport(error)
+            let report = ErrorReport(jtkitError)
             #expect(report.httpStatus == 401)
-            #expect(report.details.first?.code == "invalid_client")
-            #expect(report.details.first?.description == "Invalid client credentials")
-            #expect(!(report.title.contains(secretValue)))
-            if case let .http(_, _, _, _, raw) = error {
-                #expect(raw?.contains("leaked") == false)
-            }
+            #expect(report.title.hasPrefix("Sign-in failed"))
+            #expect(report.details.contains("invalid_client: Invalid client credentials"))
+            let shown = ([report.title] + report.details).joined(separator: "\n")
+            #expect(!shown.contains(secretValue))
+            #expect(!shown.contains("leaked"))
         }
     }
 
@@ -130,8 +131,8 @@ struct NetworkingTests {
                 ? .json(200, tokenJSON("tok-h"))
                 : .json(200, pageJSON(page: 0, totalPages: 1, items: [1]))
         }
-        let client = makeClient(tokens: makeTokens())
-        _ = try await LiveDeviceGroupsAPI(client: client).allGroups()
+        let client = try makeClient(tokens: makeTokens())
+        _ = try await client.deviceGroups()
 
         let apiRequest = try #require(MockURLProtocol.requests.last)
         #expect(apiRequest.header("Authorization") == "Bearer tok-h")
@@ -152,7 +153,7 @@ struct NetworkingTests {
             }
             return .json(200, pageJSON(page: 0, totalPages: 1, items: [1]))
         }
-        let groups = try await LiveDeviceGroupsAPI(client: makeClient(tokens: makeTokens())).allGroups()
+        let groups = try await makeClient(tokens: makeTokens()).deviceGroups()
 
         #expect(groups.count == 1)
         #expect(apiCalls.value == 2)
@@ -173,7 +174,7 @@ struct NetworkingTests {
             }
         }
         let sleeper = SleepRecorder()
-        let groups = try await LiveDeviceGroupsAPI(client: makeClient(tokens: makeTokens(), sleeper: sleeper)).allGroups()
+        let groups = try await makeClient(tokens: makeTokens(), sleeper: sleeper).deviceGroups()
 
         #expect(groups.map(\.memberCount) == [7])
         // First wait from Retry-After, second from the doubling backoff (after attempt 2: 2 s, no randomness here).
@@ -188,13 +189,13 @@ struct NetworkingTests {
                 : .json(429, #"{"httpStatus":429,"traceId":"r9","errors":{"code":"TOO_MANY_REQUESTS","description":"slow down"}}"#)
         }
         let sleeper = SleepRecorder()
-        await #expect(throws: APIError.self) {
-            _ = try await LiveDeviceGroupsAPI(client: makeClient(tokens: makeTokens(), sleeper: sleeper)).allGroups()
-        }
+        let client = try makeClient(tokens: makeTokens(), sleeper: sleeper)
+        let error = await #expect(throws: JamfPlatformError.self) { _ = try await client.deviceGroups() }
+        #expect(error?.status == 429)
         #expect(sleeper.recorded.count == RetryRules.standard.maxAttempts - 1)
     }
 
-    @Test("400 and 409 bodies decode into httpStatus / code / field / description / traceId",
+    @Test("400 and 409 bodies show in JTKit's format: status, CODE (field): description, Trace ID",
           arguments: [400, 409])
     func errorDecoding(status: Int) async throws {
         MockURLProtocol.install { request in
@@ -208,8 +209,10 @@ struct NetworkingTests {
         } catch {
             let report = ErrorReport(error)
             #expect(report.httpStatus == status)
-            #expect(report.traceId == "3e3819a63ae0f231")
-            #expect(report.details == [APIErrorDetail(code: "INVALID_FIELD", field: "name", description: "Field name is required.")])
+            #expect(report.traceID == "3e3819a63ae0f231")
+            #expect(report.title.contains("\(status)"))
+            #expect(report.details.contains("INVALID_FIELD (name): Field name is required."))
+            #expect(report.details.contains { $0.contains("3e3819a63ae0f231") })
         }
     }
 
@@ -223,8 +226,8 @@ struct NetworkingTests {
             let items = Array((page * 2 + 1)...(page * 2 + 2))
             return .json(200, pageJSON(page: page, totalPages: 3, items: items))
         }
-        let api = LiveDeviceGroupsAPI(client: makeClient(tokens: makeTokens()), pageSize: 2)
-        let groups = try await api.listGroups(filter: #"deviceType=="COMPUTER""#)
+        let client = try makeClient(tokens: makeTokens())
+        let groups = try await client.deviceGroups(filter: #"deviceType=="COMPUTER""#, pageSize: 2)
 
         #expect(groups.map(\.name) == (1...6).map { "Group \($0)" })
         let apiRequests = MockURLProtocol.requests.filter { $0.path != "/auth/token" }
@@ -238,7 +241,7 @@ struct NetworkingTests {
         MockURLProtocol.install { request in
             request.path == "/auth/token" ? .json(200, tokenJSON("tok")) : .json(200, pageJSON(page: 0, totalPages: 1, items: [1]))
         }
-        _ = try await LiveDeviceGroupsAPI(client: makeClient(tokens: makeTokens())).allGroups()
+        _ = try await makeClient(tokens: makeTokens()).deviceGroups()
         let unfiltered = MockURLProtocol.requests.filter { $0.path != "/auth/token" }
         #expect(unfiltered.allSatisfy { $0.queryValue("filter") == nil })
     }
@@ -250,7 +253,8 @@ struct NetworkingTests {
                 ? .json(200, tokenJSON("tok"))
                 : .json(200, pageJSON(page: 0, totalPages: 99, items: [1]))
         }
-        let api = LiveDeviceGroupsAPI(client: makeClient(tokens: makeTokens()), pageSize: 1, maxPages: 3)
-        await #expect(throws: APIError.self) { _ = try await api.allGroups() }
+        let client = try makeClient(tokens: makeTokens())
+        let error = await #expect(throws: JamfPlatformError.self) { _ = try await client.deviceGroups(pageSize: 1, maxPages: 3) }
+        guard case .pageLimitReached(_, 3)? = error?.kind else { Issue.record("Got \(String(describing: error))"); return }
     }
 }

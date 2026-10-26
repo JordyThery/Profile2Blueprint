@@ -1,4 +1,6 @@
 import Foundation
+import JTKit
+@testable import Profile2Blueprint
 
 // The fake network is JTKit's (`MockURLProtocol` in JTKitTestSupport). Its
 // handler is global, so suites that use it must be `.serialized`.
@@ -45,4 +47,39 @@ final class SleepRecorder: @unchecked Sendable {
     func sleep(_ duration: Duration) async throws {
         lock.withLock { durations.append(duration) }
     }
+}
+
+/// A Blueprint as the server sends it, read through JTKit, with one
+/// configuration-profile component (none when `configuration` is nil).
+func blueprintDetail(
+    id: String = "bp",
+    name: String = "n",
+    deviceGroups: [String],
+    configuration: LosslessJSON.Object?,
+    state: String = "NOT_DEPLOYED",
+    lastDeployment: (started: String, state: String)? = nil
+) throws -> JamfPlatform.BlueprintDetail {
+    var deploymentState = LosslessJSON.Object(["state": .string(state)])
+    if let lastDeployment {
+        deploymentState["lastDeployment"] = .object(LosslessJSON.Object([
+            "started": .string(lastDeployment.started), "state": .string(lastDeployment.state),
+        ]))
+    }
+    let steps: [LosslessJSON] = configuration.map { configuration in
+        [.object(LosslessJSON.Object([
+            "name": .string("s"),
+            "components": .array([.object(LosslessJSON.Object([
+                "identifier": .string(BlueprintBuilder.componentIdentifier),
+                "configuration": .object(configuration),
+            ]))]),
+        ]))]
+    } ?? []
+    let json = LosslessJSON.object(LosslessJSON.Object([
+        "id": .string(id),
+        "name": .string(name),
+        "scope": .object(LosslessJSON.Object(["deviceGroups": .array(deviceGroups.map(LosslessJSON.string))])),
+        "deploymentState": .object(deploymentState),
+        "steps": .array(steps),
+    ]))
+    return try JamfPlatform.BlueprintDetail(data: json.serialized())
 }

@@ -6,8 +6,8 @@ import Testing
 @Suite("Tenant & persistence")
 struct TenantTests {
 
-    @Test("Production host is derived from the region", arguments: Region.allCases)
-    func productionHost(region: Region) {
+    @Test("Production host is derived from the region", arguments: JamfRegion.allCases)
+    func productionHost(region: JamfRegion) {
         let tenant = Tenant(region: region)
         #expect(tenant.host == "\(region.rawValue).api.jamfcloud.com")
         #expect(tenant.baseURL?.absoluteString == "https://\(region.rawValue).api.jamfcloud.com")
@@ -54,23 +54,42 @@ struct RedactionTests {
     }
 }
 
-@Suite("API error decoding")
-struct APIErrorBodyTests {
+@Suite("Error panel")
+struct ErrorReportTests {
 
-    @Test("errors may be an object or an array")
-    func objectOrArray() throws {
-        let single = try #require(APIErrorBody.parse(Data(#"{"traceId":"a","errors":{"code":"X","description":"d"}}"#.utf8)))
-        let many = try #require(APIErrorBody.parse(Data(#"{"traceId":"a","errors":[{"code":"X","description":"d"},{"code":"Y","field":"f","description":"e"}]}"#.utf8)))
-        #expect(single.errors.map(\.code) == ["X"])
-        #expect(many.errors.map(\.code) == ["X", "Y"])
-        #expect(many.errors[1].field == "f")
+    @Test("A failed request shows JTKit's format: status line, then codes, Trace ID and hints")
+    func platformError() {
+        let body = JamfPlatform.ErrorBody(httpStatus: 403, traceID: "t-1", errors: [
+            .init(code: "BAD_PERMISSIONS", field: "scope", description: "Not allowed"),
+        ])
+        let report = ErrorReport(JamfPlatformError(.status(403, body: body, text: nil, method: "GET", path: "/device-groups/v1/device-groups")))
+        #expect(report.title == "HTTP 403 Forbidden")
+        #expect(report.httpStatus == 403)
+        #expect(report.traceID == "t-1")
+        #expect(report.details.first == "BAD_PERMISSIONS (scope): Not allowed")
+        #expect(report.details.contains("Trace ID: t-1"))
+        #expect(report.details.contains { $0.contains("Jamf Account") })
     }
 
-    @Test("Non-error bodies are not mistaken for errors")
-    func nonError() {
-        #expect(APIErrorBody.parse(Data("<html>bad gateway</html>".utf8)) == nil)
-        #expect(APIErrorBody.parse(Data("{}".utf8)) == nil)
+    @Test("A refused request says what the app does send")
+    func refused() {
+        let error = JamfPlatformError(.refused(method: "PUT", path: "proclassic/osxconfigurationprofiles/id/1"))
+        let report = ErrorReport(JamfPlatformError(error.kind, appHints: RequestPolicy.hints(for: error)))
+        #expect(report.title.hasPrefix("Refused before sending: PUT"))
+        #expect(report.details == ["This app only reads, creates and deploys blueprints, and changes classic scope only when that is explicitly enabled."])
     }
+
+    @Test("The app's own errors show their description and nothing else")
+    func appError() {
+        let report = ErrorReport(APIError.missingSecret)
+        #expect(report.title == APIError.missingSecret.errorDescription)
+        #expect(report.detailText == nil)
+        #expect(report.httpStatus == nil)
+    }
+}
+
+@Suite("Retry rules")
+struct RetryRuleTests {
 
     @Test("Retry backoff doubles and is capped (JTKit's shared rules)")
     func backoff() {

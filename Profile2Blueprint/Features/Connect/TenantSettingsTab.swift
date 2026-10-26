@@ -20,6 +20,9 @@ struct TenantSettingsTab: View {
             newRecord: { _ in Tenant(name: "New tenant") },
             test: { tenant, secrets in
                 try await model.testConnection(tenant, secretOverride: secrets[.main])
+            },
+            environments: { tenant, secrets in
+                try await model.environments(for: tenant, secretOverride: secrets[.main])
             }
         ) { $tenant in
             TenantAppSections(tenant: $tenant)

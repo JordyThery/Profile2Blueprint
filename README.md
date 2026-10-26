@@ -77,12 +77,12 @@ Requires Xcode with the macOS 26 SDK or later (Swift 6, strict concurrency). Ope
 Profile2Blueprint/
   App/        AppModel, Workspace, MigrationSession, HistoryLog, ActivityLog,
               UpdateChecker
-  Models/     Tenant, ClassicProfile, PlistValue/JSONValue (order-preserving),
-              Blueprint, EligibilityReport, MigrationRecord, ActivityEvent
+  Models/     Tenant, ClassicProfile, PlistValue (order-preserving),
+              BlueprintRequest, EligibilityReport, MigrationRecord, ActivityEvent
   Services/
     Auth/        TokenProvider (actor), KeychainStore
-    API/         HTTPClient (allow-list, retry/backoff, activity logging),
-                 ClassicAPI, DeviceGroupsAPI, BlueprintsAPI, ClassicScopeWriter
+    API/         RequestPolicy (allow-list), ClassicAPI, ClassicScopeWriter;
+                 the Platform API client, Blueprints, device groups and JSON are JTKit's
     Migration/   PlistParser, ClassicXMLParser, PlistToJSON, ScopeMapper,
                  EligibilityChecker, BlueprintBuilder, FidelityVerifier,
                  MigrationPipeline (actor, staged state machine),

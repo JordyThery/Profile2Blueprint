@@ -7,13 +7,14 @@ import Testing
 private let base = URL(string: "https://eu.api.jamfcloud.com")!
 private let tokenBody = #"{"access_token":"SECRET-TOKEN-VALUE","expires_in":900,"token_type":"Bearer"}"#
 
-private func client(_ log: ActivityLog, policy: ClassicWritePolicy = .denied) -> PlatformClient {
+private func client(_ log: ActivityLog, policy: ClassicWritePolicy = .denied) throws -> JamfPlatform.Client {
     let recorder = RequestRecorder(session: MockURLProtocol.makeSession(), log: log,
                                    service: "Jamf Platform API", connection: "Test")
     let tokens = JamfTokenProvider(tokenURL: base.appending(path: "auth/token"), method: .apiClient(clientID: "c"),
                                    secret: { "s" }, recorder: recorder)
-    return PlatformClient.live(baseURL: base, environmentID: "e77c1408-10c8-4007-b177-abc9157fbcaa", tokens: tokens,
-                               recorder: recorder, classicWritePolicy: policy, sleep: { _ in })
+    return try JamfPlatform.Client(baseURL: base, scope: .environment("e77c1408-10c8-4007-b177-abc9157fbcaa"), tokens: tokens,
+                                   recorder: recorder, permits: { RequestPolicy.isPermitted($0, classicWrites: policy) },
+                                   hints: RequestPolicy.hints(for:), sleep: { _ in })
 }
 
 private let scopeOnlyBody = ClassicScopeService.unscopedBody(platform: .macOS)
@@ -34,8 +35,9 @@ extension NetworkingTests {
             return .json(400, #"{"httpStatus":400,"traceId":"trace-123","errors":{"code":"INVALID_FIELD","field":"name","description":"bad"}}"#)
         }
         let log = ActivityLog()
-        await #expect(throws: APIError.self) {
-            _ = try await client(log).send(HTTPRequest(path: "blueprints/v1/blueprints"))
+        let client = try client(log)
+        await #expect(throws: JamfPlatformError.self) {
+            _ = try await client.send(HTTPRequest(path: "blueprints/v1/blueprints"))
         }
 
         let entries = log.entries
@@ -58,8 +60,9 @@ extension NetworkingTests {
     func blockedEvents() async throws {
         MockURLProtocol.install { _ in Issue.record("nothing should be sent"); return .json(500, "{}") }
         let log = ActivityLog()
-        await #expect(throws: APIError.self) {
-            _ = try await client(log).send(HTTPRequest(method: "DELETE", path: "blueprints/v1/blueprints/x"))
+        let client = try client(log)
+        await #expect(throws: JamfPlatformError.self) {
+            _ = try await client.send(HTTPRequest(method: "DELETE", path: "blueprints/v1/blueprints/x"))
         }
         #expect(log.entries.map(\.category) == ["Blocked"])
         #expect(log.entries.first?.operation == "DELETE")
@@ -79,9 +82,9 @@ extension NetworkingTests {
             return .json(400, #"{"httpStatus":400,"errors":{"code":"INVALID_FIELD","description":"bad"}}"#)
         }
         let log = ActivityLog()
-        let client = client(log)
+        let client = try client(log)
         _ = try await client.send(HTTPRequest(path: "proclassic/osxconfigurationprofiles/id/1", accept: "application/xml"))
-        await #expect(throws: APIError.self) {
+        await #expect(throws: JamfPlatformError.self) {
             _ = try await client.send(HTTPRequest(method: "POST", path: "blueprints/v1/blueprints",
                                                   body: Data(#"{"steps":[{"Password":"wifi-psk-123"}]}"#.utf8),
                                                   contentType: "application/json"))
@@ -123,9 +126,9 @@ struct ClassicWriteGuardTests {
 
     @Test("PUT is refused unless scope changes are explicitly enabled")
     func deniedByDefault() {
-        #expect(!PlatformClient.isPermitted(HTTPRequest(method: "PUT", path: path, body: scopeOnlyBody)))
-        #expect(!PlatformClient.isPermitted(HTTPRequest(method: "PUT", path: path, body: scopeOnlyBody), classicWrites: .denied))
-        #expect(PlatformClient.isPermitted(HTTPRequest(method: "PUT", path: path, body: scopeOnlyBody), classicWrites: .scopeOnly))
+        #expect(!RequestPolicy.isPermitted(HTTPRequest(method: "PUT", path: path, body: scopeOnlyBody)))
+        #expect(!RequestPolicy.isPermitted(HTTPRequest(method: "PUT", path: path, body: scopeOnlyBody), classicWrites: .denied))
+        #expect(RequestPolicy.isPermitted(HTTPRequest(method: "PUT", path: path, body: scopeOnlyBody), classicWrites: .scopeOnly))
     }
 
     @Test("Even when enabled, only scope-only bodies on a profile ID path pass", arguments: [
@@ -138,13 +141,13 @@ struct ClassicWriteGuardTests {
         ("not xml", "proclassic/osxconfigurationprofiles/id/42"),
     ])
     func onlyScope(body: String, path: String) {
-        #expect(!PlatformClient.isPermitted(HTTPRequest(method: "PUT", path: path, body: Data(body.utf8)), classicWrites: .scopeOnly))
+        #expect(!RequestPolicy.isPermitted(HTTPRequest(method: "PUT", path: path, body: Data(body.utf8)), classicWrites: .scopeOnly))
     }
 
     @Test("Enabling scope changes doesn't open DELETE, PATCH or Classic POST")
     func otherMethodsStayClosed() {
         for method in ["DELETE", "PATCH", "POST"] {
-            #expect(!PlatformClient.isPermitted(HTTPRequest(method: method, path: path, body: scopeOnlyBody), classicWrites: .scopeOnly))
+            #expect(!RequestPolicy.isPermitted(HTTPRequest(method: method, path: path, body: scopeOnlyBody), classicWrites: .scopeOnly))
         }
     }
 
@@ -163,8 +166,7 @@ struct ClassicScopeServiceTests {
         let server = DemoClassicServer()
         return (MigrationEnvironment(
             displayName: "Test", isDemo: true, environmentID: nil,
-            classic: DemoClassicAPI(server: server), groups: DemoDeviceGroupsAPI(),
-            blueprints: DemoBlueprintsAPI(server: DemoBlueprintServer()),
+            classic: DemoClassicAPI(server: server), platform: DemoBlueprintServer().client(log: nil),
             classicScopeWriter: writer ? DemoClassicScopeWriter(server: server) : nil
         ), server)
     }
@@ -186,7 +188,7 @@ struct ClassicScopeServiceTests {
         #expect(try ClassicXMLParser.parseScopeXML(backup.scopeXML, platform: .macOS) == before.scope)
         #expect(await store.latest(key: ProfileKey(platform: .macOS, id: 102), environmentID: nil, environmentName: "Test")?.id == backup.id)
         let writes = await server.scopeWrites
-        #expect(writes.count == 1 && PlatformClient.isScopeOnlyProfileXML(Data(writes[0].body.utf8)))
+        #expect(writes.count == 1 && RequestPolicy.isScopeOnlyProfileXML(Data(writes[0].body.utf8)))
 
         let restored = try await ClassicScopeService.restore(backup, environment: env, backups: store)
         #expect(restored.scope == before.scope)
@@ -213,20 +215,20 @@ struct ClassicScopeServiceTests {
     @Test("Unscoped body clears targets but leaves limitations/exclusions alone")
     func unscopedBodyShape() throws {
         let xml = String(decoding: ClassicScopeService.unscopedBody(platform: .macOS), as: UTF8.self)
-        #expect(PlatformClient.isScopeOnlyProfileXML(ClassicScopeService.unscopedBody(platform: .macOS)))
+        #expect(RequestPolicy.isScopeOnlyProfileXML(ClassicScopeService.unscopedBody(platform: .macOS)))
         #expect(xml.contains("<all_computers>false</all_computers>"))
         #expect(xml.contains("<computer_groups/>"))
         #expect(!xml.contains("exclusions") && !xml.contains("limitations") && !xml.contains("payloads"))
     }
 
     @Test("Auto-unscope only after a fully clean deployment", arguments: [
-        (DeploymentOutcome.succeeded(BlueprintReport(succeeded: 12, failed: 0, pending: 0)), true),
-        (DeploymentOutcome.succeeded(BlueprintReport(succeeded: 11, failed: 1, pending: 0)), false),
-        (DeploymentOutcome.succeeded(BlueprintReport(succeeded: 10, failed: 0, pending: 2)), false),
-        (DeploymentOutcome.succeeded(BlueprintReport(succeeded: 0, failed: 0, pending: 0)), false),
+        (DeploymentOutcome.succeeded(JamfPlatform.BlueprintReport(succeeded: 12, failed: 0, pending: 0)), true),
+        (DeploymentOutcome.succeeded(JamfPlatform.BlueprintReport(succeeded: 11, failed: 1, pending: 0)), false),
+        (DeploymentOutcome.succeeded(JamfPlatform.BlueprintReport(succeeded: 10, failed: 0, pending: 2)), false),
+        (DeploymentOutcome.succeeded(JamfPlatform.BlueprintReport(succeeded: 0, failed: 0, pending: 0)), false),
         (DeploymentOutcome.succeeded(nil), false),
         (DeploymentOutcome.timedOut(nil), false),
-        (DeploymentOutcome.failed(DeploymentState(state: "NOT_DEPLOYED", lastDeployment: Deployment(started: nil, state: "FAILED"))), false),
+        (DeploymentOutcome.failed(JamfPlatform.DeploymentStatus(jobState: "FAILED", blueprintState: .notDeployed)), false),
     ])
     func cleanDeploymentGate(outcome: DeploymentOutcome, allowed: Bool) {
         #expect(ClassicScopeService.deploymentAllowsUnscope(outcome) == allowed)

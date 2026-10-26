@@ -1,4 +1,5 @@
 import Foundation
+import JTKit
 
 /// Synthetic Classic API responses for offline demo mode and tests.
 ///
@@ -402,14 +403,14 @@ nonisolated enum DemoFixtures {
     /// Platform device groups for demo mode. "Designers" is deliberately ambiguous,
     /// "Finance" deliberately missing, and "Engineers" also exists as a MOBILE group
     /// so per-platform matching is exercised.
-    static let platformGroups: [PlatformGroup] = [
-        PlatformGroup(id: engineersPlatformGroupID, name: "Engineers", description: "", deviceType: .computer, groupType: .staticGroup, memberCount: 12),
-        PlatformGroup(id: "7c3d9e1f-2a4b-4c5d-8e6f-7a8b9c0d1e2f", name: "Designers", description: "Smart", deviceType: .computer, groupType: .smart, memberCount: 5),
-        PlatformGroup(id: "9e5f1a3b-4c6d-4e7f-8a9b-0c1d2e3f4a5b", name: "Designers", description: "Static", deviceType: .computer, groupType: .staticGroup, memberCount: 3),
-        PlatformGroup(id: "1f2e3d4c-5b6a-4978-8a9b-c0d1e2f3a4b5", name: "All Managed Clients", description: "", deviceType: .computer, groupType: .smart, memberCount: 48),
-        PlatformGroup(id: fieldiPhonesPlatformGroupID, name: "Field iPhones", description: "", deviceType: .mobile, groupType: .smart, memberCount: 7),
-        PlatformGroup(id: "ab12cd34-0002-4000-8000-5e6f7a8b9c0d", name: "Classroom iPads", description: "", deviceType: .mobile, groupType: .staticGroup, memberCount: 24),
-        PlatformGroup(id: "ab12cd34-0003-4000-8000-5e6f7a8b9c0d", name: "Engineers", description: "Mobile twin of the computer group", deviceType: .mobile, groupType: .smart, memberCount: 4),
+    static let platformGroups: [JamfPlatform.DeviceGroup] = [
+        JamfPlatform.DeviceGroup(id: engineersPlatformGroupID, name: "Engineers", description: "", deviceType: .computer, groupType: .static, memberCount: 12),
+        JamfPlatform.DeviceGroup(id: "7c3d9e1f-2a4b-4c5d-8e6f-7a8b9c0d1e2f", name: "Designers", description: "Smart", deviceType: .computer, groupType: .smart, memberCount: 5),
+        JamfPlatform.DeviceGroup(id: "9e5f1a3b-4c6d-4e7f-8a9b-0c1d2e3f4a5b", name: "Designers", description: "Static", deviceType: .computer, groupType: .static, memberCount: 3),
+        JamfPlatform.DeviceGroup(id: "1f2e3d4c-5b6a-4978-8a9b-c0d1e2f3a4b5", name: "All Managed Clients", description: "", deviceType: .computer, groupType: .smart, memberCount: 48),
+        JamfPlatform.DeviceGroup(id: fieldiPhonesPlatformGroupID, name: "Field iPhones", description: "", deviceType: .mobile, groupType: .smart, memberCount: 7),
+        JamfPlatform.DeviceGroup(id: "ab12cd34-0002-4000-8000-5e6f7a8b9c0d", name: "Classroom iPads", description: "", deviceType: .mobile, groupType: .static, memberCount: 24),
+        JamfPlatform.DeviceGroup(id: "ab12cd34-0003-4000-8000-5e6f7a8b9c0d", name: "Engineers", description: "Mobile twin of the computer group", deviceType: .mobile, groupType: .smart, memberCount: 4),
     ]
 
     // MARK: Builders
@@ -463,21 +464,21 @@ actor DemoClassicServer {
 
     func profileXML(key: ProfileKey) throws -> String {
         guard let xml = profilesXML[key] else {
-            throw APIError.http(status: 404, method: "GET", path: "proclassic/\(key.platform.classicResource)/id/\(key.id)", body: nil, rawBody: nil)
+            throw JamfPlatformError(.status(404, body: nil, text: nil, method: "GET", path: "proclassic/\(key.platform.classicResource)/id/\(key.id)"))
         }
         return xml
     }
 
     /// Mimics a Classic partial update: replaces only `<scope>`.
     func putScope(key: ProfileKey, body: Data) throws {
-        guard PlatformClient.isScopeOnlyProfileXML(body) else {
-            throw APIError.http(status: 400, method: "PUT", path: "proclassic/\(key.platform.classicResource)/id/\(key.id)", body: nil, rawBody: "Not a scope-only body")
+        guard RequestPolicy.isScopeOnlyProfileXML(body) else {
+            throw JamfPlatformError(.status(400, body: nil, text: "Not a scope-only body", method: "PUT", path: "proclassic/\(key.platform.classicResource)/id/\(key.id)"))
         }
         guard let xml = profilesXML[key],
               let document = try? XMLDocument(xmlString: xml, options: [.nodePreserveWhitespace]),
               let root = document.rootElement(),
               let newScope = try? XMLDocument(data: body).rootElement()?.elements(forName: "scope").first?.copy() as? XMLElement else {
-            throw APIError.http(status: 404, method: "PUT", path: "proclassic/\(key.platform.classicResource)/id/\(key.id)", body: nil, rawBody: nil)
+            throw JamfPlatformError(.status(404, body: nil, text: nil, method: "PUT", path: "proclassic/\(key.platform.classicResource)/id/\(key.id)"))
         }
         if let old = root.elements(forName: "scope").first { root.removeChild(at: old.index) }
         root.addChild(newScope)
@@ -504,12 +505,5 @@ nonisolated struct DemoClassicScopeWriter: ClassicScopeWriter {
 
     func replaceScope(key: ProfileKey, body: Data) async throws {
         try await server.putScope(key: key, body: body)
-    }
-}
-
-/// Offline device groups backed by `DemoFixtures`.
-nonisolated struct DemoDeviceGroupsAPI: DeviceGroupsAPI {
-    func listGroups(filter: String?) async throws -> [PlatformGroup] {
-        DemoFixtures.platformGroups
     }
 }

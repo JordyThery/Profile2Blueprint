@@ -1,4 +1,5 @@
 import Foundation
+import JTKit
 
 nonisolated struct BlueprintBuildError: Error, LocalizedError, Hashable, Sendable {
     var problems: [String]
@@ -33,7 +34,7 @@ nonisolated enum BlueprintBuilder {
         "Migrated from Jamf Pro classic macOS configuration profile ID {id} (“{name}”) by Profile2Blueprint."
 
     /// Fills in `descriptionTokens` and trims to the API's limit. An empty template
-    /// yields an empty description, which `build` sends as null.
+    /// yields an empty description, which `build` leaves out of the body.
     static func description(_ template: String, profileName: String, profileID: Int, platform: ProfilePlatform) -> String {
         let filled = template
             .replacingOccurrences(of: "{name}", with: profileName)
@@ -47,8 +48,8 @@ nonisolated enum BlueprintBuilder {
     }
 
     /// The `configuration` object of the `com.jamf.ddm-configuration-profile` component.
-    static func configuration(for document: ProfileDocument, fallbackName: String) -> JSONObject {
-        var configuration = JSONObject()
+    static func configuration(for document: ProfileDocument, fallbackName: String) -> LosslessJSON.Object {
+        var configuration = LosslessJSON.Object()
         if let uuid = document.payloadUUID { configuration["payloadUUID"] = .string(uuid) }
         if let identifier = document.payloadIdentifier { configuration["payloadIdentifier"] = .string(identifier) }
         configuration["payloadDisplayName"] = .string(document.payloadDisplayName ?? fallbackName)

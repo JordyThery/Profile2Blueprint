@@ -1,5 +1,6 @@
 import Foundation
 import JTKit
+import JTKitTestSupport
 import Testing
 @testable import Profile2Blueprint
 
@@ -113,8 +114,7 @@ struct MobileCleanupTests {
         let server = DemoClassicServer()
         return (MigrationEnvironment(
             displayName: "Test", isDemo: true, environmentID: nil,
-            classic: DemoClassicAPI(server: server), groups: DemoDeviceGroupsAPI(),
-            blueprints: DemoBlueprintsAPI(server: DemoBlueprintServer()),
+            classic: DemoClassicAPI(server: server), platform: DemoBlueprintServer().client(log: nil),
             classicScopeWriter: DemoClassicScopeWriter(server: server)
         ), server)
     }
@@ -123,7 +123,7 @@ struct MobileCleanupTests {
     func unscopedBodyShape() {
         let body = ClassicScopeService.unscopedBody(platform: .mobile)
         let xml = String(decoding: body, as: UTF8.self)
-        #expect(PlatformClient.isScopeOnlyProfileXML(body))
+        #expect(RequestPolicy.isScopeOnlyProfileXML(body))
         #expect(xml.contains("<all_mobile_devices>false</all_mobile_devices>"))
         #expect(xml.contains("<mobile_device_groups/>"))
         #expect(!xml.contains("all_computers"))
@@ -151,11 +151,11 @@ struct MobileCleanupTests {
     func allowList() {
         let path = "proclassic/mobiledeviceconfigurationprofiles/id/9"
         let body = ClassicScopeService.unscopedBody(platform: .mobile)
-        #expect(PlatformClient.isPermitted(HTTPRequest(method: "PUT", path: path, body: body), classicWrites: .scopeOnly))
-        #expect(!PlatformClient.isPermitted(HTTPRequest(method: "PUT", path: path, body: body), classicWrites: .denied))
-        #expect(!PlatformClient.isPermitted(HTTPRequest(method: "PUT", path: path, body: Data("<configuration_profile><general/></configuration_profile>".utf8)), classicWrites: .scopeOnly))
-        #expect(!PlatformClient.isPermitted(HTTPRequest(method: "DELETE", path: path, body: body), classicWrites: .scopeOnly))
-        #expect(!PlatformClient.isPermitted(HTTPRequest(method: "PUT", path: "proclassic/mobiledevices/id/9", body: body), classicWrites: .scopeOnly))
+        #expect(RequestPolicy.isPermitted(HTTPRequest(method: "PUT", path: path, body: body), classicWrites: .scopeOnly))
+        #expect(!RequestPolicy.isPermitted(HTTPRequest(method: "PUT", path: path, body: body), classicWrites: .denied))
+        #expect(!RequestPolicy.isPermitted(HTTPRequest(method: "PUT", path: path, body: Data("<configuration_profile><general/></configuration_profile>".utf8)), classicWrites: .scopeOnly))
+        #expect(!RequestPolicy.isPermitted(HTTPRequest(method: "DELETE", path: path, body: body), classicWrites: .scopeOnly))
+        #expect(!RequestPolicy.isPermitted(HTTPRequest(method: "PUT", path: "proclassic/mobiledevices/id/9", body: body), classicWrites: .scopeOnly))
     }
 }
 
@@ -243,35 +243,72 @@ struct GuardTests {
 
     @Test("The demo server rewrites each payload's UUID to its identifier, like the live API")
     func demoUUIDRewrite() async throws {
-        var configuration = JSONObject()
+        var configuration = LosslessJSON.Object()
         configuration["payloadUUID"] = .string("TOP-UUID")
         configuration["payloadIdentifier"] = .string("TOP-ID")
         configuration["payloadDisplayName"] = .string("x")
-        var payload = JSONObject()
+        var payload = LosslessJSON.Object()
         payload["payloadType"] = .string("com.apple.dock")
         payload["payloadIdentifier"] = .string("P-ID")
         payload["payloadUUID"] = .string("P-OTHER-UUID")
         configuration["payloadContent"] = .array([.object(payload)])
         let request = BlueprintRequest(name: "uuid rewrite", description: nil, deviceGroupIDs: [DemoFixtures.engineersPlatformGroupID],
                                        stepName: "s", componentIdentifier: BlueprintBuilder.componentIdentifier, configuration: configuration)
-        let server = DemoBlueprintServer()
-        let created = try await server.create(request)
-        let detail = try await server.detail(id: created.id)
-        let stored = detail.steps[0].components[0].configuration?.objectValue
+        // Through JTKit's client, as demo mode does.
+        let blueprints = JamfPlatform.Blueprints(client: DemoBlueprintServer().client(log: nil))
+        let id = try await blueprints.create(name: request.name, description: request.description,
+                                             deviceGroups: request.deviceGroupIDs, steps: request.steps)
+        let detail = try await blueprints.detail(id: id)
+        let stored = detail.components.first?.json["configuration"]?.objectValue
         let storedPayload = stored?["payloadContent"]?.arrayValue?.first?.objectValue
         #expect(storedPayload?["payloadUUID"]?.stringValue == "P-ID", "payload UUID forced to the identifier")
         #expect(stored?["payloadUUID"]?.stringValue == "TOP-UUID", "top-level identity stored verbatim")
+        #expect(storedPayload?["payloadVersion"]?.numberValue?.literal == "1", "server-managed metadata re-added")
     }
 
-    @Test("A null blueprint name decodes and is never a duplicate")
-    func nullBlueprintName() throws {
-        // Shape seen live: a blueprint whose name and description are null.
-        let json = Data(#"{"results":[{"id":"dc0ca4c9-c567-440a-a5b3-750437c58c8a","name":null,"description":null,"created":"2026-04-08T13:48:29.408600Z","updated":"2026-04-08T14:05:56.892810Z","deploymentState":{"state":"NOT_DEPLOYED","lastDeployment":null}},{"id":"b","name":"Real","deploymentState":null}],"totalCount":2}"#.utf8)
-        let list = try JSONDecoder().decode(BlueprintList.self, from: json)
-        #expect(list.results.count == 2)
-        #expect(list.results[0].name == nil)
-        #expect(list.results[0].displayName == "Unnamed blueprint")
-        let matches = list.results.filter { $0.name?.caseInsensitiveCompare("Real") == .orderedSame }
-        #expect(matches.map(\.id) == ["b"], "the nameless entry matches nothing")
+    @Test("Demo mode answers JTKit's requests: device groups, the duplicate search, deploy and report")
+    func demoServerThroughJTKit() async throws {
+        let server = DemoBlueprintServer(pollsToSucceed: 1)
+        let client = server.client(log: nil)
+        let groups = try await client.deviceGroups(pageSize: 3)
+        #expect(groups == DemoFixtures.platformGroups, "every page, read back as JTKit's DeviceGroup")
+
+        let blueprints = JamfPlatform.Blueprints(client: client)
+        _ = server.seed(name: "Taken")
+        #expect(try await blueprints.blueprints(named: "taken").map(\.name) == ["Taken"])
+        #expect(try await blueprints.blueprints(named: "Tak").isEmpty, "the search is wide, the match exact")
+
+        let id = try await blueprints.create(name: "n", description: nil, deviceGroups: [DemoFixtures.engineersPlatformGroupID],
+                                             steps: [.object(LosslessJSON.Object(["name": .string("s"), "components": .array([])]))])
+        let previous = try await blueprints.startDeployment(id: id)
+        #expect(previous == nil)
+        let outcome = try await blueprints.watchDeployment(id: id, previousStart: previous,
+                                                           poller: JamfPlatform.Poller(sleep: { _ in await Task.yield() }))
+        #expect(outcome.value?.didSucceed == true)
+        #expect(outcome.value?.report == JamfPlatform.BlueprintReport(succeeded: 12, failed: 0, pending: 0))
+
+        let error = await #expect(throws: JamfPlatformError.self) { _ = try await blueprints.detail(id: "missing") }
+        #expect(error?.status == 404)
+        #expect(error?.hasCode(.notFound) == true)
+        #expect(ErrorReport(try #require(error)).traceID == "demo-trace")
     }
+
+    @Test("A null blueprint name reads and is never a duplicate")
+    func nullBlueprintName() async throws {
+        // Shape seen live: a blueprint whose name and description are null.
+        let list = #"{"results":[{"id":"dc0ca4c9-c567-440a-a5b3-750437c58c8a","name":null,"description":null,"created":"2026-04-08T13:48:29.408600Z","updated":"2026-04-08T14:05:56.892810Z","deploymentState":{"state":"NOT_DEPLOYED","lastDeployment":null}},{"id":"b","name":"Real","deploymentState":null}],"totalCount":2}"#
+        let server = MockServer { _ in .json(200, list) }
+        let client = try JamfPlatform.Client(
+            baseURL: URL(string: "https://us.api.jamfcloud.com")!, scope: .environment(DemoBlueprintServer.environmentID),
+            tokens: NoToken(), recorder: RequestRecorder(session: server.session, log: nil))
+        let blueprints = JamfPlatform.Blueprints(client: client)
+        #expect(try await blueprints.blueprints(named: "Real").map(\.id) == ["b"])
+        let placeholder = try await blueprints.list().first { $0.id.hasPrefix("dc0c") }?.name
+        #expect(try await blueprints.blueprints(named: try #require(placeholder)).isEmpty, "the nameless entry matches nothing")
+    }
+}
+
+private struct NoToken: BearerTokenSource {
+    func token() async throws -> String { "token" }
+    func forgetToken() async {}
 }

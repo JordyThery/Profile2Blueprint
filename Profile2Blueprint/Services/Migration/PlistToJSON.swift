@@ -1,4 +1,5 @@
 import Foundation
+import JTKit
 
 /// Converts Apple plist values to JSON per Jamf's documented mapping:
 ///
@@ -23,11 +24,11 @@ nonisolated enum PlistToJSON {
         "PayloadOrganization": "payloadOrganization",
     ]
 
-    static func convert(_ value: PlistValue) -> JSONValue {
+    static func convert(_ value: PlistValue) -> LosslessJSON {
         switch value {
         case let .string(string): .string(string)
         case let .integer(integer): .integer(integer)
-        case let .real(real): .number(real)
+        case let .real(real): .real(real)
         case let .bool(bool): .bool(bool)
         case let .date(date): .string(iso8601(date))
         case let .data(data): .string(data.base64EncodedString())
@@ -36,13 +37,13 @@ nonisolated enum PlistToJSON {
         }
     }
 
-    static func convert(_ dict: PlistDictionary) -> JSONObject {
-        JSONObject(dict.entries.map { .init(key: $0.key, value: convert($0.value)) })
+    static func convert(_ dict: PlistDictionary) -> LosslessJSON.Object {
+        LosslessJSON.Object(dict.entries.map { .init(key: $0.key, value: convert($0.value)) })
     }
 
     /// A `PayloadContent` entry with wrapper keys renamed to the API's camelCase.
-    static func payloadObject(_ payload: PlistDictionary) -> JSONObject {
-        JSONObject(payload.entries.map { entry in
+    static func payloadObject(_ payload: PlistDictionary) -> LosslessJSON.Object {
+        LosslessJSON.Object(payload.entries.map { entry in
             .init(key: wrapperKeyMap[entry.key] ?? entry.key, value: convert(entry.value))
         })
     }
@@ -122,7 +123,7 @@ nonisolated enum PlistJSONComparator {
     }
 
     static func differences(
-        plist: PlistValue, json: JSONValue, path: String = "", options: Options = Options()
+        plist: PlistValue, json: LosslessJSON, path: String = "", options: Options = Options()
     ) -> [ValueDifference] {
         let here = path.isEmpty ? "(root)" : path
         switch (plist, json) {
@@ -168,7 +169,7 @@ nonisolated enum PlistJSONComparator {
     }
 
     private static func dictionaryDifferences(
-        _ plist: PlistDictionary, _ json: JSONObject, path: String, options: Options
+        _ plist: PlistDictionary, _ json: LosslessJSON.Object, path: String, options: Options
     ) -> [ValueDifference] {
         var result: [ValueDifference] = []
         var matchedKeys: [String] = []
@@ -176,7 +177,7 @@ nonisolated enum PlistJSONComparator {
         for entry in plist.entries {
             let key = entry.key
             let childPath = path.isEmpty ? key : "\(path).\(key)"
-            let match: (key: String, value: JSONValue)?
+            let match: (key: String, value: LosslessJSON)?
             if options.caseInsensitiveKeys {
                 match = json.value(forKeyIgnoringCase: key)
             } else {
@@ -214,7 +215,7 @@ nonisolated enum PlistJSONComparator {
         return result
     }
 
-    private static func mismatch(_ path: String, _ plist: PlistValue, _ json: JSONValue) -> ValueDifference {
+    private static func mismatch(_ path: String, _ plist: PlistValue, _ json: LosslessJSON) -> ValueDifference {
         ValueDifference(path: path, expected: "\(plist.displaySummary) (\(plist.typeName))", actual: json.displaySummary)
     }
 }

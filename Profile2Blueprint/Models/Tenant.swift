@@ -1,24 +1,6 @@
 import Foundation
 import JTKit
 
-/// Jamf Platform API Gateway region. Tokens are region-locked, so the token host
-/// and the API host must always match.
-nonisolated enum Region: String, Codable, CaseIterable, Identifiable, Sendable {
-    case us
-    case eu
-    case apac
-
-    var id: String { rawValue }
-
-    var displayName: String {
-        switch self {
-        case .us: "United States (us)"
-        case .eu: "Europe (eu)"
-        case .apac: "Asia Pacific (apac)"
-        }
-    }
-}
-
 /// How a blueprint's suggested name is built from the classic profile's name.
 /// Either affix may be empty; with both empty the name is the profile's name verbatim.
 nonisolated struct BlueprintNaming: Codable, Hashable, Sendable {
@@ -90,7 +72,10 @@ nonisolated struct JamfProLinks: Hashable, Sendable {
 nonisolated struct Tenant: Codable, Hashable, Identifiable, Sendable {
     var id: UUID
     var name: String
-    var region: Region
+    /// Jamf Platform API Gateway region (JTKit's; saved as `us`, `eu` or `apac`,
+    /// as always). Tokens are region-locked, so the token host and the API host
+    /// must always match.
+    var region: JamfRegion
     /// Platform environment UUID, sent as `X-Environment-Id`.
     var environmentID: String
     var clientID: String
@@ -112,7 +97,7 @@ nonisolated struct Tenant: Codable, Hashable, Identifiable, Sendable {
     init(
         id: UUID = UUID(),
         name: String = "",
-        region: Region = .us,
+        region: JamfRegion = .us,
         environmentID: String = "",
         clientID: String = "",
         hostOverride: String? = nil,
@@ -144,7 +129,7 @@ nonisolated struct Tenant: Codable, Hashable, Identifiable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
         name = try container.decode(String.self, forKey: .name)
-        region = try container.decode(Region.self, forKey: .region)
+        region = try container.decode(JamfRegion.self, forKey: .region)
         environmentID = try container.decode(String.self, forKey: .environmentID)
         clientID = try container.decode(String.self, forKey: .clientID)
         hostOverride = try container.decodeIfPresent(String.self, forKey: .hostOverride)
@@ -225,7 +210,7 @@ nonisolated extension Tenant: ConnectionRecord {
                        name: name,
                        service: .jamfPlatform,
                        signIn: .apiClient,
-                       region: JamfRegion(rawValue: region.rawValue) ?? .us,
+                       region: region,
                        environmentID: environmentID,
                        hostOverride: hostOverride ?? "",
                        jamfProWebURL: jamfProURL,
@@ -235,7 +220,7 @@ nonisolated extension Tenant: ConnectionRecord {
             // Only fields that changed are written, so setting back what was
             // read leaves the tenant exactly as it was.
             if name != newValue.name { name = newValue.name }
-            if let newRegion = Region(rawValue: newValue.region.rawValue), newRegion != region { region = newRegion }
+            if region != newValue.region { region = newValue.region }
             if environmentID != newValue.environmentID { environmentID = newValue.environmentID }
             if clientID != newValue.clientID { clientID = newValue.clientID }
             // no override is saved as a missing key, as before

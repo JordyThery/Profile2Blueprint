@@ -1,4 +1,5 @@
 import Foundation
+import JTKit
 
 nonisolated enum EligibilityStatus: Int, Hashable, Sendable {
     case ready
@@ -102,13 +103,13 @@ nonisolated struct EligibilityReport: Hashable, Sendable {
 nonisolated struct ScopeMappingEntry: Hashable, Sendable, Identifiable {
     var classicGroup: ClassicReference
     /// Platform COMPUTER groups whose name matches exactly.
-    var exactMatches: [PlatformGroup]
+    var exactMatches: [JamfPlatform.DeviceGroup]
     /// Case-/whitespace-insensitive matches, offered as suggestions only.
-    var suggestions: [PlatformGroup]
+    var suggestions: [JamfPlatform.DeviceGroup]
 
     var id: String { classicGroup.identity }
 
-    var autoMatch: PlatformGroup? {
+    var autoMatch: JamfPlatform.DeviceGroup? {
         exactMatches.count == 1 ? exactMatches[0] : nil
     }
 

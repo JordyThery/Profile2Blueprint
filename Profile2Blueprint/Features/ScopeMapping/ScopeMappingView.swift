@@ -1,4 +1,5 @@
 import SwiftUI
+import JTKit
 
 /// Classic scope targets → proposed platform device groups.
 struct ScopeMappingView: View {
@@ -9,7 +10,7 @@ struct ScopeMappingView: View {
     private var report: EligibilityReport { session.report }
     private var locked: Bool { session.blueprintID != nil }
     private var platform: ProfilePlatform { session.platform }
-    private var platformGroups: [PlatformGroup] { workspace.groups(for: platform) }
+    private var platformGroups: [JamfPlatform.DeviceGroup] { workspace.groups(for: platform) }
 
     var body: some View {
         ScrollView {
@@ -62,7 +63,7 @@ struct ScopeMappingView: View {
                                     Text(group.name)
                                     Text(group.groupType.displayName).font(.caption).foregroundStyle(.secondary)
                                     Spacer()
-                                    Text("^[\(group.memberCount) device](inflect: true)").font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                                    Text("^[\(group.members) device](inflect: true)").font(.caption).monospacedDigit().foregroundStyle(.secondary)
                                 }
                             }
                             .disabled(locked)
@@ -98,13 +99,13 @@ struct ScopeMappingView: View {
             )) {
                 Text("None").tag(String?.none)
                 ForEach(candidates) { group in
-                    Text("\(group.name) (\(group.groupType.displayName), \(group.memberCount))").tag(String?.some(group.id))
+                    Text("\(group.name) (\(group.groupType.displayName), \(group.members))").tag(String?.some(group.id))
                 }
             }
             .labelsHidden()
             .frame(maxWidth: 360)
             .disabled(locked)
-            Text(selected.map { "\($0.memberCount)" } ?? "—").monospacedDigit()
+            Text(selected.map { "\($0.members)" } ?? "—").monospacedDigit()
             matchLabel(entry)
         }
     }
@@ -147,7 +148,7 @@ struct ScopeMappingView: View {
                         HStack {
                             Text(group.name)
                             Spacer()
-                            Text("^[\(group.memberCount) device](inflect: true)").monospacedDigit().foregroundStyle(.secondary)
+                            Text("^[\(group.members) device](inflect: true)").monospacedDigit().foregroundStyle(.secondary)
                         }
                     }
                     Divider()

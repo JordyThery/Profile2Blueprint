@@ -1,4 +1,6 @@
 import Foundation
+import JTKit
+import JTKitTestSupport
 import Testing
 @testable import Profile2Blueprint
 
@@ -175,62 +177,89 @@ struct EffectiveEligibilityTests {
     }
 }
 
-/// Returns scripted device reports, then repeats the last one.
-nonisolated final class ScriptedReportsAPI: BlueprintsAPI, @unchecked Sendable {
-    private let lock = NSLock()
-    private var reports: [BlueprintReport]
-    private(set) var calls = 0
+/// A fake server returning scripted device reports, then repeating the last one,
+/// reached through JTKit's client.
+nonisolated final class ScriptedReports: @unchecked Sendable {
+    private final class Script: @unchecked Sendable {
+        let lock = NSLock()
+        var reports: [JamfPlatform.BlueprintReport]
+        var count = 0
+        init(_ reports: [JamfPlatform.BlueprintReport]) { self.reports = reports }
 
-    init(_ reports: [BlueprintReport]) {
-        self.reports = reports
-    }
-
-    func report(id: String) async throws -> BlueprintReport {
-        lock.withLock {
-            calls += 1
-            return reports.count > 1 ? reports.removeFirst() : reports[0]
+        func next() -> JamfPlatform.BlueprintReport {
+            lock.withLock {
+                count += 1
+                return reports.count > 1 ? reports.removeFirst() : reports[0]
+            }
         }
     }
 
-    func blueprints(named name: String) async throws -> [BlueprintOverview] { [] }
-    func create(_ request: BlueprintRequest) async throws -> BlueprintCreated { BlueprintCreated(id: "x", href: nil) }
-    func blueprint(id: String) async throws -> BlueprintDetail {
-        BlueprintDetail(id: id, name: "n", description: nil, scope: nil, created: nil, updated: nil,
-                        deploymentState: DeploymentState(state: "DEPLOYED", lastDeployment: nil), steps: [])
+    private let script: Script
+    let server: MockServer
+
+    var calls: Int { script.lock.withLock { script.count } }
+
+    init(_ reports: [JamfPlatform.BlueprintReport]) {
+        let script = Script(reports)
+        self.script = script
+        server = MockServer { request in
+            guard request.path.hasSuffix("/report") else { return .json(404, "{}") }
+            let report = script.next()
+            return .json(200, #"{"succeeded":\#(report.succeeded),"failed":\#(report.failed),"pending":\#(report.pending)}"#)
+        }
     }
-    func deploy(id: String) async throws {}
+
+    func blueprints() throws -> JamfPlatform.Blueprints {
+        JamfPlatform.Blueprints(client: try JamfPlatform.Client(
+            baseURL: URL(string: "https://us.api.jamfcloud.com")!, scope: .environment(DemoBlueprintServer.environmentID),
+            tokens: NoSignIn(), recorder: RequestRecorder(session: server.session, log: nil)))
+    }
+}
+
+private struct NoSignIn: BearerTokenSource {
+    func token() async throws -> String { "token" }
+    func forgetToken() async {}
 }
 
 @Suite("Report monitor")
 struct ReportMonitorTests {
-    private func pipeline(_ api: ScriptedReportsAPI, timeout: Duration = .seconds(60)) -> MigrationPipeline {
+    private func pipeline(_ api: ScriptedReports, timeout: Duration = .seconds(60)) throws -> MigrationPipeline {
         MigrationPipeline(
             classic: DemoClassicAPI(),
-            blueprints: api,
-            polling: PollingPolicy(reportInterval: .milliseconds(1), reportTimeout: timeout),
+            blueprints: try api.blueprints(),
+            watch: WatchPolicy(report: JamfPlatform.PollingPolicy(
+                firstInterval: .milliseconds(1), growth: 1, longestInterval: .milliseconds(1), timeLimit: timeout)),
             sleep: { _ in await Task.yield() }
         )
     }
 
+    @Test("The device report is checked every 20 s for up to 30 minutes (the app's setting on JTKit's waiting)")
+    func reportWatchSetting() {
+        let policy = WatchPolicy().report
+        #expect((1...5).map(policy.interval(afterCheck:)) == Array(repeating: .seconds(20), count: 5))
+        #expect(policy.timeLimit == .seconds(1_800))
+        #expect(WatchPolicy().deployment == .standard, "the deployment itself follows JTKit's standard")
+    }
+
     @Test("Polls until no device is pending and reports every update")
     func pollsUntilClean() async throws {
-        let api = ScriptedReportsAPI([
-            BlueprintReport(succeeded: 0, failed: 0, pending: 3),
-            BlueprintReport(succeeded: 2, failed: 0, pending: 1),
-            BlueprintReport(succeeded: 3, failed: 0, pending: 0),
+        let api = ScriptedReports([
+            JamfPlatform.BlueprintReport(succeeded: 0, failed: 0, pending: 3),
+            JamfPlatform.BlueprintReport(succeeded: 2, failed: 0, pending: 1),
+            JamfPlatform.BlueprintReport(succeeded: 3, failed: 0, pending: 0),
         ])
         let updates = Counter()
         let final = try await pipeline(api).monitorReport(id: "bp") { _ in _ = updates.next() }
-        #expect(final == BlueprintReport(succeeded: 3, failed: 0, pending: 0))
+        #expect(final == JamfPlatform.BlueprintReport(succeeded: 3, failed: 0, pending: 0))
         #expect(api.calls == 3)
         #expect(updates.value == 3)
     }
 
     @Test("Stops with failures present once nothing is pending (caller gates cleanup)")
     func stopsWithFailures() async throws {
-        let api = ScriptedReportsAPI([
-            BlueprintReport(succeeded: 1, failed: 0, pending: 2),
-            BlueprintReport(succeeded: 2, failed: 1, pending: 0),
+        let api = ScriptedReports([
+            JamfPlatform.BlueprintReport(succeeded: 1, failed: 0, pending: 2),
+            JamfPlatform.BlueprintReport(succeeded: 2, failed: 1, pending: 0),
         ])
         let final = try await pipeline(api).monitorReport(id: "bp")
         #expect(final?.failed == 1 && final?.pending == 0)
@@ -239,13 +268,14 @@ struct ReportMonitorTests {
 
     @Test("Gives up at the timeout and returns the last report")
     func timesOut() async throws {
-        let api = ScriptedReportsAPI([BlueprintReport(succeeded: 1, failed: 0, pending: 9)])
+        let api = ScriptedReports([JamfPlatform.BlueprintReport(succeeded: 1, failed: 0, pending: 9)])
         // Real 5 ms sleeps against a 1 s deadline: several polls, then a guaranteed stop.
         // The margin absorbs scheduling stalls when the whole suite runs in parallel.
         let pipeline = MigrationPipeline(
             classic: DemoClassicAPI(),
-            blueprints: api,
-            polling: PollingPolicy(reportInterval: .milliseconds(5), reportTimeout: .seconds(1)),
+            blueprints: try api.blueprints(),
+            watch: WatchPolicy(report: JamfPlatform.PollingPolicy(
+                firstInterval: .milliseconds(5), growth: 1, longestInterval: .milliseconds(5), timeLimit: .seconds(1))),
             sleep: { try await Task.sleep(for: $0) }
         )
         let final = try await pipeline.monitorReport(id: "bp")

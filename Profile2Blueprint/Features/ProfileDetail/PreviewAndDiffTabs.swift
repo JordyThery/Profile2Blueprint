@@ -1,4 +1,5 @@
 import SwiftUI
+import JTKit
 
 /// The exact JSON that will be POSTed.
 struct BlueprintPreviewTab: View {
@@ -21,7 +22,7 @@ struct BlueprintPreviewTab: View {
 
             switch session.preview {
             case let .success(request):
-                JSONTextView(json: request.body.serialized(), title: "POST /blueprints/v1/blueprints")
+                JSONTextView(json: request.body.prettyText, title: "POST /blueprints/v1/blueprints")
                 if session.report.has(.sensitiveContent) {
                     Label("This body contains credentials from the profile. Treat copies of it as secrets.", systemImage: "key.fill")
                         .font(.callout)
@@ -79,9 +80,9 @@ struct DiffTab: View {
                 .frame(minHeight: 220)
 
                 HSplitView {
-                    JSONTextView(json: JSONValue.object(PlistToJSON.convert(document.root)).serialized(), title: "Classic payload (plist as JSON)")
+                    JSONTextView(json: LosslessJSON.object(PlistToJSON.convert(document.root)).prettyText, title: "Classic payload (plist as JSON)")
                         .padding(8)
-                    JSONTextView(json: JSONValue.object(configuration).serialized(), title: "Blueprint configuration")
+                    JSONTextView(json: LosslessJSON.object(configuration).prettyText, title: "Blueprint configuration")
                         .padding(8)
                 }
                 .frame(minHeight: 240)
@@ -89,10 +90,10 @@ struct DiffTab: View {
         }
     }
 
-    private var readBackConfiguration: JSONObject? {
-        session.readBack?.steps.flatMap(\.components)
+    private var readBackConfiguration: LosslessJSON.Object? {
+        session.readBack?.components
             .first { $0.identifier == BlueprintBuilder.componentIdentifier }?
-            .configuration?.objectValue
+            .json["configuration"]?.objectValue
     }
 }
 

@@ -1,4 +1,5 @@
 import Foundation
+import JTKit
 import Testing
 @testable import Profile2Blueprint
 
@@ -123,7 +124,8 @@ struct PlistToJSONTests {
         #expect(json.keys == ["s", "i", "r", "b", "d", "t", "a"])
         #expect(json["s"] == .string("x"))
         #expect(json["i"] == .integer(-42))
-        #expect(json["r"] == .number(3.14))
+        #expect(json["r"] == .real(3.14))
+        #expect(json["r"]?.numberValue?.literal == "3.14")
         #expect(json["b"] == .bool(false))
         #expect(json["d"] == .string("SGVsbG8="))
         #expect(json["t"] == .string("2026-01-15T00:00:00Z"))
@@ -147,16 +149,17 @@ struct PlistToJSONTests {
 
     @Test("Serialised JSON is valid, ordered and escapes control characters")
     func serialisation() throws {
-        let value = JSONValue.object(JSONObject([
+        let value = LosslessJSON.object(LosslessJSON.Object([
             "z": .string("quote \" backslash \\ newline \n tab \t bell \u{07}"),
-            "a": .array([.integer(1), .number(2.5), .number(3), .bool(true), .null]),
+            "a": .array([.integer(1), .real(2.5), .real(3), .bool(true), .null]),
         ]))
-        let text = value.serialized(pretty: false)
+        let text = value.serializedString()
         #expect(text.hasPrefix(#"{"z":"#), "insertion order kept")
         #expect(text.contains(#"\u0007"#))
         let roundTrip = try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any]
         #expect((roundTrip?["z"] as? String)?.contains("\n") == true)
-        #expect(value.serialized(pretty: true).contains("\n  \"a\": ["))
+        #expect(text.hasSuffix(#""a":[1,2.5,3.0,true,null]}"#), "numbers written as the app always wrote them")
+        #expect(value.prettyText.contains("\n  \"a\": ["))
     }
 
     // MARK: Property test
@@ -172,11 +175,10 @@ struct PlistToJSONTests {
         let differences = PlistJSONComparator.differences(plist: plist, json: json, options: options)
         #expect(differences.isEmpty, "seed \(seed): \(differences)")
 
-        // And it survives real JSON parsing of our serialiser's output.
-        let reparsed = try JSONDecoder().decode(JSONValue.self, from: json.serializedData())
-        var unordered = PlistJSONComparator.Options()
-        unordered.requireKeyOrder = false
-        #expect(PlistJSONComparator.differences(plist: plist, json: reparsed, options: unordered).isEmpty, "seed \(seed)")
+        // And it survives JTKit's JSON reader, key order included: nothing is sorted any more.
+        let reparsed = try LosslessJSON(data: json.serialized())
+        #expect(reparsed == json, "seed \(seed)")
+        #expect(PlistJSONComparator.differences(plist: plist, json: reparsed, options: options).isEmpty, "seed \(seed)")
     }
 
     @Test("Comparator catches changed values, reordered arrays and missing keys")
@@ -185,9 +187,9 @@ struct PlistToJSONTests {
             .init(key: "Rules", value: .array([.string("a"), .string("b")])),
             .init(key: "Enabled", value: .bool(true)),
         ]))
-        let reordered = JSONValue.object(JSONObject(["Rules": .array([.string("b"), .string("a")]), "Enabled": .bool(true)]))
-        let missing = JSONValue.object(JSONObject(["Rules": .array([.string("a"), .string("b")])]))
-        let boolAsInt = JSONValue.object(JSONObject(["Rules": .array([.string("a"), .string("b")]), "Enabled": .integer(1)]))
+        let reordered = LosslessJSON.object(LosslessJSON.Object(["Rules": .array([.string("b"), .string("a")]), "Enabled": .bool(true)]))
+        let missing = LosslessJSON.object(LosslessJSON.Object(["Rules": .array([.string("a"), .string("b")])]))
+        let boolAsInt = LosslessJSON.object(LosslessJSON.Object(["Rules": .array([.string("a"), .string("b")]), "Enabled": .integer(1)]))
 
         #expect(PlistJSONComparator.differences(plist: plist, json: reordered).count == 2)
         #expect(PlistJSONComparator.differences(plist: plist, json: missing).map(\.path) == ["Enabled"])
