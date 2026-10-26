@@ -470,7 +470,7 @@ actor DemoClassicServer {
 
     /// Mimics a Classic partial update: replaces only `<scope>`.
     func putScope(key: ProfileKey, body: Data) throws {
-        guard HTTPClient.isScopeOnlyProfileXML(body) else {
+        guard PlatformClient.isScopeOnlyProfileXML(body) else {
             throw APIError.http(status: 400, method: "PUT", path: "proclassic/\(key.platform.classicResource)/id/\(key.id)", body: nil, rawBody: "Not a scope-only body")
         }
         guard let xml = profilesXML[key],

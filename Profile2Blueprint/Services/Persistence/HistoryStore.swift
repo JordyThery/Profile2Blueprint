@@ -1,4 +1,5 @@
 import Foundation
+import JTKit
 import OSLog
 
 /// Append-only local log of migration actions, stored as JSON in Application Support.
@@ -23,7 +24,7 @@ actor HistoryStore {
     @discardableResult
     func append(_ record: MigrationRecord) -> [MigrationRecord] {
         var safe = record
-        safe.message = Redactor.redact(record.message)
+        safe.message = Redaction.text(record.message)
         records.append(safe)
         persist()
         return records

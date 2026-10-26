@@ -1,4 +1,5 @@
 import Foundation
+import JTKit
 
 /// One entry of the gateway's `errors` field.
 nonisolated struct APIErrorDetail: Codable, Hashable, Sendable {
@@ -106,6 +107,7 @@ nonisolated struct ErrorReport: Hashable, Sendable {
     var rawBody: String?
 
     init(_ error: any Error) {
+        let error = (error as? HTTPError).map(APIError.init) ?? error
         title = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         details = []
         if case let APIError.http(status, _, _, body, raw) = error {

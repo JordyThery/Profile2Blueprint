@@ -1,4 +1,5 @@
 import Foundation
+import JTKit
 import Observation
 
 /// Main-actor mirror of `HistoryStore` for the UI.
@@ -39,15 +40,15 @@ final class HistoryLog {
             blueprintID: blueprintID,
             blueprintName: blueprintName,
             result: result,
-            message: Redactor.redact(message)
+            message: Redaction.text(message)
         )
         records.append(entry)
-        activity?.append(ActivityEvent(
+        activity?.app(
+            "\(action.title) — \(profile.name) (#\(profile.id))\(blueprintID.map { " → blueprint \($0)" } ?? ""): \(message)",
             environment: environment.displayName,
-            category: action == .unscopeClassic || action == .restoreClassicScope ? .classicWrite : .migration,
             level: result == .failure ? .error : (result == .warning ? .warning : .info),
-            message: "\(action.title) — \(profile.name) (#\(profile.id))\(blueprintID.map { " → blueprint \($0)" } ?? ""): \(message)"
-        ))
+            category: action == .unscopeClassic || action == .restoreClassicScope ? .classicWrite : .migration
+        )
         Task { _ = await store.append(entry) }
     }
 }

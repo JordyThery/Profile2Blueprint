@@ -1,4 +1,6 @@
 import Foundation
+import JTKit
+import JTKitTestSupport
 import Testing
 @testable import Profile2Blueprint
 
@@ -18,35 +20,37 @@ private func pageJSON(page: Int, totalPages: Int, items: [Int]) -> String {
     #"{"page":\#(page),"pageSize":\#(items.count),"totalCount":\#(totalPages * items.count),"totalPages":\#(totalPages),"hasNext":\#(page + 1 < totalPages),"hasPrevious":\#(page > 0),"results":[\#(items.map(groupJSON).joined(separator: ","))]}"#
 }
 
-private func makeTokens(clock: TestClock = TestClock()) -> TokenProvider {
-    TokenProvider(
+private func makeTokens(clock: TestClock = TestClock()) -> JamfTokenProvider {
+    JamfTokenProvider(
         tokenURL: base.appending(path: "auth/token"),
-        clientID: "client-123",
+        method: .apiClient(clientID: "client-123"),
         secret: { secretValue },
-        session: MockURLProtocol.makeSession(),
+        recorder: RequestRecorder(session: MockURLProtocol.makeSession(), log: nil),
         now: { clock.now }
     )
 }
 
-private func makeClient(tokens: TokenProvider, sleeper: SleepRecorder = SleepRecorder()) -> HTTPClient {
-    HTTPClient(
+/// No randomness in the waits, so they can be compared exactly.
+private func makeClient(tokens: JamfTokenProvider, sleeper: SleepRecorder = SleepRecorder()) -> PlatformClient {
+    PlatformClient.live(
         baseURL: base,
         environmentID: environmentID,
         tokens: tokens,
-        session: MockURLProtocol.makeSession(),
-        sleep: { try await sleeper.sleep($0) }
+        recorder: RequestRecorder(session: MockURLProtocol.makeSession(), log: nil),
+        sleep: { try await sleeper.sleep($0) },
+        random: { 0 }
     )
 }
 
 @Suite("Networking", .serialized)
 struct NetworkingTests {
 
-    // MARK: TokenProvider
+    // MARK: Token provider (JTKit)
 
     @Test("Token request is a form-encoded client_credentials POST")
     func tokenRequestShape() async throws {
         MockURLProtocol.install { _ in .json(200, tokenJSON("tok-1")) }
-        let token = try await makeTokens().validToken()
+        let token = try await makeTokens().token()
 
         #expect(token == "tok-1")
         let request = try #require(MockURLProtocol.requests.first)
@@ -68,13 +72,13 @@ struct NetworkingTests {
         let clock = TestClock()
         let tokens = makeTokens(clock: clock)
 
-        #expect(try await tokens.validToken() == "tok-1")
+        #expect(try await tokens.token() == "tok-1")
         clock.advance(by: 600)
-        #expect(try await tokens.validToken() == "tok-1")
+        #expect(try await tokens.token() == "tok-1")
         // 850 s in: within the 60 s refresh margin, so a new token is fetched.
         clock.advance(by: 250)
-        #expect(try await tokens.validToken() == "tok-2")
-        #expect(await tokens.requestCount == 2)
+        #expect(try await tokens.token() == "tok-2")
+        #expect(await tokens.signInCount == 2)
     }
 
     @Test("Concurrent callers share one token request")
@@ -86,13 +90,13 @@ struct NetworkingTests {
         let tokens = makeTokens()
 
         let values = try await withThrowingTaskGroup(of: String.self) { group in
-            for _ in 0..<10 { group.addTask { try await tokens.validToken() } }
+            for _ in 0..<10 { group.addTask { try await tokens.token() } }
             return try await group.reduce(into: []) { $0.append($1) }
         }
 
         #expect(values.count == 10)
         #expect(Set(values) == ["shared"])
-        #expect(await tokens.requestCount == 1)
+        #expect(await tokens.signInCount == 1)
         #expect(MockURLProtocol.requests.count == 1)
     }
 
@@ -102,9 +106,10 @@ struct NetworkingTests {
             .json(401, #"{"error":"invalid_client","error_description":"Invalid client credentials","client_secret":"leaked"}"#)
         }
         do {
-            _ = try await makeTokens().validToken()
+            _ = try await makeTokens().token()
             Issue.record("Expected failure")
-        } catch let error as APIError {
+        } catch let jtkitError as HTTPError {
+            let error = APIError(jtkitError)
             let report = ErrorReport(error)
             #expect(report.httpStatus == 401)
             #expect(report.details.first?.code == "invalid_client")
@@ -116,7 +121,7 @@ struct NetworkingTests {
         }
     }
 
-    // MARK: HTTPClient
+    // MARK: Client (JTKit, with the app's allow-list and errors)
 
     @Test("Requests carry bearer token and X-Environment-Id")
     func requestHeaders() async throws {
@@ -171,7 +176,7 @@ struct NetworkingTests {
         let groups = try await LiveDeviceGroupsAPI(client: makeClient(tokens: makeTokens(), sleeper: sleeper)).allGroups()
 
         #expect(groups.map(\.memberCount) == [7])
-        // First wait from Retry-After, second from exponential backoff (attempt 1 → 2 s).
+        // First wait from Retry-After, second from the doubling backoff (after attempt 2: 2 s, no randomness here).
         #expect(sleeper.recorded == [.seconds(2), .seconds(2)])
     }
 
@@ -186,7 +191,7 @@ struct NetworkingTests {
         await #expect(throws: APIError.self) {
             _ = try await LiveDeviceGroupsAPI(client: makeClient(tokens: makeTokens(), sleeper: sleeper)).allGroups()
         }
-        #expect(sleeper.recorded.count == RetryPolicy().maxRetries)
+        #expect(sleeper.recorded.count == RetryRules.standard.maxAttempts - 1)
     }
 
     @Test("400 and 409 bodies decode into httpStatus / code / field / description / traceId",

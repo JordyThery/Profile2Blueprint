@@ -1,4 +1,5 @@
 import Foundation
+import JTKit
 
 nonisolated protocol DeviceGroupsAPI: Sendable {
     /// Returns every device group matching the RSQL `filter`, following all pages.
@@ -15,7 +16,7 @@ extension DeviceGroupsAPI {
 
 /// `GET /device-groups/v1/device-groups` (permission `device-groups:read`).
 nonisolated struct LiveDeviceGroupsAPI: DeviceGroupsAPI {
-    let client: HTTPClient
+    let client: PlatformClient
     var pageSize = 100
     /// Hard stop so a misbehaving server can't loop forever.
     var maxPages = 1_000

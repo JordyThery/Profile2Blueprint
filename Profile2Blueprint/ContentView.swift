@@ -5,7 +5,6 @@ import SwiftUI
 enum SidebarItem: Hashable {
     case profiles
     case history
-    case activity
 }
 
 struct ContentView: View {
@@ -24,8 +23,6 @@ struct ContentView: View {
                         .tag(SidebarItem.profiles)
                     Label("History", systemImage: "clock.arrow.circlepath")
                         .tag(SidebarItem.history)
-                    Label("Activity", systemImage: "list.bullet.rectangle")
-                        .tag(SidebarItem.activity)
                 }
             }
             .safeAreaInset(edge: .bottom) {
@@ -44,13 +41,11 @@ struct ContentView: View {
                 ProfilesView()
             case .history:
                 HistoryView()
-            case .activity:
-                ActivityView()
             case nil:
                 ContentUnavailableView(
                     "Choose a Section",
                     systemImage: "sidebar.left",
-                    description: Text("Select Profiles, History or Activity in the sidebar.")
+                    description: Text("Select Profiles or History in the sidebar.")
                 )
             }
         }

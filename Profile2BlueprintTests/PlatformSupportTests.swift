@@ -1,4 +1,5 @@
 import Foundation
+import JTKit
 import Testing
 @testable import Profile2Blueprint
 
@@ -122,7 +123,7 @@ struct MobileCleanupTests {
     func unscopedBodyShape() {
         let body = ClassicScopeService.unscopedBody(platform: .mobile)
         let xml = String(decoding: body, as: UTF8.self)
-        #expect(HTTPClient.isScopeOnlyProfileXML(body))
+        #expect(PlatformClient.isScopeOnlyProfileXML(body))
         #expect(xml.contains("<all_mobile_devices>false</all_mobile_devices>"))
         #expect(xml.contains("<mobile_device_groups/>"))
         #expect(!xml.contains("all_computers"))
@@ -150,11 +151,11 @@ struct MobileCleanupTests {
     func allowList() {
         let path = "proclassic/mobiledeviceconfigurationprofiles/id/9"
         let body = ClassicScopeService.unscopedBody(platform: .mobile)
-        #expect(HTTPClient.isPermitted(HTTPRequest(method: "PUT", path: path, body: body), classicWrites: .scopeOnly))
-        #expect(!HTTPClient.isPermitted(HTTPRequest(method: "PUT", path: path, body: body), classicWrites: .denied))
-        #expect(!HTTPClient.isPermitted(HTTPRequest(method: "PUT", path: path, body: Data("<configuration_profile><general/></configuration_profile>".utf8)), classicWrites: .scopeOnly))
-        #expect(!HTTPClient.isPermitted(HTTPRequest(method: "DELETE", path: path, body: body), classicWrites: .scopeOnly))
-        #expect(!HTTPClient.isPermitted(HTTPRequest(method: "PUT", path: "proclassic/mobiledevices/id/9", body: body), classicWrites: .scopeOnly))
+        #expect(PlatformClient.isPermitted(HTTPRequest(method: "PUT", path: path, body: body), classicWrites: .scopeOnly))
+        #expect(!PlatformClient.isPermitted(HTTPRequest(method: "PUT", path: path, body: body), classicWrites: .denied))
+        #expect(!PlatformClient.isPermitted(HTTPRequest(method: "PUT", path: path, body: Data("<configuration_profile><general/></configuration_profile>".utf8)), classicWrites: .scopeOnly))
+        #expect(!PlatformClient.isPermitted(HTTPRequest(method: "DELETE", path: path, body: body), classicWrites: .scopeOnly))
+        #expect(!PlatformClient.isPermitted(HTTPRequest(method: "PUT", path: "proclassic/mobiledevices/id/9", body: body), classicWrites: .scopeOnly))
     }
 }
 

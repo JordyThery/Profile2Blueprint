@@ -1,4 +1,5 @@
 import Foundation
+import JTKit
 import Testing
 @testable import Profile2Blueprint
 
@@ -755,7 +756,7 @@ struct SafetyTests {
         ("POST", "device-groups/v1/device-groups", false),
     ])
     func permitted(method: String, path: String, allowed: Bool) {
-        #expect(HTTPClient.isPermitted(HTTPRequest(method: method, path: path)) == allowed)
+        #expect(PlatformClient.isPermitted(HTTPRequest(method: method, path: path)) == allowed)
     }
 
     @Test("Classic API protocol exposes no write methods")
@@ -802,6 +803,6 @@ struct HistoryTests {
         await store.append(record("token Bearer abc.def.ghi"))
         let reloaded = HistoryStore(fileURL: url)
         let messages = await reloaded.all.map(\.message)
-        #expect(messages == ["token Bearer \(Redactor.placeholder)"])
+        #expect(messages == ["token Bearer \(Redaction.placeholder)"])
     }
 }

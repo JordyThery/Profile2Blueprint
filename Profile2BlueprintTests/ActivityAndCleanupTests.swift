@@ -1,35 +1,31 @@
 import Foundation
+import JTKit
+import JTKitTestSupport
 import Testing
 @testable import Profile2Blueprint
-
-/// Collects activity events for assertions.
-final class RecordingActivity: ActivityRecorder, @unchecked Sendable {
-    private let lock = NSLock()
-    private var stored: [ActivityEvent] = []
-    var events: [ActivityEvent] { lock.withLock { stored } }
-    func record(_ event: ActivityEvent) { lock.withLock { stored.append(event) } }
-}
 
 private let base = URL(string: "https://eu.api.jamfcloud.com")!
 private let tokenBody = #"{"access_token":"SECRET-TOKEN-VALUE","expires_in":900,"token_type":"Bearer"}"#
 
-private func client(_ activity: RecordingActivity, policy: ClassicWritePolicy = .denied) -> HTTPClient {
-    let tokens = TokenProvider(tokenURL: base.appending(path: "auth/token"), clientID: "c", secret: { "s" },
-                               session: MockURLProtocol.makeSession(), environmentName: "Test", activity: activity)
-    return HTTPClient(baseURL: base, environmentID: "e77c1408-10c8-4007-b177-abc9157fbcaa", tokens: tokens,
-                      session: MockURLProtocol.makeSession(), classicWritePolicy: policy,
-                      environmentName: "Test", activity: activity, sleep: { _ in })
+private func client(_ log: ActivityLog, policy: ClassicWritePolicy = .denied) -> PlatformClient {
+    let recorder = RequestRecorder(session: MockURLProtocol.makeSession(), log: log,
+                                   service: "Jamf Platform API", connection: "Test")
+    let tokens = JamfTokenProvider(tokenURL: base.appending(path: "auth/token"), method: .apiClient(clientID: "c"),
+                                   secret: { "s" }, recorder: recorder)
+    return PlatformClient.live(baseURL: base, environmentID: "e77c1408-10c8-4007-b177-abc9157fbcaa", tokens: tokens,
+                               recorder: recorder, classicWritePolicy: policy, sleep: { _ in })
 }
 
 private let scopeOnlyBody = ClassicScopeService.unscopedBody(platform: .macOS)
 
-// MARK: - Milestone 7: activity log
+// MARK: - Milestone 7: activity log (JTKit's, from step 5)
 
 /// Network-backed activity tests join the serialized `NetworkingTests` suite because
 /// `MockURLProtocol`'s handler is global.
 extension NetworkingTests {
 
-    @Test("Requests, token issue, retries and errors are recorded; the token value never is")
+    @Test("Sign-in, requests, waits and errors are recorded; the token and the secret never are")
+    @MainActor
     func requestEvents() async throws {
         let calls = Counter()
         MockURLProtocol.install { request in
@@ -37,59 +33,85 @@ extension NetworkingTests {
             if calls.next() == 1 { return .json(429, "{}", headers: ["Retry-After": "0"]) }
             return .json(400, #"{"httpStatus":400,"traceId":"trace-123","errors":{"code":"INVALID_FIELD","field":"name","description":"bad"}}"#)
         }
-        let activity = RecordingActivity()
+        let log = ActivityLog()
         await #expect(throws: APIError.self) {
-            _ = try await client(activity).send(HTTPRequest(path: "blueprints/v1/blueprints"))
+            _ = try await client(log).send(HTTPRequest(path: "blueprints/v1/blueprints"))
         }
 
-        let events = activity.events
-        #expect(events.map(\.category) == [.auth, .request, .retry, .request])
-        #expect(events[0].message.contains("token issued"))
-        #expect(events[1].status == 429)
-        #expect(events[3].status == 400)
-        #expect(events[3].traceId == "trace-123")
-        #expect(events[3].message == "INVALID_FIELD: bad")
-        #expect(events[3].durationMs != nil)
-        #expect(events.allSatisfy { !$0.message.contains("SECRET-TOKEN-VALUE") })
-        #expect(events.allSatisfy { $0.environment == "Test" })
+        let entries = log.entries
+        #expect(entries.map(\.category) == ["Sign-in", "API", "Retry", "API"])
+        #expect(entries[0].status == 200)
+        #expect(entries[1].status == 429)
+        #expect(entries[2].isWarning)
+        #expect(entries[2].note == "HTTP 429: waiting 0 s, attempt 2 of 4.")
+        #expect(entries[3].status == 400)
+        #expect(entries[3].request?.responseBody?.contains("trace-123") == true, "error bodies are recorded")
+        #expect(entries[3].duration != nil)
+        let everything = entries.map(ActivityLogExport.transcript(of:)).joined(separator: "\n")
+        #expect(!everything.contains("SECRET-TOKEN-VALUE"))
+        #expect(!everything.contains("client_secret=s"))
+        #expect(entries.allSatisfy { $0.connection == "Test" })
     }
 
     @Test("Refused writes are recorded as blocked and never sent")
+    @MainActor
     func blockedEvents() async throws {
         MockURLProtocol.install { _ in Issue.record("nothing should be sent"); return .json(500, "{}") }
-        let activity = RecordingActivity()
+        let log = ActivityLog()
         await #expect(throws: APIError.self) {
-            _ = try await client(activity).send(HTTPRequest(method: "DELETE", path: "blueprints/v1/blueprints/x"))
+            _ = try await client(log).send(HTTPRequest(method: "DELETE", path: "blueprints/v1/blueprints/x"))
         }
-        #expect(activity.events.map(\.category) == [.blocked])
-        #expect(activity.events.first?.method == "DELETE")
+        #expect(log.entries.map(\.category) == ["Blocked"])
+        #expect(log.entries.first?.operation == "DELETE")
+        #expect(log.entries.first?.isWarning == true)
         #expect(MockURLProtocol.requests.isEmpty)
+    }
+
+    @Test("Profile and Blueprint contents are never recorded: no request bodies, no successful responses")
+    @MainActor
+    func contentsAreNotRecorded() async throws {
+        MockURLProtocol.install { request in
+            if request.path == "/auth/token" { return .json(200, tokenBody) }
+            if request.method == "GET" {
+                return MockResponse(status: 200, headers: ["Content-Type": "application/xml"],
+                                    body: Data("<os_x_configuration_profile><general><payloads>&lt;key&gt;Password&lt;/key&gt;&lt;string&gt;wifi-psk-123&lt;/string&gt;</payloads></general></os_x_configuration_profile>".utf8))
+            }
+            return .json(400, #"{"httpStatus":400,"errors":{"code":"INVALID_FIELD","description":"bad"}}"#)
+        }
+        let log = ActivityLog()
+        let client = client(log)
+        _ = try await client.send(HTTPRequest(path: "proclassic/osxconfigurationprofiles/id/1", accept: "application/xml"))
+        await #expect(throws: APIError.self) {
+            _ = try await client.send(HTTPRequest(method: "POST", path: "blueprints/v1/blueprints",
+                                                  body: Data(#"{"steps":[{"Password":"wifi-psk-123"}]}"#.utf8),
+                                                  contentType: "application/json"))
+        }
+        let everything = log.entries.map(ActivityLogExport.transcript(of:)).joined(separator: "\n")
+        #expect(!everything.contains("wifi-psk-123"))
+        #expect(log.entries.compactMap(\.request).allSatisfy { $0.requestBody == nil })
+        #expect(everything.contains("INVALID_FIELD"), "the error answer itself is recorded")
     }
 }
 
-@Suite("Activity log")
-struct ActivityLogTests {
+@Suite("Activity log entries")
+@MainActor
+struct ActivityLogEntryTests {
 
-    @Test("Store keeps the newest events, redacts, and persists")
-    func store() async throws {
-        let url = FileManager.default.temporaryDirectory.appending(path: "p2b-activity-\(UUID().uuidString).json")
-        defer { try? FileManager.default.removeItem(at: url) }
-        let store = ActivityStore(fileURL: url, limit: 3)
-        for index in 1...5 {
-            await store.append(ActivityEvent(environment: "E", category: .app, message: "event \(index) Bearer abc.def"))
-        }
-        await store.flush()
-        let reloaded = ActivityStore(fileURL: url, limit: 3)
-        let messages = await reloaded.all.map(\.message)
-        #expect(messages == (3...5).map { "event \($0) Bearer \(Redactor.placeholder)" })
-    }
+    @Test("The app's own entries keep their level, tenant and category, redacted")
+    func appEntries() {
+        let log = ActivityLog()
+        log.app("Saved settings, token Bearer abc.def", environment: "Sandbox")
+        log.app("Classic scope changes ENABLED", level: .warning, category: .classicWrite)
+        log.app("Create failed", level: .error, category: .migration)
 
-    @Test("Markdown export escapes cells")
-    func markdown() {
-        let text = ActivityExport.markdown([ActivityEvent(environment: "A|B", category: .request, message: "x\ny", method: "GET", path: "p", status: 200)])
-        #expect(text.contains(#"A\|B"#))
-        #expect(text.contains("`GET p`"))
-        #expect(text.contains("x y"))
+        let entries = log.entries
+        #expect(entries.map(\.category) == ["App", "Classic write", "Migration"])
+        #expect(entries[0].connection == "Sandbox")
+        #expect(entries[0].detail == "Saved settings, token Bearer \(Redaction.placeholder)")
+        #expect(entries[0].operation.isEmpty)
+        #expect(!entries[0].isProblem)
+        #expect(entries[1].isWarning && !entries[1].isFailure)
+        #expect(entries[2].isFailure)
     }
 }
 
@@ -101,9 +123,9 @@ struct ClassicWriteGuardTests {
 
     @Test("PUT is refused unless scope changes are explicitly enabled")
     func deniedByDefault() {
-        #expect(!HTTPClient.isPermitted(HTTPRequest(method: "PUT", path: path, body: scopeOnlyBody)))
-        #expect(!HTTPClient.isPermitted(HTTPRequest(method: "PUT", path: path, body: scopeOnlyBody), classicWrites: .denied))
-        #expect(HTTPClient.isPermitted(HTTPRequest(method: "PUT", path: path, body: scopeOnlyBody), classicWrites: .scopeOnly))
+        #expect(!PlatformClient.isPermitted(HTTPRequest(method: "PUT", path: path, body: scopeOnlyBody)))
+        #expect(!PlatformClient.isPermitted(HTTPRequest(method: "PUT", path: path, body: scopeOnlyBody), classicWrites: .denied))
+        #expect(PlatformClient.isPermitted(HTTPRequest(method: "PUT", path: path, body: scopeOnlyBody), classicWrites: .scopeOnly))
     }
 
     @Test("Even when enabled, only scope-only bodies on a profile ID path pass", arguments: [
@@ -116,13 +138,13 @@ struct ClassicWriteGuardTests {
         ("not xml", "proclassic/osxconfigurationprofiles/id/42"),
     ])
     func onlyScope(body: String, path: String) {
-        #expect(!HTTPClient.isPermitted(HTTPRequest(method: "PUT", path: path, body: Data(body.utf8)), classicWrites: .scopeOnly))
+        #expect(!PlatformClient.isPermitted(HTTPRequest(method: "PUT", path: path, body: Data(body.utf8)), classicWrites: .scopeOnly))
     }
 
     @Test("Enabling scope changes doesn't open DELETE, PATCH or Classic POST")
     func otherMethodsStayClosed() {
         for method in ["DELETE", "PATCH", "POST"] {
-            #expect(!HTTPClient.isPermitted(HTTPRequest(method: method, path: path, body: scopeOnlyBody), classicWrites: .scopeOnly))
+            #expect(!PlatformClient.isPermitted(HTTPRequest(method: method, path: path, body: scopeOnlyBody), classicWrites: .scopeOnly))
         }
     }
 
@@ -164,7 +186,7 @@ struct ClassicScopeServiceTests {
         #expect(try ClassicXMLParser.parseScopeXML(backup.scopeXML, platform: .macOS) == before.scope)
         #expect(await store.latest(key: ProfileKey(platform: .macOS, id: 102), environmentID: nil, environmentName: "Test")?.id == backup.id)
         let writes = await server.scopeWrites
-        #expect(writes.count == 1 && HTTPClient.isScopeOnlyProfileXML(Data(writes[0].body.utf8)))
+        #expect(writes.count == 1 && PlatformClient.isScopeOnlyProfileXML(Data(writes[0].body.utf8)))
 
         let restored = try await ClassicScopeService.restore(backup, environment: env, backups: store)
         #expect(restored.scope == before.scope)
@@ -191,7 +213,7 @@ struct ClassicScopeServiceTests {
     @Test("Unscoped body clears targets but leaves limitations/exclusions alone")
     func unscopedBodyShape() throws {
         let xml = String(decoding: ClassicScopeService.unscopedBody(platform: .macOS), as: UTF8.self)
-        #expect(HTTPClient.isScopeOnlyProfileXML(ClassicScopeService.unscopedBody(platform: .macOS)))
+        #expect(PlatformClient.isScopeOnlyProfileXML(ClassicScopeService.unscopedBody(platform: .macOS)))
         #expect(xml.contains("<all_computers>false</all_computers>"))
         #expect(xml.contains("<computer_groups/>"))
         #expect(!xml.contains("exclusions") && !xml.contains("limitations") && !xml.contains("payloads"))

@@ -1,4 +1,5 @@
 import Foundation
+import JTKit
 import Testing
 @testable import Profile2Blueprint
 
@@ -40,8 +41,8 @@ struct RedactionTests {
         #"{"client_secret": "topsecret"}"#,
     ])
     func redacts(input: String) {
-        let output = Redactor.redact(input)
-        #expect(output.contains(Redactor.placeholder))
+        let output = Redaction.text(input)
+        #expect(output.contains(Redaction.placeholder))
         #expect(!output.contains("topsecret"))
         #expect(!output.contains("eyJ"))
     }
@@ -49,7 +50,7 @@ struct RedactionTests {
     @Test("Ordinary text passes through unchanged")
     func passthrough() {
         let text = #"{"httpStatus":400,"errors":{"code":"INVALID_FIELD"}}"#
-        #expect(Redactor.redact(text) == text)
+        #expect(Redaction.text(text) == text)
     }
 }
 
@@ -71,9 +72,10 @@ struct APIErrorBodyTests {
         #expect(APIErrorBody.parse(Data("{}".utf8)) == nil)
     }
 
-    @Test("Retry backoff is exponential and capped")
+    @Test("Retry backoff doubles and is capped (JTKit's shared rules)")
     func backoff() {
-        let policy = RetryPolicy(maxRetries: 5, baseDelay: .seconds(1), maxDelay: .seconds(5))
-        #expect((0..<5).map(policy.delay(forAttempt:)) == [.seconds(1), .seconds(2), .seconds(4), .seconds(5), .seconds(5)])
+        let rules = RetryRules.standard
+        #expect((1...3).map { rules.backoff(afterAttempt: $0, random: 0) } == [1, 2, 4])
+        #expect(rules.backoff(afterAttempt: 9, random: 1) == 120)
     }
 }

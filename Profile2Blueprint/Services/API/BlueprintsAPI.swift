@@ -1,4 +1,5 @@
 import Foundation
+import JTKit
 
 /// The subset of the Blueprints API the app uses. PATCH, DELETE and undeploy are
 /// intentionally absent.
@@ -13,7 +14,7 @@ nonisolated protocol BlueprintsAPI: Sendable {
 
 /// `/blueprints/v1/…` (permissions `blueprints:read`, `blueprints:create`, `blueprints:deploy`).
 nonisolated struct LiveBlueprintsAPI: BlueprintsAPI {
-    let client: HTTPClient
+    let client: PlatformClient
     var pageSize = 100
     var maxPages = 50
 

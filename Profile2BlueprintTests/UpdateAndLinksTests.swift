@@ -1,5 +1,6 @@
 import Foundation
 import JTKit
+import JTKitTestSupport
 import Testing
 @testable import Profile2Blueprint
 

@@ -22,6 +22,11 @@ import SwiftUI
         SettingsWindow(updates: model.updates, opensTabsByName: true) {
             TenantSettingsTab(model: model)
         }
+        // JTKit's shared activity log (Window › Activity Log, ⇧⌘L).
+        ActivityLogWindow(
+            log: model.activity,
+            emptyDescription: "Sign-ins, API calls, retries, refused writes and migration steps appear here as they happen."
+        )
         AboutWindow(configuration: .profile2Blueprint)
     }
 }

@@ -1,4 +1,5 @@
 import Foundation
+import JTKit
 
 /// Read-only access to Jamf Pro classic configuration profiles, macOS and mobile.
 /// There are deliberately no write methods.
@@ -9,7 +10,7 @@ nonisolated protocol ClassicAPI: Sendable {
 
 /// `GET /proclassic/{resource}…` (permission `configuration-profiles:read`).
 nonisolated struct LiveClassicAPI: ClassicAPI {
-    let client: HTTPClient
+    let client: PlatformClient
 
     func listProfiles(platform: ProfilePlatform) async throws -> [ClassicProfileSummary] {
         let response = try await client.send(HTTPRequest(path: "proclassic/\(platform.classicResource)", accept: "application/xml"))

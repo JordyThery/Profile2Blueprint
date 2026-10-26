@@ -38,14 +38,15 @@ final class AppModel {
         secrets: any SecretStore = KeychainSecretStore.profile2Blueprint(),
         session: URLSession = .shared,
         history: HistoryStore = .appDefault(),
-        activity: ActivityStore = .appDefault(),
         demoMode: Bool? = nil
     ) {
         self.store = store
         let recording = RecordingSecretStore(secrets)
         self.secrets = recording
         self.session = session
-        let activityLog = ActivityLog(store: activity)
+        // JTKit's in-memory log (Window › Activity Log). The activity.json of
+        // earlier versions stays on disk untouched and is no longer read.
+        let activityLog = ActivityLog()
         self.activity = activityLog
         self.history = HistoryLog(store: history, activity: activityLog)
         updates = UpdateChecker(configuration: .profile2Blueprint) { line in
@@ -189,7 +190,7 @@ final class AppModel {
 
     /// Builds an authenticated client for a tenant. `secretOverride` lets the
     /// Connect screen test unsaved credentials without writing them to the Keychain.
-    func makeClient(for tenant: Tenant, secretOverride: String? = nil) throws -> HTTPClient {
+    func makeClient(for tenant: Tenant, secretOverride: String? = nil) throws -> PlatformClient {
         if let issue = tenant.validationIssues.first {
             throw APIError.invalidConfiguration(issue)
         }
@@ -199,28 +200,31 @@ final class AppModel {
         let secrets = self.secrets
         let account = tenant.id.uuidString
         let override = secretOverride.flatMap { $0.isEmpty ? nil : $0 }
-        let tokens = TokenProvider(
-            tokenURL: baseURL.appending(path: "auth/token"),
-            clientID: tenant.clientID.trimmingCharacters(in: .whitespacesAndNewlines),
-            secret: {
-                if let override { return override }
-                guard let stored = secrets.secret(for: account), !stored.isEmpty else {
-                    throw APIError.missingSecret
-                }
-                return stored
-            },
-            session: session,
-            environmentName: tenant.displayName,
-            activity: activity.recorder
-        )
-        return HTTPClient(
+        let recorder = RequestRecorder(session: session, log: activity,
+                                       service: ConnectionService.jamfPlatform.displayName,
+                                       connection: tenant.displayName)
+        let tokens: JamfTokenProvider
+        do {
+            tokens = try JamfTokenProvider(
+                connection: tenant.connection,
+                secret: {
+                    if let override { return override }
+                    guard let stored = secrets.secret(for: account), !stored.isEmpty else {
+                        throw APIError.missingSecret
+                    }
+                    return stored
+                },
+                recorder: recorder
+            )
+        } catch let error as HTTPError {
+            throw APIError(error)
+        }
+        return PlatformClient.live(
             baseURL: baseURL,
             environmentID: tenant.normalizedEnvironmentID,
             tokens: tokens,
-            session: session,
-            classicWritePolicy: tenant.allowClassicScopeChanges ? .scopeOnly : .denied,
-            environmentName: tenant.displayName,
-            activity: activity.recorder
+            recorder: recorder,
+            classicWritePolicy: tenant.allowClassicScopeChanges ? .scopeOnly : .denied
         )
     }
 

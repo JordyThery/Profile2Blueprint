@@ -62,7 +62,6 @@ struct TenantConnectionsTests {
             store: TenantStore(fileURL: fileURL),
             secrets: secrets,
             history: HistoryStore(fileURL: folder.appending(path: "history.json")),
-            activity: ActivityStore(fileURL: folder.appending(path: "activity.json")),
             demoMode: false
         )
     }
@@ -197,7 +196,7 @@ struct TenantConnectionsTests {
         try model.connections.save(sandbox, secrets: [.main: "hunter2"])
         #expect(secrets.secret(for: sandboxID.uuidString) == "hunter2")
         #expect(try !fileText().contains("hunter2"))
-        #expect(model.activity.events.contains { $0.message.contains("Stored a new client secret") && $0.message.contains("Sandbox") })
+        #expect(model.activity.entries.contains { $0.detail.contains("Stored a new client secret") && $0.detail.contains("Sandbox") })
     }
 
     @Test func theFirstTenantAddedBecomesCurrentAndDeletingMovesToTheNext() throws {
@@ -231,7 +230,7 @@ struct TenantConnectionsTests {
         tenant.allowClassicScopeChanges = false
         try model.connections.save(tenant)
         #expect(model.workspaceGeneration > generation)
-        #expect(model.activity.events.contains { $0.category == .classicWrite && $0.message.contains("disabled") })
+        #expect(model.activity.entries.contains { $0.category == ActivityCategory.classicWrite.rawValue && $0.detail.contains("disabled") })
     }
 
     @Test func demoModeIsNeverPartOfTheTenantList() throws {
@@ -242,7 +241,6 @@ struct TenantConnectionsTests {
             store: TenantStore(fileURL: fileURL),
             secrets: InMemorySecretStore(),
             history: HistoryStore(fileURL: folder.appending(path: "history.json")),
-            activity: ActivityStore(fileURL: folder.appending(path: "activity.json")),
             demoMode: true
         )
 
