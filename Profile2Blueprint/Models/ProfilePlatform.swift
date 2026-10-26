@@ -42,7 +42,23 @@ nonisolated enum ProfilePlatform: String, Codable, Hashable, Sendable, CaseItera
         }
     }
 
-    /// XML root of the list response.
+    /// The Jamf Pro privilege for reading this family's profiles.
+    var readPrivilege: JamfPro.Privilege {
+        switch self {
+        case .macOS: .readMacOSConfigurationProfiles
+        case .mobile: .readIOSConfigurationProfiles
+        }
+    }
+
+    /// The Jamf Pro privilege for changing a profile's scope.
+    var updatePrivilege: JamfPro.Privilege {
+        switch self {
+        case .macOS: .updateMacOSConfigurationProfiles
+        case .mobile: .updateIOSConfigurationProfiles
+        }
+    }
+
+    /// The key of the list in the JSON list response.
     var listRootElement: String {
         switch self {
         case .macOS: "os_x_configuration_profiles"
@@ -50,7 +66,7 @@ nonisolated enum ProfilePlatform: String, Codable, Hashable, Sendable, CaseItera
         }
     }
 
-    /// XML root of a single profile (and of list entries).
+    /// XML root of a single profile.
     var profileRootElement: String {
         switch self {
         case .macOS: "os_x_configuration_profile"

@@ -87,7 +87,7 @@ struct ClassicParsingTests {
 
     @Test("Profile list parses every summary")
     func list() throws {
-        let list = try ClassicXMLParser.parseProfileList(Data(DemoFixtures.profileListXML(platform: .macOS).utf8), platform: .macOS)
+        let list = try ClassicProfileList.parse(Data(DemoFixtures.profileListJSON(platform: .macOS).utf8), platform: .macOS)
         #expect(list.map(\.profileID) == [101, 102, 103, 104, 105, 106, 107])
         #expect(list.first?.name == "Classic – Managed Login Items")
     }

@@ -1,18 +1,11 @@
 import Foundation
 
-/// Parses Classic API XML (both profile families) into models.
+/// Parses Classic API XML (both profile families) into models. The profile
+/// list comes as JSON instead (`ClassicProfileList`).
 ///
 /// The payload plist arrives XML-escaped inside `general/payloads`; reading the
 /// element's string value unescapes it before `PlistParser` sees it.
 nonisolated enum ClassicXMLParser {
-    static func parseProfileList(_ data: Data, platform: ProfilePlatform) throws -> [ClassicProfileSummary] {
-        let root = try rootElement(data, expected: platform.listRootElement)
-        return root.elements(forName: platform.profileRootElement).compactMap { element in
-            guard let id = element.intValue(of: "id") else { return nil }
-            return ClassicProfileSummary(platform: platform, profileID: id, name: element.textValue(of: "name") ?? "")
-        }
-    }
-
     static func parseProfile(_ data: Data, platform: ProfilePlatform) throws -> ClassicProfile {
         let root = try rootElement(data, expected: platform.profileRootElement)
         guard let general = root.child("general") else {

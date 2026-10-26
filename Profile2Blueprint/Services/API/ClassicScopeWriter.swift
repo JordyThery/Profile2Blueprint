@@ -8,7 +8,8 @@ nonisolated protocol ClassicScopeWriter: Sendable {
     func replaceScope(key: ProfileKey, body: Data) async throws
 }
 
-/// `PUT /proclassic/{resource}/id/{id}` (permission `configuration-profiles:update`).
+/// `PUT /proclassic/{resource}/id/{id}` (permission `configuration-profiles:update`;
+/// on Jamf Pro the platform's Update … Configuration Profiles privilege).
 ///
 /// The spec does not document the request body. This uses the Classic API's partial-XML
 /// update convention (only the elements sent are changed), verified against a live tenant.
@@ -18,10 +19,10 @@ nonisolated struct LiveClassicScopeWriter: ClassicScopeWriter {
     func replaceScope(key: ProfileKey, body: Data) async throws {
         _ = try await client.send(HTTPRequest(
             method: "PUT",
-            path: "proclassic/\(key.platform.classicResource)/id/\(key.id)",
+            path: JamfClassic.path(key.platform.classicResource, id: String(key.id)),
             body: body,
             accept: "application/xml",
             contentType: "application/xml"
-        ))
+        ), privilege: key.platform.updatePrivilege)
     }
 }
