@@ -11,6 +11,16 @@
 		087B3DFE308E87AF00D0CB8A /* JTKitTestSupport in Frameworks */ = {isa = PBXBuildFile; productRef = 087B3DFD308E87AF00D0CB8A /* JTKitTestSupport */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		087B430F308F264D00D0CB8A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 000000000000000000000000 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 000000000000000100000000;
+			remoteInfo = Profile2Blueprint;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		000000000000000000000120 /* Profile2Blueprint.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Profile2Blueprint.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		08540C31306E587800F03FA7 /* Profile2BlueprintTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = Profile2BlueprintTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -105,6 +115,9 @@
 			);
 			buildRules = (
 			);
+			dependencies = (
+				087B4310308F264D00D0CB8A /* PBXTargetDependency */,
+			);
 			fileSystemSynchronizedGroups = (
 				08540C32306E587800F03FA7 /* Profile2BlueprintTests */,
 			);
@@ -182,6 +195,14 @@
 			);
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		087B4310308F264D00D0CB8A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 000000000000000100000000 /* Profile2Blueprint */;
+			targetProxy = 087B430F308F264D00D0CB8A /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		000000000000000011000000 /* Debug configuration for PBXProject "Profile2Blueprint" */ = {
@@ -463,7 +484,7 @@
 			repositoryURL = "https://github.com/JordyThery/JTKit.git";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 0.6.0;
+				minimumVersion = 0.6.1;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
