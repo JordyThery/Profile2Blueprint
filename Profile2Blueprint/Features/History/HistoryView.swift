@@ -12,7 +12,7 @@ struct HistoryView: View {
     @State private var sortOrder = [KeyPathComparator(\MigrationRecord.timestamp, order: .reverse)]
 
     private var records: [MigrationRecord] {
-        model.history.records
+        model.currentHistory.records
             .filter { record in
                 search.isEmpty
                     || record.sourceProfileName.localizedCaseInsensitiveContains(search)
@@ -26,7 +26,7 @@ struct HistoryView: View {
 
     var body: some View {
         Group {
-            if model.history.records.isEmpty {
+            if model.currentHistory.records.isEmpty {
                 ContentUnavailableView("No Actions Yet", systemImage: "clock.arrow.circlepath",
                                        description: Text("Dry runs, creates, verifications, deployments and classic cleanup are recorded here."))
             } else {
@@ -54,7 +54,7 @@ struct HistoryView: View {
                     }
                 }
                 .safeAreaInset(edge: .bottom, spacing: 0) {
-                    if let record = selection.flatMap({ id in model.history.records.first { $0.id == id } }) {
+                    if let record = selection.flatMap({ id in model.currentHistory.records.first { $0.id == id } }) {
                         HistoryDetailPane(record: record)
                     }
                 }
@@ -68,7 +68,7 @@ struct HistoryView: View {
                     Button("Markdown…") { export(.markdown) }
                     Button("JSON…") { export(.json) }
                 }
-                .disabled(model.history.records.isEmpty)
+                .disabled(model.currentHistory.records.isEmpty)
             }
         }
         .fileExporter(
@@ -88,7 +88,7 @@ struct HistoryView: View {
 
     private func export(_ format: HistoryDocument.Format) {
         do {
-            exportDocument = try HistoryDocument(records: model.history.records, format: format)
+            exportDocument = try HistoryDocument(records: model.currentHistory.records, format: format)
         } catch {
             exportError = error.localizedDescription
         }

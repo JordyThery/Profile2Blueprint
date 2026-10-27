@@ -41,6 +41,9 @@ nonisolated struct MigrationEnvironment: Sendable {
 
     var blueprints: JamfPlatform.Blueprints { JamfPlatform.Blueprints(client: platform) }
 
+    /// The offline demo's name, in history, scope backups and the activity log.
+    static let demoDisplayName = "Offline demo"
+
     /// Offline demo. Classic scope changes are enabled here (in memory only) so the
     /// full flow, including unscope and restore, can be tried without a tenant.
     /// With a log, the demo's Platform API requests show in the activity log.
@@ -50,7 +53,7 @@ nonisolated struct MigrationEnvironment: Sendable {
         classicServer: DemoClassicServer = DemoClassicServer()
     ) -> MigrationEnvironment {
         MigrationEnvironment(
-            displayName: "Offline demo",
+            displayName: demoDisplayName,
             isDemo: true,
             environmentID: nil,
             classic: DemoClassicAPI(server: classicServer),

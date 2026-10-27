@@ -277,3 +277,128 @@ struct SessionCleanupTests {
         #expect(ClassicScopeService.hasTargets(try await workspace.environment.classic.profile(key: ProfileKey(platform: .macOS, id: 101)).scope))
     }
 }
+
+// MARK: - Demo mode keeps its own files
+
+@Suite("Demo mode's own files", .serialized)
+@MainActor
+struct DemoFilesTests {
+    let folder = FileManager.default.temporaryDirectory.appending(path: "p2b-demo-files-\(UUID().uuidString)")
+    var realHistory: URL { folder.appending(path: "real/history.json") }
+    var demoFolder: URL { folder.appending(path: "demo") }
+
+    private func makeModel(demoMode: Bool) -> AppModel {
+        AppModel(
+            store: TenantStore(fileURL: folder.appending(path: "real/tenants.json")),
+            secrets: InMemorySecretStore(),
+            history: HistoryStore(fileURL: realHistory),
+            demoFiles: DemoFiles(folder: demoFolder),
+            demoMode: demoMode
+        )
+    }
+
+    /// Waits for a file that is written in the background.
+    private func waitForFile(_ url: URL) async throws {
+        for _ in 0..<200 where !FileManager.default.fileExists(atPath: url.path()) {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+    }
+
+    @Test("Demo history, scope backups and sessions go to the demo folder, never the real files")
+    func demoWritesStayInTheDemoFolder() async throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let model = makeModel(demoMode: true)
+        let workspace = try model.activeWorkspace()
+
+        #expect(workspace.history === model.demoHistory)
+        #expect(model.currentHistory === model.demoHistory)
+        #expect(await workspace.scopeBackups.fileURL == demoFolder.appending(path: "scope-backups.json"))
+        #expect(await workspace.sessionStates.fileURL == demoFolder.appending(path: "sessions.json"))
+
+        // A demo unscope writes a scope backup and a history entry.
+        let key = ProfileKey(platform: .macOS, id: 102)
+        let (backup, _) = try await ClassicScopeService.unscope(key: key, blueprintID: "bp", environment: workspace.environment,
+                                                                 backups: workspace.scopeBackups)
+        let profile = try await workspace.environment.classic.profile(key: key)
+        workspace.history.record(.unscopeClassic, environment: workspace.environment, profile: profile,
+                                 result: .success, message: "Demo unscope")
+        try await waitForFile(demoFolder.appending(path: "history.json"))
+
+        #expect(await DemoFiles(folder: demoFolder).history.all.map(\.tenantName) == [MigrationEnvironment.demoDisplayName])
+        #expect(await DemoFiles(folder: demoFolder).scopeBackups.all.map(\.id) == [backup.id])
+        #expect(!FileManager.default.fileExists(atPath: realHistory.path()), "the real history is never written in demo mode")
+        #expect(model.history.records.isEmpty)
+    }
+
+    @Test("Outside demo mode, History shows the real history")
+    func realHistoryOutsideDemoMode() {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let model = makeModel(demoMode: false)
+        #expect(model.currentHistory === model.history)
+    }
+}
+
+// MARK: - A scope backup is only restored where it was taken
+
+@Suite("Scope backups stay with their environment", .serialized)
+struct ScopeBackupEnvironmentTests {
+    private let realID = "e77c1408-10c8-4007-b177-abc9157fbcaa"
+
+    private func environment(demo: Bool, server: DemoClassicServer, id: String? = nil) -> MigrationEnvironment {
+        MigrationEnvironment(
+            displayName: demo ? MigrationEnvironment.demoDisplayName : "Sandbox", isDemo: demo,
+            environmentID: demo ? nil : (id ?? realID),
+            classic: DemoClassicAPI(server: server), platform: DemoBlueprintServer().client(log: nil),
+            classicScopeWriter: DemoClassicScopeWriter(server: server)
+        )
+    }
+
+    private func backups() -> ScopeBackupStore {
+        ScopeBackupStore(fileURL: FileManager.default.temporaryDirectory.appending(path: "p2b-backups-\(UUID().uuidString).json"))
+    }
+
+    @Test("A demo backup is never restored on a real tenant, and nothing is sent")
+    func demoBackupRefusedOnRealTenant() async throws {
+        let server = DemoClassicServer()
+        let store = backups()
+        let (backup, _) = try await ClassicScopeService.unscope(key: ProfileKey(platform: .macOS, id: 102), blueprintID: nil,
+                                                                 environment: environment(demo: true, server: server), backups: store)
+        await #expect(throws: ScopeChangeError.self) {
+            _ = try await ClassicScopeService.restore(backup, environment: environment(demo: false, server: server), backups: store)
+        }
+        #expect(await server.scopeWrites.count == 1, "only the unscope, no restore write")
+        #expect(await store.all.first?.restoredAt == nil)
+    }
+
+    @Test("A real tenant's backup is never restored in demo mode or on another tenant")
+    func realBackupRefusedElsewhere() async throws {
+        let server = DemoClassicServer()
+        let store = backups()
+        let (backup, _) = try await ClassicScopeService.unscope(key: ProfileKey(platform: .macOS, id: 102), blueprintID: nil,
+                                                                 environment: environment(demo: false, server: server), backups: store)
+        await #expect(throws: ScopeChangeError.self) {
+            _ = try await ClassicScopeService.restore(backup, environment: environment(demo: true, server: server), backups: store)
+        }
+        await #expect(throws: ScopeChangeError.self) {
+            _ = try await ClassicScopeService.restore(backup, environment: environment(demo: false, server: server,
+                                                                                       id: "0f0e0d0c-0b0a-4000-8000-000000000001"),
+                                                      backups: store)
+        }
+        #expect(await server.scopeWrites.count == 1)
+
+        _ = try await ClassicScopeService.restore(backup, environment: environment(demo: false, server: server), backups: store)
+        #expect(await server.scopeWrites.count == 2, "restored on its own tenant")
+    }
+
+    @Test("A backup without an Environment ID matches by name, never the demo's")
+    func backupWithoutEnvironmentID() {
+        let server = DemoClassicServer()
+        func backup(named name: String) -> ScopeBackup {
+            ScopeBackup(environmentName: name, environmentID: nil, platform: .macOS, profileID: 1, profileName: "p",
+                        blueprintID: nil, scopeXML: "<scope/>")
+        }
+        #expect(backup(named: "Sandbox").belongs(to: environment(demo: false, server: server)))
+        #expect(!backup(named: MigrationEnvironment.demoDisplayName).belongs(to: environment(demo: false, server: server)))
+        #expect(backup(named: MigrationEnvironment.demoDisplayName).belongs(to: environment(demo: true, server: server)))
+    }
+}

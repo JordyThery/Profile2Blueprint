@@ -18,6 +18,20 @@ nonisolated struct ScopeBackup: Codable, Hashable, Sendable, Identifiable {
 
     var key: ProfileKey { ProfileKey(platform: platform, id: profileID) }
 
+    /// Whether this backup was taken in `environment`: a real tenant by its
+    /// Environment ID, demo mode by name. A demo backup never matches a real
+    /// tenant and a real tenant's backup never matches demo mode.
+    func belongs(to environment: MigrationEnvironment) -> Bool {
+        if environment.isDemo {
+            return environmentID == nil && environmentName == environment.displayName
+        }
+        guard let environmentID else {
+            // Backups without an Environment ID: matched by name, never the demo's.
+            return environmentName == environment.displayName && environmentName != MigrationEnvironment.demoDisplayName
+        }
+        return environmentID == environment.environmentID
+    }
+
     private enum CodingKeys: String, CodingKey {
         case id, createdAt, environmentName, environmentID, platform, profileID, profileName, blueprintID, scopeXML, restoredAt
     }
@@ -198,6 +212,9 @@ nonisolated enum ClassicScopeService {
     ) async throws -> ClassicProfile {
         guard let writer = environment.classicScopeWriter else {
             throw ScopeChangeError(message: "Classic scope changes are not enabled for this tenant.")
+        }
+        guard backup.belongs(to: environment) else {
+            throw ScopeChangeError(message: "This scope backup was taken in “\(backup.environmentName)”, not in “\(environment.displayName)”. Nothing was changed.")
         }
         guard let expected = try? ClassicXMLParser.parseScopeXML(backup.scopeXML, platform: backup.platform) else {
             throw ScopeChangeError(message: "The saved scope backup can't be read.")
