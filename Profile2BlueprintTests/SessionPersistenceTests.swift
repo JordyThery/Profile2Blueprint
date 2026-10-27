@@ -68,7 +68,7 @@ struct SessionRestoreTests {
         // The record is saved by a background task; wait for the flag to land.
         var saved: PersistedMigration?
         for _ in 0..<200 where saved?.unscopeAfterDeploy != true {
-            saved = await states.record(environmentKey: "Offline demo", key: ProfileKey(platform: .macOS, id: 101))
+            saved = await states.record(environmentKey: MigrationEnvironment.demoDisplayName, key: ProfileKey(platform: .macOS, id: 101))
             try await Task.sleep(for: .milliseconds(10))
         }
         #expect(saved?.unscopeAfterDeploy == true)
@@ -96,7 +96,7 @@ struct SessionRestoreTests {
         await session1.create()
         let blueprintID = try #require(session1.blueprintID)
         await session1.deploy(DeployConfirmation(blueprintID: blueprintID, blueprintName: "n",
-                                                 groupNames: ["Engineers"], deviceCount: 12, confirmedAt: Date()))
+                                                 groupNames: ["Engineering Macs"], deviceCount: 12, confirmedAt: Date()))
         guard case .deployed = session1.state else { Issue.record("\(session1.state)"); return }
 
         let second = Workspace.previewDemo(environment: environment, sessionStates: states)
@@ -112,7 +112,7 @@ struct SessionRestoreTests {
     @Test("A stale record (blueprint deleted on the server) is cleared with an explanation")
     func staleRecordCleared() async throws {
         let states = temporaryStore()
-        await states.save(PersistedMigration(environmentKey: "Offline demo", platform: .macOS, profileID: 101,
+        await states.save(PersistedMigration(environmentKey: MigrationEnvironment.demoDisplayName, platform: .macOS, profileID: 101,
                                              blueprintID: "deleted-on-server", blueprintName: "Gone",
                                              selectedGroupIDs: [DemoFixtures.engineersPlatformGroupID],
                                              unscopeAfterDeploy: false))
@@ -124,7 +124,7 @@ struct SessionRestoreTests {
 
         #expect(session.blueprintID == nil)
         #expect(session.lastError?.title.contains("no longer exists") == true)
-        #expect(await states.record(environmentKey: "Offline demo", key: ProfileKey(platform: .macOS, id: 101)) == nil, "record removed")
+        #expect(await states.record(environmentKey: MigrationEnvironment.demoDisplayName, key: ProfileKey(platform: .macOS, id: 101)) == nil, "record removed")
         #expect(session.canCreate == false || session.dryRun, "back to the normal create flow")
     }
 }
@@ -211,7 +211,7 @@ nonisolated final class ScriptedReports: @unchecked Sendable {
 
     func blueprints() throws -> JamfPlatform.Blueprints {
         JamfPlatform.Blueprints(client: try JamfPlatform.Client(
-            baseURL: URL(string: "https://us.api.jamfcloud.com")!, scope: .environment(DemoBlueprintServer.environmentID),
+            baseURL: URL(string: "https://us.api.jamfcloud.com")!, scope: .environment(DemoSamples.platformEnvironmentID),
             tokens: NoSignIn(), recorder: RequestRecorder(session: server.session, log: nil)))
     }
 }
@@ -225,7 +225,7 @@ private struct NoSignIn: BearerTokenSource {
 struct ReportMonitorTests {
     private func pipeline(_ api: ScriptedReports, timeout: Duration = .seconds(60)) throws -> MigrationPipeline {
         MigrationPipeline(
-            classic: DemoClassicAPI(),
+            classic: demoClassicAPI(),
             blueprints: try api.blueprints(),
             watch: WatchPolicy(report: JamfPlatform.PollingPolicy(
                 firstInterval: .milliseconds(1), growth: 1, longestInterval: .milliseconds(1), timeLimit: timeout)),
@@ -272,7 +272,7 @@ struct ReportMonitorTests {
         // Real 5 ms sleeps against a 1 s deadline: several polls, then a guaranteed stop.
         // The margin absorbs scheduling stalls when the whole suite runs in parallel.
         let pipeline = MigrationPipeline(
-            classic: DemoClassicAPI(),
+            classic: demoClassicAPI(),
             blueprints: try api.blueprints(),
             watch: WatchPolicy(report: JamfPlatform.PollingPolicy(
                 firstInterval: .milliseconds(5), growth: 1, longestInterval: .milliseconds(5), timeLimit: .seconds(1))),

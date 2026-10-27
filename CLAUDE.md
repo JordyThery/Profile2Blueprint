@@ -4,7 +4,7 @@ Shared code and the standards for every app: see JTKit's CLAUDE.md and ROADMAP.m
 
 ## What the app does
 
-A macOS app for Jamf admins that migrates Jamf Pro classic configuration profiles (macOS and mobile device) into Jamf Platform Blueprints, using Apple's in-place Classic → DDM transform. It grades each profile, maps its scope to platform device groups, creates the Blueprint, checks it against the server's read-back (the fidelity check), deploys only after confirmation, and can optionally clear the classic profile's scope afterwards. Offline demo mode runs the whole flow without a tenant.
+A macOS app for Jamf admins that migrates Jamf Pro classic configuration profiles (macOS and mobile device) into Jamf Platform Blueprints, using Apple's in-place Classic → DDM transform. It grades each profile, maps its scope to platform device groups, creates the Blueprint, checks it against the server's read-back (the fidelity check), deploys only after confirmation, and can optionally clear the classic profile's scope afterwards. Demo Mode (JTKit) runs the whole flow without a tenant.
 
 ## How to work on it
 
@@ -23,11 +23,11 @@ A macOS app for Jamf admins that migrates Jamf Pro classic configuration profile
 - `Services/Migration/`: `PlistParser`, `ClassicXMLParser`, `PlistToJSON` (+ `PlistJSONComparator`), `ScopeMapper`, `EligibilityChecker`, `BlueprintBuilder`, `FidelityVerifier`, `MigrationPipeline` (actor, staged: fetch → validate → build → create → verify → deploy; stages must run in order), `ClassicScopeService` (+ `ScopeBackupStore`).
 - `Services/Persistence/`: `TenantStore`, `HistoryStore`, `SessionStateStore`. `Services/Auth/KeychainStore`: the Keychain location.
 - `Features/`: Connect (toolbar picker, Settings tab), ProfileList, ProfileDetail, ScopeMapping, Review, Deploy, Batch, History, Shared.
-- `Resources/Fixtures/`: `DemoFixtures`, `DemoBlueprintServer` (demo mode).
+- `Resources/Fixtures/`: `DemoFixtures` (Contoso's Classic profiles, the app's extra device group), `DemoClassicServer` (the Classic API behind JTKit's demo Platform server, and `MigrationEnvironment.demo`).
 
-From JTKit: `JamfPlatform.Client`, `JamfTokenProvider`, `RequestRecorder`, Blueprints, device groups, deploy watch and `PollingPolicy`, `JamfPlatformError` and `PermissionCheck`/`PermissionProblem`, `LosslessJSON`, `JamfRegion`, `JamfClassic` (paths, list unwrapping, privileges), `ConnectionStore` + `ConnectionPicker` + `ConnectionCommands`, `KeychainSecretStore`, `ActivityLog` + `ActivityLogWindow`, `SettingsWindow`, `AboutWindow`, `UpdateChecker`. Test helpers come from `JTKitTestSupport`.
+From JTKit: `JamfPlatform.Client`, `JamfTokenProvider`, `RequestRecorder`, Blueprints, device groups, deploy watch and `PollingPolicy`, `JamfPlatformError` and `PermissionCheck`/`PermissionProblem`, `LosslessJSON`, `JamfRegion`, `JamfClassic` (paths, list unwrapping, privileges), `ConnectionStore` + `ConnectionPicker` + `ConnectionCommands`, `KeychainSecretStore`, `ActivityLog` + `ActivityLogWindow`, `SettingsWindow`, `AboutWindow`, `UpdateChecker`, `DemoMode` + `DemoModeToggle` + `DemoJamfPlatformServer` (demo mode). Test helpers come from `JTKitTestSupport`.
 
-App-specific, stays here: the migration engine, eligibility and fidelity checks, Classic profile parsing, `ClassicScopeService` and its allow-list rule, History, demo servers (until ROADMAP step 10), the 30-minute report watch (`WatchPolicy`).
+App-specific, stays here: the migration engine, eligibility and fidelity checks, Classic profile parsing, `ClassicScopeService` and its allow-list rule, History, the demo Classic profiles, the 30-minute report watch (`WatchPolicy`).
 
 When something is needed that JTKit could share, extend JTKit instead of adding another copy here.
 
@@ -42,7 +42,7 @@ When something is needed that JTKit could share, extend JTKit instead of adding 
 - **Local Jamf Pro accounts can't work:** Blueprints exist only behind the Platform API gateway, which needs a Jamf Account integration.
 - **Exclusions and limitations are not carried over**; the checker warns. jamf-cli shows exclusions could be carried as a step `activationPredicate` (`NONE @property(jamf.device.groups) IN {...}`) when the classic profile doesn't exclude the same group; not built.
 - **History stays in the app** (`history.json`); JTKit's in-memory activity log is not a substitute. The old `activity.json` stays on disk untouched and unread.
-- **Demo mode** is a setting, never a tenant. The demo Blueprint server answers JTKit's requests through `DemoURLProtocol`, never the network; its requests show in the activity log as "Offline demo". It sits in the slot of JTKit's connection picker and Connection menu.
+- **Demo Mode** is JTKit's switch (`DemoMode`, saved under `demoMode`), never a tenant. In the slot of JTKit's connection picker and Connection menu only (no sidebar switch); "Try Demo Mode" on the No Tenant page. The client is built from JTKit's demo connection "Contoso (Demo)" on JTKit's demo network, with the app's allow-list (scope-only Classic writes allowed); JTKit's demo Platform server answers Blueprints and device groups, and routes `proclassic/…` to `DemoClassicServer`, so Classic reads and scope writes run the real `LiveClassicAPI`/`LiveClassicScopeWriter`. Demo history, scope backups and sessions go to `DemoMode.scratchDirectory`. The demo environment keeps no Environment ID, so a demo scope backup is matched by name and never restored on a real tenant (nor one named "Offline demo", the earlier name). Test Connection and Load Environments always use the real tenant and network. No unsaved-work question (sessions are saved per tenant). `-JTKitSandbox YES` keeps tenants, secrets and history in the temporary folder and memory, with no update check.
 - **Preserve stored data:** Application Support/Profile2Blueprint/`tenants.json` (with `currentTenantID`), `sessions.json`, `history.json`, `scope-backups.json`; Keychain service `be.jordythery.profile2blueprint.oauth-client-secret`, account = tenant UUID; UserDefaults `demoMode`; saved region values.
 - Request bodies are never recorded in the log (JTKit default): profiles can hold Wi-Fi passwords or SCEP challenges.
 

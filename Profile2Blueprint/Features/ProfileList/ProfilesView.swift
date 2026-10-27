@@ -17,7 +17,7 @@ struct ProfilesView: View {
                     Text(error.localizedDescription)
                 } actions: {
                     SettingsTabLink(SettingsTabName.connections) { Text("Edit Tenants…") }
-                    Button("Use Offline Demo") { model.isDemoMode = true }
+                    Button("Try \(DemoMode.title)") { model.isDemoMode = true }
                 }
             }
         }

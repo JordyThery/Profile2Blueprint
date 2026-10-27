@@ -2,7 +2,7 @@ import JTKit
 import SwiftUI
 
 @main struct Profile2BlueprintApp: App {
-    @State private var model = AppModel()
+    @State private var model = AppModel.forLaunch()
 
     var body: some Scene {
         WindowGroup {
@@ -10,7 +10,8 @@ import SwiftUI
                 .environment(model)
                 .environment(model.updates)
                 .frame(minWidth: 820, minHeight: 520)
-                .task { await model.updates.checkAutomatically() }
+                // A sandbox run (UI tests) makes no update check.
+                .task { if !model.demo.isSandbox { await model.updates.checkAutomatically() } }
         }
         .defaultSize(width: 1100, height: 720)
         .commands {

@@ -1,7 +1,9 @@
 import Foundation
 import JTKit
 
-/// Synthetic Classic API responses for offline demo mode and tests.
+/// Synthetic Classic API responses for demo mode and tests, in Contoso's
+/// sample data (JTKit's `DemoSamples` rules: IDs in the reserved fake range,
+/// `com.contoso.example` identifiers).
 ///
 /// Shapes mirror real `GET /osxconfigurationprofiles/id/{id}` XML: the payload plist
 /// is XML-escaped inside `general/payloads`, `level` is `System`/`User`, and
@@ -9,21 +11,22 @@ import JTKit
 nonisolated enum DemoFixtures {
     // MARK: Fixture 1 — modelled on the profile from Jamf's JNUC transform demo
 
-    static let managedLoginItemsTopUUID = "8F2A6C1E-3B4D-4E5F-9A7B-1C2D3E4F5A6B"
-    static let managedLoginItemsPayloadUUID = "2D9E7C41-5A3B-4C8D-9E1F-0A2B3C4D5E6F"
-    static let engineersPlatformGroupID = "5b1f7c2e-8d4a-4e3b-9c6f-1a2b3c4d5e6f"
+    static let managedLoginItemsTopUUID = "00000000-0000-4000-8000-00000000A101"
+    static let managedLoginItemsPayloadUUID = "00000000-0000-4000-8000-00000000A111"
+    /// Contoso's "Engineering Macs" (JTKit's `DemoSamples.platformGroups`).
+    static let engineersPlatformGroupID = DemoSamples.uuid(0xd603)
 
     static let managedLoginItems = profileXML(
         id: 101,
-        name: "Classic – Managed Login Items",
+        name: "Contoso – Managed Login Items",
         description: "Allow Google login items",
         uuid: managedLoginItemsTopUUID,
         plist: plist("""
         <key>PayloadUUID</key><string>\(managedLoginItemsTopUUID)</string>
         <key>PayloadType</key><string>Configuration</string>
-        <key>PayloadOrganization</key><string>Example Org</string>
+        <key>PayloadOrganization</key><string>Contoso</string>
         <key>PayloadIdentifier</key><string>\(managedLoginItemsTopUUID)</string>
-        <key>PayloadDisplayName</key><string>Classic – Managed Login Items</string>
+        <key>PayloadDisplayName</key><string>Contoso – Managed Login Items</string>
         <key>PayloadDescription</key><string/>
         <key>PayloadVersion</key><integer>1</integer>
         <key>PayloadEnabled</key><true/>
@@ -34,7 +37,7 @@ nonisolated enum DemoFixtures {
           <dict>
             <key>PayloadDisplayName</key><string>Service Management - Managed Login Items</string>
             <key>PayloadIdentifier</key><string>\(managedLoginItemsPayloadUUID)</string>
-            <key>PayloadOrganization</key><string>Example Org</string>
+            <key>PayloadOrganization</key><string>Contoso</string>
             <key>PayloadType</key><string>com.apple.servicemanagement</string>
             <key>PayloadUUID</key><string>\(managedLoginItemsPayloadUUID)</string>
             <key>PayloadVersion</key><integer>1</integer>
@@ -48,28 +51,28 @@ nonisolated enum DemoFixtures {
           </dict>
         </array>
         """),
-        scope: scopeXML(groups: [(3, "Engineers")])
+        scope: scopeXML(groups: [(3, "Engineering Macs")])
     )
 
     // MARK: Fixture 2 — multiple payloads (order + count)
 
     static let securityBaseline = profileXML(
         id: 102,
-        name: "Classic – Security Baseline",
-        uuid: "A1B2C3D4-0001-4000-8000-000000000102",
+        name: "Contoso – Security Baseline",
+        uuid: "00000000-0000-4000-8000-00000000A102",
         plist: plist("""
-        <key>PayloadUUID</key><string>A1B2C3D4-0001-4000-8000-000000000102</string>
+        <key>PayloadUUID</key><string>00000000-0000-4000-8000-00000000A102</string>
         <key>PayloadType</key><string>Configuration</string>
-        <key>PayloadIdentifier</key><string>A1B2C3D4-0001-4000-8000-000000000102</string>
-        <key>PayloadDisplayName</key><string>Classic – Security Baseline</string>
+        <key>PayloadIdentifier</key><string>00000000-0000-4000-8000-00000000A102</string>
+        <key>PayloadDisplayName</key><string>Contoso – Security Baseline</string>
         <key>PayloadVersion</key><integer>1</integer>
         <key>PayloadScope</key><string>System</string>
         <key>PayloadContent</key>
         <array>
           <dict>
             <key>PayloadType</key><string>com.apple.notificationsettings</string>
-            <key>PayloadIdentifier</key><string>B0000000-0000-4000-8000-000000000001</string>
-            <key>PayloadUUID</key><string>B0000000-0000-4000-8000-000000000001</string>
+            <key>PayloadIdentifier</key><string>00000000-0000-4000-8000-00000000B101</string>
+            <key>PayloadUUID</key><string>00000000-0000-4000-8000-00000000B101</string>
             <key>PayloadVersion</key><integer>1</integer>
             <key>PayloadDisplayName</key><string>Notifications</string>
             <key>NotificationSettings</key>
@@ -84,19 +87,19 @@ nonisolated enum DemoFixtures {
           </dict>
           <dict>
             <key>PayloadType</key><string>com.apple.servicemanagement</string>
-            <key>PayloadIdentifier</key><string>B0000000-0000-4000-8000-000000000002</string>
-            <key>PayloadUUID</key><string>B0000000-0000-4000-8000-000000000002</string>
+            <key>PayloadIdentifier</key><string>00000000-0000-4000-8000-00000000B102</string>
+            <key>PayloadUUID</key><string>00000000-0000-4000-8000-00000000B102</string>
             <key>PayloadVersion</key><integer>1</integer>
             <key>Rules</key>
             <array>
               <dict><key>RuleType</key><string>TeamIdentifier</string><key>RuleValue</key><string>EQHXZ8M8AV</string><key>Comment</key><string>Google</string></dict>
-              <dict><key>RuleType</key><string>BundleIdentifier</string><key>RuleValue</key><string>com.example.agent</string></dict>
+              <dict><key>RuleType</key><string>BundleIdentifier</string><key>RuleValue</key><string>com.contoso.example.agent</string></dict>
             </array>
           </dict>
           <dict>
             <key>PayloadType</key><string>com.apple.ManagedClient.preferences</string>
-            <key>PayloadIdentifier</key><string>B0000000-0000-4000-8000-000000000003</string>
-            <key>PayloadUUID</key><string>B0000000-0000-4000-8000-000000000003</string>
+            <key>PayloadIdentifier</key><string>00000000-0000-4000-8000-00000000B103</string>
+            <key>PayloadUUID</key><string>00000000-0000-4000-8000-00000000B103</string>
             <key>PayloadVersion</key><integer>1</integer>
             <key>PayloadContent</key>
             <dict>
@@ -118,7 +121,7 @@ nonisolated enum DemoFixtures {
           </dict>
         </array>
         """),
-        scope: scopeXML(groups: [(3, "Engineers"), (7, "Designers")])
+        scope: scopeXML(groups: [(3, "Engineering Macs"), (7, "Design Macs")])
     )
 
     // MARK: Fixture 3 — <data>, <date> and <real>
@@ -128,22 +131,22 @@ nonisolated enum DemoFixtures {
 
     static let certificatesAndDates = profileXML(
         id: 103,
-        name: "Classic – Certificate Preference and Update Deadline",
-        uuid: "A1B2C3D4-0001-4000-8000-000000000103",
+        name: "Contoso – Certificate Preference and Update Deadline",
+        uuid: "00000000-0000-4000-8000-00000000A103",
         plist: plist("""
-        <key>PayloadUUID</key><string>A1B2C3D4-0001-4000-8000-000000000103</string>
+        <key>PayloadUUID</key><string>00000000-0000-4000-8000-00000000A103</string>
         <key>PayloadType</key><string>Configuration</string>
-        <key>PayloadIdentifier</key><string>A1B2C3D4-0001-4000-8000-000000000103</string>
-        <key>PayloadDisplayName</key><string>Classic – Certificate Preference and Update Deadline</string>
+        <key>PayloadIdentifier</key><string>00000000-0000-4000-8000-00000000A103</string>
+        <key>PayloadDisplayName</key><string>Contoso – Certificate Preference and Update Deadline</string>
         <key>PayloadVersion</key><integer>1</integer>
         <key>PayloadContent</key>
         <array>
           <dict>
             <key>PayloadType</key><string>com.apple.security.certificatepreference</string>
-            <key>PayloadIdentifier</key><string>C0000000-0000-4000-8000-000000000001</string>
-            <key>PayloadUUID</key><string>C0000000-0000-4000-8000-000000000001</string>
+            <key>PayloadIdentifier</key><string>00000000-0000-4000-8000-00000000C101</string>
+            <key>PayloadUUID</key><string>00000000-0000-4000-8000-00000000C101</string>
             <key>PayloadVersion</key><integer>1</integer>
-            <key>PayloadCertificateFileName</key><string>Example Root CA.cer</string>
+            <key>PayloadCertificateFileName</key><string>Contoso Root CA.cer</string>
             <key>PayloadContent</key>
             <data>
             \(certificateDER.base64EncodedString())
@@ -151,12 +154,12 @@ nonisolated enum DemoFixtures {
           </dict>
           <dict>
             <key>PayloadType</key><string>com.apple.ManagedClient.preferences</string>
-            <key>PayloadIdentifier</key><string>C0000000-0000-4000-8000-000000000002</string>
-            <key>PayloadUUID</key><string>C0000000-0000-4000-8000-000000000002</string>
+            <key>PayloadIdentifier</key><string>00000000-0000-4000-8000-00000000C102</string>
+            <key>PayloadUUID</key><string>00000000-0000-4000-8000-00000000C102</string>
             <key>PayloadVersion</key><integer>1</integer>
             <key>PayloadContent</key>
             <dict>
-              <key>com.example.updater</key>
+              <key>com.contoso.example.updater</key>
               <dict>
                 <key>Forced</key>
                 <array>
@@ -174,53 +177,53 @@ nonisolated enum DemoFixtures {
           </dict>
         </array>
         """),
-        scope: scopeXML(groups: [(11, "Finance")])
+        scope: scopeXML(groups: [(11, "Finance Macs")])
     )
 
     // MARK: Fixture 4 — blocked payload type
 
     static let corporateFonts = profileXML(
         id: 104,
-        name: "Classic – Corporate Fonts",
-        uuid: "A1B2C3D4-0001-4000-8000-000000000104",
+        name: "Contoso – Corporate Fonts",
+        uuid: "00000000-0000-4000-8000-00000000A104",
         plist: plist("""
-        <key>PayloadUUID</key><string>A1B2C3D4-0001-4000-8000-000000000104</string>
+        <key>PayloadUUID</key><string>00000000-0000-4000-8000-00000000A104</string>
         <key>PayloadType</key><string>Configuration</string>
-        <key>PayloadIdentifier</key><string>A1B2C3D4-0001-4000-8000-000000000104</string>
-        <key>PayloadDisplayName</key><string>Classic – Corporate Fonts</string>
+        <key>PayloadIdentifier</key><string>00000000-0000-4000-8000-00000000A104</string>
+        <key>PayloadDisplayName</key><string>Contoso – Corporate Fonts</string>
         <key>PayloadContent</key>
         <array>
           <dict>
             <key>PayloadType</key><string>com.apple.font</string>
-            <key>PayloadIdentifier</key><string>D0000000-0000-4000-8000-000000000001</string>
-            <key>PayloadUUID</key><string>D0000000-0000-4000-8000-000000000001</string>
-            <key>Name</key><string>ExampleSans.ttf</string>
+            <key>PayloadIdentifier</key><string>00000000-0000-4000-8000-00000000D101</string>
+            <key>PayloadUUID</key><string>00000000-0000-4000-8000-00000000D101</string>
+            <key>Name</key><string>ContosoSans.ttf</string>
             <key>Font</key><data>AAEAAAALAIAAAwAw</data>
           </dict>
         </array>
         """),
-        scope: scopeXML(groups: [(3, "Engineers")])
+        scope: scopeXML(groups: [(3, "Engineering Macs")])
     )
 
     // MARK: Fixture 5 — All computers + exclusions
 
     static let wifiAllComputers = profileXML(
         id: 105,
-        name: "Classic – Office Wi-Fi",
-        uuid: "A1B2C3D4-0001-4000-8000-000000000105",
+        name: "Contoso – Office Wi-Fi",
+        uuid: "00000000-0000-4000-8000-00000000A105",
         plist: plist("""
-        <key>PayloadUUID</key><string>A1B2C3D4-0001-4000-8000-000000000105</string>
+        <key>PayloadUUID</key><string>00000000-0000-4000-8000-00000000A105</string>
         <key>PayloadType</key><string>Configuration</string>
-        <key>PayloadIdentifier</key><string>A1B2C3D4-0001-4000-8000-000000000105</string>
-        <key>PayloadDisplayName</key><string>Classic – Office Wi-Fi</string>
+        <key>PayloadIdentifier</key><string>00000000-0000-4000-8000-00000000A105</string>
+        <key>PayloadDisplayName</key><string>Contoso – Office Wi-Fi</string>
         <key>PayloadContent</key>
         <array>
           <dict>
             <key>PayloadType</key><string>com.apple.wifi.managed</string>
-            <key>PayloadIdentifier</key><string>E0000000-0000-4000-8000-000000000001</string>
-            <key>PayloadUUID</key><string>E0000000-0000-4000-8000-000000000001</string>
+            <key>PayloadIdentifier</key><string>00000000-0000-4000-8000-00000000E101</string>
+            <key>PayloadUUID</key><string>00000000-0000-4000-8000-00000000E101</string>
             <key>PayloadVersion</key><integer>1</integer>
-            <key>SSID_STR</key><string>Example-Office</string>
+            <key>SSID_STR</key><string>Contoso-Office</string>
             <key>EncryptionType</key><string>WPA2</string>
             <key>AutoJoin</key><true/>
             <key>HIDDEN_NETWORK</key><false/>
@@ -232,7 +235,7 @@ nonisolated enum DemoFixtures {
         <computers/><buildings><building><id>2</id><name>HQ</name></building></buildings><departments/><computer_groups/>
         <jss_users/><jss_user_groups/>
         <limitations><users/><user_groups/><network_segments><network_segment><id>4</id><name>Office LAN</name></network_segment></network_segments><ibeacons/></limitations>
-        <exclusions><computers><computer><id>77</id><name>KIOSK-01</name><udid>11111111-2222-3333-4444-555555555555</udid></computer></computers>
+        <exclusions><computers><computer><id>77</id><name>KIOSK-01</name><udid>00000000-0000-4000-8000-0000000C1077</udid></computer></computers>
         <buildings/><departments/><computer_groups><computer_group><id>9</id><name>Lab Machines</name></computer_group></computer_groups>
         <users/><user_groups/><network_segments/><ibeacons/><jss_users/><jss_user_groups/></exclusions></scope>
         """
@@ -242,45 +245,45 @@ nonisolated enum DemoFixtures {
 
     static let userDock = profileXML(
         id: 106,
-        name: "Classic – User Dock Settings",
+        name: "Contoso – User Dock Settings",
         level: "User",
-        uuid: "A1B2C3D4-0001-4000-8000-000000000106",
+        uuid: "00000000-0000-4000-8000-00000000A106",
         plist: plist("""
-        <key>PayloadUUID</key><string>A1B2C3D4-0001-4000-8000-000000000106</string>
+        <key>PayloadUUID</key><string>00000000-0000-4000-8000-00000000A106</string>
         <key>PayloadType</key><string>Configuration</string>
-        <key>PayloadIdentifier</key><string>A1B2C3D4-0001-4000-8000-000000000106</string>
-        <key>PayloadDisplayName</key><string>Classic – User Dock Settings</string>
+        <key>PayloadIdentifier</key><string>00000000-0000-4000-8000-00000000A106</string>
+        <key>PayloadDisplayName</key><string>Contoso – User Dock Settings</string>
         <key>PayloadScope</key><string>User</string>
         <key>PayloadContent</key>
         <array>
           <dict>
             <key>PayloadType</key><string>com.apple.dock</string>
-            <key>PayloadIdentifier</key><string>F0000000-0000-4000-8000-000000000001</string>
-            <key>PayloadUUID</key><string>F0000000-0000-4000-8000-000000000001</string>
+            <key>PayloadIdentifier</key><string>00000000-0000-4000-8000-00000000F101</string>
+            <key>PayloadUUID</key><string>00000000-0000-4000-8000-00000000F101</string>
             <key>autohide</key><true/>
           </dict>
         </array>
         """),
-        scope: scopeXML(groups: [(3, "Engineers")])
+        scope: scopeXML(groups: [(3, "Engineering Macs")])
     )
 
     // MARK: Extra — uploaded profile whose PayloadUUID differs from Jamf's record UUID
 
     static let uploadedPPPC = profileXML(
         id: 107,
-        name: "Classic – Uploaded PPPC",
-        uuid: "com.example.pppc.terminal",
+        name: "Contoso – Uploaded PPPC",
+        uuid: "com.contoso.example.pppc.terminal",
         plist: plist("""
-        <key>PayloadUUID</key><string>9C8B7A6D-5E4F-4321-8765-0FEDCBA98765</string>
+        <key>PayloadUUID</key><string>00000000-0000-4000-8000-00000000A107</string>
         <key>PayloadType</key><string>Configuration</string>
-        <key>PayloadIdentifier</key><string>com.example.pppc.terminal</string>
-        <key>PayloadDisplayName</key><string>Classic – Uploaded PPPC</string>
+        <key>PayloadIdentifier</key><string>com.contoso.example.pppc.terminal</string>
+        <key>PayloadDisplayName</key><string>Contoso – Uploaded PPPC</string>
         <key>PayloadContent</key>
         <array>
           <dict>
             <key>PayloadType</key><string>com.apple.TCC.configuration-profile-policy</string>
-            <key>PayloadIdentifier</key><string>com.example.pppc.terminal.tcc</string>
-            <key>PayloadUUID</key><string>1A2B3C4D-5E6F-4A0B-8C1D-2E3F4A5B6C7D</string>
+            <key>PayloadIdentifier</key><string>com.contoso.example.pppc.terminal.tcc</string>
+            <key>PayloadUUID</key><string>00000000-0000-4000-8000-00000000A117</string>
             <key>PayloadVersion</key><integer>1</integer>
             <key>Services</key>
             <dict>
@@ -297,32 +300,32 @@ nonisolated enum DemoFixtures {
           </dict>
         </array>
         """),
-        scope: scopeXML(groups: [(3, "Engineers")])
+        scope: scopeXML(groups: [(3, "Engineering Macs")])
     )
 
     // MARK: Mobile fixture 1 — single lock screen payload (the hardware-verified shape)
 
-    static let iphoneLockScreenTopUUID = "6B5ECD21-C8FA-44DF-AC99-9F533C36D6E8"
+    static let iphoneLockScreenTopUUID = "00000000-0000-4000-8000-00000000A201"
 
     static let iphoneLockScreen = profileXML(
         platform: .mobile,
         id: 201,
-        name: "Demo – iPhone Lock Screen Message",
+        name: "Contoso – iPhone Lock Screen Message",
         description: "Serial number on the lock screen",
         uuid: iphoneLockScreenTopUUID,
         plist: plist("""
         <key>PayloadUUID</key><string>\(iphoneLockScreenTopUUID)</string>
         <key>PayloadType</key><string>Configuration</string>
         <key>PayloadIdentifier</key><string>\(iphoneLockScreenTopUUID)</string>
-        <key>PayloadDisplayName</key><string>Demo – iPhone Lock Screen Message</string>
+        <key>PayloadDisplayName</key><string>Contoso – iPhone Lock Screen Message</string>
         <key>PayloadVersion</key><integer>1</integer>
         <key>PayloadScope</key><string>System</string>
         <key>PayloadContent</key>
         <array>
           <dict>
             <key>PayloadType</key><string>com.apple.shareddeviceconfiguration</string>
-            <key>PayloadIdentifier</key><string>AB000000-0000-4000-8000-000000000001</string>
-            <key>PayloadUUID</key><string>AB000000-0000-4000-8000-000000000001</string>
+            <key>PayloadIdentifier</key><string>00000000-0000-4000-8000-00000000AB01</string>
+            <key>PayloadUUID</key><string>00000000-0000-4000-8000-00000000AB01</string>
             <key>PayloadVersion</key><integer>1</integer>
             <key>IfLostReturnToMessage</key><string>$SERIALNUMBER</string>
             <key>LockScreenFootnote</key><string>$SERIALNUMBER</string>
@@ -337,25 +340,25 @@ nonisolated enum DemoFixtures {
     static let ipadWebClip = profileXML(
         platform: .mobile,
         id: 202,
-        name: "Demo – iPad Help Desk Web Clip",
-        uuid: "6B5ECD21-0002-4000-8000-000000000202",
+        name: "Contoso – iPad Help Desk Web Clip",
+        uuid: "00000000-0000-4000-8000-00000000A202",
         plist: plist("""
-        <key>PayloadUUID</key><string>6B5ECD21-0002-4000-8000-000000000202</string>
+        <key>PayloadUUID</key><string>00000000-0000-4000-8000-00000000A202</string>
         <key>PayloadType</key><string>Configuration</string>
-        <key>PayloadIdentifier</key><string>6B5ECD21-0002-4000-8000-000000000202</string>
-        <key>PayloadDisplayName</key><string>Demo – iPad Help Desk Web Clip</string>
+        <key>PayloadIdentifier</key><string>00000000-0000-4000-8000-00000000A202</string>
+        <key>PayloadDisplayName</key><string>Contoso – iPad Help Desk Web Clip</string>
         <key>PayloadContent</key>
         <array>
           <dict>
             <key>PayloadType</key><string>com.apple.webClip.managed</string>
-            <key>PayloadIdentifier</key><string>AB000000-0000-4000-8000-000000000002</string>
-            <key>PayloadUUID</key><string>AB000000-0000-4000-8000-000000000002</string>
+            <key>PayloadIdentifier</key><string>00000000-0000-4000-8000-00000000AB02</string>
+            <key>PayloadUUID</key><string>00000000-0000-4000-8000-00000000AB02</string>
             <key>Label</key><string>Help Desk</string>
-            <key>URL</key><string>https://example.com/help</string>
+            <key>URL</key><string>https://help.contoso.example</string>
           </dict>
         </array>
         """),
-        scope: scopeXML(platform: .mobile, groups: [(13, "Classroom iPads")])
+        scope: scopeXML(platform: .mobile, groups: [(13, "Sales iPads")])
     )
 
     // MARK: Collections
@@ -400,20 +403,19 @@ nonisolated enum DemoFixtures {
         return #"{"\#(platform.listRootElement)":[\#(items.joined(separator: ","))]}"#
     }
 
-    static let fieldiPhonesPlatformGroupID = "ab12cd34-0001-4000-8000-5e6f7a8b9c0d"
+    /// Contoso's "Field iPhones".
+    static let fieldiPhonesPlatformGroupID = DemoSamples.uuid(0xd604)
 
-    /// Platform device groups for demo mode. "Designers" is deliberately ambiguous,
-    /// "Finance" deliberately missing, and "Engineers" also exists as a MOBILE group
-    /// so per-platform matching is exercised.
-    static let platformGroups: [JamfPlatform.DeviceGroup] = [
-        JamfPlatform.DeviceGroup(id: engineersPlatformGroupID, name: "Engineers", description: "", deviceType: .computer, groupType: .static, memberCount: 12),
-        JamfPlatform.DeviceGroup(id: "7c3d9e1f-2a4b-4c5d-8e6f-7a8b9c0d1e2f", name: "Designers", description: "Smart", deviceType: .computer, groupType: .smart, memberCount: 5),
-        JamfPlatform.DeviceGroup(id: "9e5f1a3b-4c6d-4e7f-8a9b-0c1d2e3f4a5b", name: "Designers", description: "Static", deviceType: .computer, groupType: .static, memberCount: 3),
-        JamfPlatform.DeviceGroup(id: "1f2e3d4c-5b6a-4978-8a9b-c0d1e2f3a4b5", name: "All Managed Clients", description: "", deviceType: .computer, groupType: .smart, memberCount: 48),
-        JamfPlatform.DeviceGroup(id: fieldiPhonesPlatformGroupID, name: "Field iPhones", description: "", deviceType: .mobile, groupType: .smart, memberCount: 7),
-        JamfPlatform.DeviceGroup(id: "ab12cd34-0002-4000-8000-5e6f7a8b9c0d", name: "Classroom iPads", description: "", deviceType: .mobile, groupType: .static, memberCount: 24),
-        JamfPlatform.DeviceGroup(id: "ab12cd34-0003-4000-8000-5e6f7a8b9c0d", name: "Engineers", description: "Mobile twin of the computer group", deviceType: .mobile, groupType: .smart, memberCount: 4),
+    /// The device groups Profile2Blueprint adds to Contoso's in demo mode: a
+    /// second "Design Macs", so the scope screen asks which one is meant.
+    /// "Finance Macs" is deliberately missing.
+    static let addedPlatformGroups: [JamfPlatform.DeviceGroup] = [
+        JamfPlatform.DeviceGroup(id: DemoSamples.uuid(0xd611), name: "Design Macs", description: "Static",
+                                 deviceType: .computer, groupType: .static, memberCount: 3),
     ]
+
+    /// Every device group of demo mode: Contoso's, then the app's own.
+    static let platformGroups: [JamfPlatform.DeviceGroup] = DemoSamples.platformGroups + addedPlatformGroups
 
     // MARK: Builders
 
@@ -461,58 +463,5 @@ nonisolated enum DemoFixtures {
             .replacingOccurrences(of: "<", with: "&lt;")
             .replacingOccurrences(of: ">", with: "&gt;")
             .replacingOccurrences(of: "\"", with: "&quot;")
-    }
-}
-
-/// Mutable in-memory Classic "server" for demo mode, so unscope/restore can be tried.
-actor DemoClassicServer {
-    private var profilesXML: [ProfileKey: String] = DemoFixtures.profilesByKey
-    private(set) var scopeWrites: [(key: ProfileKey, body: String)] = []
-
-    func list(platform: ProfilePlatform) -> String { DemoFixtures.profileListJSON(platform: platform) }
-
-    func profileXML(key: ProfileKey) throws -> String {
-        guard let xml = profilesXML[key] else {
-            throw JamfPlatformError(.status(404, body: nil, text: nil, method: "GET", path: JamfClassic.path(key.platform.classicResource, id: String(key.id))))
-        }
-        return xml
-    }
-
-    /// Mimics a Classic partial update: replaces only `<scope>`.
-    func putScope(key: ProfileKey, body: Data) throws {
-        guard RequestPolicy.isScopeOnlyProfileXML(body) else {
-            throw JamfPlatformError(.status(400, body: nil, text: "Not a scope-only body", method: "PUT", path: JamfClassic.path(key.platform.classicResource, id: String(key.id))))
-        }
-        guard let xml = profilesXML[key],
-              let document = try? XMLDocument(xmlString: xml, options: [.nodePreserveWhitespace]),
-              let root = document.rootElement(),
-              let newScope = try? XMLDocument(data: body).rootElement()?.elements(forName: "scope").first?.copy() as? XMLElement else {
-            throw JamfPlatformError(.status(404, body: nil, text: nil, method: "PUT", path: JamfClassic.path(key.platform.classicResource, id: String(key.id))))
-        }
-        if let old = root.elements(forName: "scope").first { root.removeChild(at: old.index) }
-        root.addChild(newScope)
-        profilesXML[key] = document.xmlString
-        scopeWrites.append((key, String(decoding: body, as: UTF8.self)))
-    }
-}
-
-/// Offline Classic API backed by `DemoClassicServer`.
-nonisolated struct DemoClassicAPI: ClassicAPI {
-    var server = DemoClassicServer()
-
-    func listProfiles(platform: ProfilePlatform) async throws -> [ClassicProfileSummary] {
-        try ClassicProfileList.parse(Data(await server.list(platform: platform).utf8), platform: platform)
-    }
-
-    func profile(key: ProfileKey) async throws -> ClassicProfile {
-        try ClassicXMLParser.parseProfile(Data(try await server.profileXML(key: key).utf8), platform: key.platform)
-    }
-}
-
-nonisolated struct DemoClassicScopeWriter: ClassicScopeWriter {
-    let server: DemoClassicServer
-
-    func replaceScope(key: ProfileKey, body: Data) async throws {
-        try await server.putScope(key: key, body: body)
     }
 }

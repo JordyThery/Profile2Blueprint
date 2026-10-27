@@ -219,9 +219,9 @@ struct HistoryDocument: FileDocument {
         environmentID: "A1B2C3D4-0000-4000-8000-00000000000E",
         action: .unscopeClassic,
         sourceProfileID: 101,
-        sourceProfileName: "Classic – Managed Login Items",
+        sourceProfileName: "Contoso – Managed Login Items",
         blueprintID: "5b1f7c2e-0000-4000-8000-000000000001",
-        blueprintName: "Classic – Managed Login Items (migrated)",
+        blueprintName: "Contoso – Managed Login Items (migrated)",
         result: .success,
         message: "Removed all scope targets from the classic profile (payloads untouched). Scope backup saved; restore is available."
     ))

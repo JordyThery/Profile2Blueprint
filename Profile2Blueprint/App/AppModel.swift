@@ -11,15 +11,15 @@ final class AppModel {
     /// Set when persisting tenants or secrets fails, shown as an alert.
     var persistenceError: String?
 
-    /// Offline demo mode runs everything against bundled fixtures; no tenant is contacted.
-    /// It is a setting of its own, never a tenant in the list.
+    /// JTKit's demo mode: Contoso's sample tenant, answered inside the app; no
+    /// tenant is contacted. A setting of its own, never a tenant in the list.
+    /// Saved under `demoMode`.
+    let demo: DemoMode
+
+    /// Demo mode on or off, through JTKit's switch.
     var isDemoMode: Bool {
-        didSet {
-            UserDefaults.standard.set(isDemoMode, forKey: Self.demoModeKey)
-            workspace = nil
-            workspaceGeneration += 1
-            activity.app("Offline demo mode turned \(isDemoMode ? "on" : "off").")
-        }
+        get { demo.isOn }
+        set { demo.requestSwitch(to: newValue) }
     }
 
     let history: HistoryLog
@@ -33,17 +33,31 @@ final class AppModel {
     @ObservationIgnored private let store: TenantStore
     @ObservationIgnored private let secrets: RecordingSecretStore
     @ObservationIgnored private let demoFiles: DemoFiles
+    /// The network for real tenants, also while demo mode is on (Test Connection).
     private let session: URLSession
-    private static let demoModeKey = "demoMode"
+    /// Demo mode as the workspace was last built for, to notice a switch.
+    @ObservationIgnored private var workspaceIsDemo: Bool
+    static let demoModeKey = "demoMode"
 
+    /// - Parameters:
+    ///   - demo: the app passes its saved demo mode (`forLaunch()`).
+    ///   - demoMode: for tests and previews, demo mode on or off for this
+    ///     model only, never saved. Without either, demo mode is off and not saved.
+    ///   - demoFiles: where demo mode keeps its files; `demo`'s temporary folder by default.
     init(
         store: TenantStore = .appDefault(),
         secrets: any SecretStore = KeychainSecretStore.profile2Blueprint(),
         session: URLSession = .shared,
         history: HistoryStore = .appDefault(),
-        demoFiles: DemoFiles = DemoFiles(),
+        demo: DemoMode? = nil,
+        demoFiles: DemoFiles? = nil,
         demoMode: Bool? = nil
     ) {
+        let demo = demo ?? DemoMode(key: Self.demoModeKey,
+                                    arguments: [DemoMode.launchArgument, demoMode == true ? "YES" : "NO"])
+        self.demo = demo
+        workspaceIsDemo = demo.isOn
+        let demoFiles = demoFiles ?? DemoFiles(folder: demo.scratchDirectory)
         self.store = store
         self.demoFiles = demoFiles
         let recording = RecordingSecretStore(secrets)
@@ -69,10 +83,43 @@ final class AppModel {
             connections.record(id: id) != nil ? id : nil
         }
         persistenceError = connections.problem?.localizedDescription
-        isDemoMode = demoMode ?? UserDefaults.standard.bool(forKey: Self.demoModeKey)
         store.didSaveTenants = { [weak self] old, new in
             self?.tenantsSaved(old: old, new: new)
         }
+        observeDemoSwitch()
+    }
+
+    /// The model for this launch: the saved tenants and demo mode, or, for a
+    /// sandbox run (`-JTKitSandbox YES`, UI tests), tenants, secrets and
+    /// history in demo mode's temporary folder and in memory.
+    static func forLaunch() -> AppModel {
+        let demo = DemoMode(key: demoModeKey)
+        guard demo.isSandbox else { return AppModel(demo: demo) }
+        let folder = demo.scratchDirectory
+        return AppModel(store: TenantStore(fileURL: folder.appending(path: "sandbox-tenants.json")),
+                        secrets: SandboxSecretStore(),
+                        session: DemoNetwork(servers: [:]).session,
+                        history: HistoryStore(fileURL: folder.appending(path: "sandbox-history.json")),
+                        demo: demo)
+    }
+
+    // MARK: - Demo mode
+
+    /// Follows JTKit's switch (the picker, the Connection menu, "Try Demo Mode").
+    private func observeDemoSwitch() {
+        withObservationTracking { _ = demo.isOn } onChange: { [weak self] in
+            Task { @MainActor [weak self] in self?.demoSwitched() }
+        }
+    }
+
+    private func demoSwitched() {
+        observeDemoSwitch()
+        guard demo.isOn != workspaceIsDemo else { return }
+        workspaceIsDemo = demo.isOn
+        // A view may already have built the new mode's workspace; keep that one.
+        if workspace?.environment.isDemo != demo.isOn { workspace = nil }
+        workspaceGeneration += 1
+        activity.app("\(DemoMode.title) turned \(demo.isOn ? "on" : "off").")
     }
 
     // MARK: - Workspace
@@ -80,13 +127,16 @@ final class AppModel {
     /// The workspace for demo mode or the current tenant, created on demand.
     /// Throws when the current tenant can't be used (missing or invalid settings).
     func activeWorkspace() throws -> Workspace {
-        if let workspace { return workspace }
+        // A workspace built before the switch was noticed is never used.
+        if let workspace, workspace.environment.isDemo == isDemoMode { return workspace }
         let environment: MigrationEnvironment
         if isDemoMode {
-            environment = .demo(log: activity)
+            // JTKit's demo connection and network, never a saved tenant or the Keychain.
+            let source = demo.jamfPlatform()
+            environment = .demo(log: activity, server: demo.jamfPlatformServer, session: source.session)
         } else {
             guard let tenant = currentTenant else {
-                throw APIError.invalidConfiguration("Choose a current tenant, or turn on offline demo mode.")
+                throw APIError.invalidConfiguration("Choose a current tenant, or turn on \(DemoMode.title).")
             }
             let client = try makeClient(for: tenant)
             environment = MigrationEnvironment(

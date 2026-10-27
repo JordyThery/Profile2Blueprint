@@ -36,7 +36,7 @@ struct DeployConfirmationSheet: View {
                 .font(.title2.weight(.semibold))
 
             Text(isDemo
-                 ? "Offline demo. This simulates a deployment."
+                 ? "\(DemoMode.title). This simulates a deployment."
                  : "Tenant: \(environmentName). Devices in these groups will receive the DDM profile. Where the classic profile is installed, it is replaced in place.")
                 .foregroundStyle(isDemo ? Color.secondary : Color.orange)
                 .fixedSize(horizontal: false, vertical: true)
@@ -119,8 +119,8 @@ struct DeployConfirmationSheet: View {
 #if DEBUG
 #Preview("Deploy confirmation") {
     DeployConfirmationSheet(
-        items: [DeployItem(blueprintID: "5b1f7c2e-0000-4000-8000-000000000001", blueprintName: "Classic – Managed Login Items (migrated)",
-                           sourceName: "Classic – Managed Login Items", groups: [DemoFixtures.platformGroups[0]], warnings: 0)],
+        items: [DeployItem(blueprintID: DemoSamples.uuid(0xb101), blueprintName: "Contoso – Managed Login Items (migrated)",
+                           sourceName: "Contoso – Managed Login Items", groups: [DemoFixtures.platformGroups[0]], warnings: 0)],
         environmentName: "Production", isDemo: false
     ) { _ in }
 }

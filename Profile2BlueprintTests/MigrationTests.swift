@@ -12,7 +12,8 @@ private func check(_ xml: String, groups: [JamfPlatform.DeviceGroup] = DemoFixtu
     EligibilityChecker.check(try profile(xml), platformGroups: groups)
 }
 
-private let engineers = DemoFixtures.platformGroups[0]
+/// Contoso's "Engineering Macs", the group most demo profiles are scoped to.
+private let engineers = DemoFixtures.platformGroups[2]
 
 // MARK: - Eligibility table
 
@@ -123,7 +124,7 @@ struct EligibilityTests {
         let report = try check(DemoFixtures.securityBaseline)
         #expect(report.status == .needsAttention)
         #expect(report.has(.ambiguousGroups))
-        #expect(!report.has(.noMappedGroup), "Engineers still maps")
+        #expect(!report.has(.noMappedGroup), "Engineering Macs still maps")
         #expect(report.scopeMapping.map(\.exactMatches.count) == [1, 2])
     }
 
@@ -222,17 +223,17 @@ struct ScopeMapperTests {
     func mapping() {
         var scope = ClassicScope()
         scope.deviceGroups = [
-            ClassicReference(id: 1, name: "Engineers"),
-            ClassicReference(id: 2, name: "all managed  clients"),
+            ClassicReference(id: 1, name: "Engineering Macs"),
+            ClassicReference(id: 2, name: "all managed  macs"),
             ClassicReference(id: 3, name: "iPads"),
         ]
         let groups = DemoFixtures.platformGroups + [
             JamfPlatform.DeviceGroup(id: "m", name: "iPads", description: nil, deviceType: .mobile, groupType: .smart, memberCount: 9),
         ]
         let entries = ScopeMapper.propose(for: scope, platform: .macOS, platformGroups: groups)
-        #expect(entries[0].autoMatch?.name == "Engineers")
+        #expect(entries[0].autoMatch?.name == "Engineering Macs")
         #expect(entries[1].autoMatch == nil)
-        #expect(entries[1].suggestions.map(\.name) == ["All Managed Clients"])
+        #expect(entries[1].suggestions.map(\.name) == ["All Managed Macs"])
         #expect(entries[2].isUnmatched && entries[2].suggestions.isEmpty)
         #expect(ScopeMapper.automaticSelection(entries) == [engineers.id])
     }
@@ -247,12 +248,12 @@ struct BlueprintBuilderTests {
     func fixture1Body() throws {
         let source = try profile(DemoFixtures.managedLoginItems)
         let request = try BlueprintBuilder.build(
-            profile: source, name: "Classic – Managed Login Items (migrated)",
+            profile: source, name: "Contoso – Managed Login Items (migrated)",
             description: "Migrated from Jamf Classic macOS config profile", deviceGroupIDs: [engineers.id]
         )
         let expected = """
         {
-          "name": "Classic – Managed Login Items (migrated)",
+          "name": "Contoso – Managed Login Items (migrated)",
           "description": "Migrated from Jamf Classic macOS config profile",
           "scope": {
             "deviceGroups": [
@@ -269,12 +270,12 @@ struct BlueprintBuilderTests {
                   "configuration": {
                     "payloadUUID": "\(DemoFixtures.managedLoginItemsTopUUID)",
                     "payloadIdentifier": "\(DemoFixtures.managedLoginItemsTopUUID)",
-                    "payloadDisplayName": "Classic – Managed Login Items",
+                    "payloadDisplayName": "Contoso – Managed Login Items",
                     "payloadContent": [
                       {
                         "payloadDisplayName": "Service Management - Managed Login Items",
                         "payloadIdentifier": "\(DemoFixtures.managedLoginItemsPayloadUUID)",
-                        "payloadOrganization": "Example Org",
+                        "payloadOrganization": "Contoso",
                         "payloadType": "com.apple.servicemanagement",
                         "payloadUUID": "\(DemoFixtures.managedLoginItemsPayloadUUID)",
                         "payloadVersion": 1,
@@ -334,7 +335,7 @@ struct BlueprintBuilderTests {
         let deduped = try BlueprintBuilder.build(profile: fixture1, name: "a", description: "  ", deviceGroupIDs: ["g", "h", "g"])
         #expect(deduped.deviceGroupIDs == ["g", "h"])
         #expect(deduped.description == nil, "a blank description is left out")
-        #expect(BlueprintBuilder.defaultName(for: fixture1) == "Classic – Managed Login Items (migrated)")
+        #expect(BlueprintBuilder.defaultName(for: fixture1) == "Contoso – Managed Login Items (migrated)")
     }
 }
 
@@ -380,7 +381,7 @@ struct BlueprintNamingTests {
     func defaultDescriptionUnchanged() throws {
         let fixture = try profile(DemoFixtures.managedLoginItems)
         #expect(BlueprintBuilder.defaultDescription(for: fixture)
-            == "Migrated from Jamf Pro classic macOS configuration profile ID 101 (“Classic – Managed Login Items”) by Profile2Blueprint.")
+            == "Migrated from Jamf Pro classic macOS configuration profile ID 101 (“Contoso – Managed Login Items”) by Profile2Blueprint.")
     }
 
     @Test("Description tokens are substituted")
@@ -676,9 +677,9 @@ struct FidelityVerifierTests {
 
 @Suite("Migration pipeline")
 struct PipelineTests {
-    private func makePipeline(server: DemoBlueprintServer = DemoBlueprintServer(pollsToSucceed: 2), timeout: Duration = .seconds(300)) -> MigrationPipeline {
+    private func makePipeline(server: DemoJamfPlatformServer = DemoJamfPlatformServer(pollsToSucceed: 2), timeout: Duration = .seconds(300)) -> MigrationPipeline {
         MigrationPipeline(
-            classic: DemoClassicAPI(),
+            classic: demoClassicAPI(),
             blueprints: JamfPlatform.Blueprints(client: server.client(log: nil)),
             watch: WatchPolicy(deployment: JamfPlatform.PollingPolicy(
                 firstInterval: .milliseconds(1), longestInterval: .milliseconds(2), timeLimit: timeout)),
@@ -687,12 +688,12 @@ struct PipelineTests {
     }
 
     private func confirmation(_ id: String) -> DeployConfirmation {
-        DeployConfirmation(blueprintID: id, blueprintName: "n", groupNames: ["Engineers"], deviceCount: 12, confirmedAt: Date())
+        DeployConfirmation(blueprintID: id, blueprintName: "n", groupNames: ["Engineering Macs"], deviceCount: 12, confirmedAt: Date())
     }
 
     @Test("Full happy path: fetch → validate → build → create → verify → deploy → deployed")
     func happyPath() async throws {
-        let server = DemoBlueprintServer(pollsToSucceed: 2)
+        let server = DemoJamfPlatformServer(pollsToSucceed: 2)
         let pipeline = makePipeline(server: server)
         _ = try await pipeline.fetch(key: ProfileKey(platform: .macOS, id: 101))
         #expect(await pipeline.state == .fetched)
@@ -743,7 +744,7 @@ struct PipelineTests {
 
     @Test("Duplicate names are refused at create time")
     func duplicate() async throws {
-        let server = DemoBlueprintServer()
+        let server = DemoJamfPlatformServer()
         _ = server.seed(name: "Taken")
         let pipeline = makePipeline(server: server)
         _ = try await pipeline.fetch(key: ProfileKey(platform: .macOS, id: 101))
@@ -760,7 +761,7 @@ struct PipelineTests {
 
     @Test("Deploy requires a confirmation for this exact blueprint")
     func confirmationMustMatch() async throws {
-        let server = DemoBlueprintServer()
+        let server = DemoJamfPlatformServer()
         let pipeline = makePipeline(server: server)
         _ = try await pipeline.fetch(key: ProfileKey(platform: .macOS, id: 101))
         _ = try await pipeline.validate(platformGroups: DemoFixtures.platformGroups)
@@ -775,8 +776,8 @@ struct PipelineTests {
     func failureAndTimeout() async throws {
         // The failing case gets a generous timeout so it can't time out under load.
         for (server, expectFailure, timeout) in [
-            (DemoBlueprintServer(pollsToSucceed: 2, failDeployments: true), true, Duration.seconds(30)),
-            (DemoBlueprintServer(pollsToSucceed: 1_000_000), false, Duration.milliseconds(50)),
+            (DemoJamfPlatformServer(pollsToSucceed: 2, failDeployments: true), true, Duration.seconds(30)),
+            (DemoJamfPlatformServer(pollsToSucceed: 1_000_000), false, Duration.milliseconds(50)),
         ] {
             let pipeline = makePipeline(server: server, timeout: timeout)
             _ = try await pipeline.fetch(key: ProfileKey(platform: .macOS, id: 101))
@@ -795,7 +796,7 @@ struct PipelineTests {
 
     @Test("Deploying again waits for the new deployment instead of taking the previous one's success")
     func redeployWaitsForTheNewDeployment() async throws {
-        let server = DemoBlueprintServer(pollsToSucceed: 2)
+        let server = DemoJamfPlatformServer(pollsToSucceed: 2)
         let pipeline = makePipeline(server: server)
         _ = try await pipeline.fetch(key: ProfileKey(platform: .macOS, id: 101))
         _ = try await pipeline.validate(platformGroups: DemoFixtures.platformGroups)
@@ -823,10 +824,10 @@ struct PipelineTests {
             request.method == "POST" ? .json(201, #"{"id":"new-id"}"#) : .json(200, #"{"totalCount":0,"results":[]}"#)
         }
         let client = try JamfPlatform.Client(
-            baseURL: URL(string: "https://us.api.jamfcloud.com")!, scope: .environment(DemoBlueprintServer.environmentID),
+            baseURL: URL(string: "https://us.api.jamfcloud.com")!, scope: .environment(DemoSamples.platformEnvironmentID),
             tokens: FixedToken(), recorder: RequestRecorder(session: server.session, log: nil),
             permits: { RequestPolicy.isPermitted($0) })
-        let pipeline = MigrationPipeline(classic: DemoClassicAPI(), blueprints: JamfPlatform.Blueprints(client: client))
+        let pipeline = MigrationPipeline(classic: demoClassicAPI(), blueprints: JamfPlatform.Blueprints(client: client))
         _ = try await pipeline.fetch(key: ProfileKey(platform: .macOS, id: 101))
         _ = try await pipeline.validate(platformGroups: DemoFixtures.platformGroups)
         for description in ["Migrated by Profile2Blueprint", ""] {
@@ -870,7 +871,7 @@ struct SafetyTests {
     @Test("Classic API protocol exposes no write methods")
     func classicIsReadOnly() {
         // Compile-time property: ClassicAPI only declares listProfiles(platform:) and profile(key:).
-        let api: any ClassicAPI = DemoClassicAPI()
+        let api: any ClassicAPI = demoClassicAPI()
         _ = api
     }
 }

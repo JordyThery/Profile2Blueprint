@@ -18,18 +18,18 @@ struct ClassicParsingTests {
     func fixture1() throws {
         let profile = try parse(DemoFixtures.managedLoginItems)
         #expect(profile.id == 101)
-        #expect(profile.name == "Classic – Managed Login Items")
+        #expect(profile.name == "Contoso – Managed Login Items")
         #expect(profile.level == .system)
         #expect(profile.distributionMethod == "Install Automatically")
         #expect(profile.redeployOnUpdate == "Newly Assigned")
         #expect(profile.site == nil, "site id -1 means None")
-        #expect(profile.scope.deviceGroups == [ClassicReference(id: 3, name: "Engineers")])
+        #expect(profile.scope.deviceGroups == [ClassicReference(id: 3, name: "Engineering Macs")])
         #expect(!profile.scope.allDevices && !profile.scope.hasExclusions)
 
         let doc = try profile.document.get()
         #expect(doc.payloadUUID == DemoFixtures.managedLoginItemsTopUUID)
         #expect(doc.payloadIdentifier == DemoFixtures.managedLoginItemsTopUUID)
-        #expect(doc.payloadDisplayName == "Classic – Managed Login Items")
+        #expect(doc.payloadDisplayName == "Contoso – Managed Login Items")
         #expect(doc.payloads.count == 1)
         let payload = try #require(doc.payloads.first)
         #expect(payload.type == "com.apple.servicemanagement")
@@ -47,7 +47,7 @@ struct ClassicParsingTests {
         #expect(doc.payloads.map(\.type) == [
             "com.apple.notificationsettings", "com.apple.servicemanagement", "com.apple.ManagedClient.preferences",
         ])
-        #expect(doc.payloads.map(\.uuid) == (1...3).map { "B0000000-0000-4000-8000-00000000000\($0)" })
+        #expect(doc.payloads.map(\.uuid) == (1...3).map { "00000000-0000-4000-8000-00000000B10\($0)" })
         // Dictionary key order is document order, not alphabetical.
         let notification = try #require(doc.payloads[0].content["NotificationSettings"]?.arrayValue?.first?.dictValue)
         #expect(notification.keys == ["BundleIdentifier", "CriticalAlertEnabled", "NotificationsEnabled", "AlertType"])
@@ -62,7 +62,7 @@ struct ClassicParsingTests {
         #expect(doc.payloads[0].content["PayloadContent"] == .data(DemoFixtures.certificateDER))
 
         let settings = try #require(
-            doc.payloads[1].content["PayloadContent"]?.dictValue?["com.example.updater"]?.dictValue?["Forced"]?
+            doc.payloads[1].content["PayloadContent"]?.dictValue?["com.contoso.example.updater"]?.dictValue?["Forced"]?
                 .arrayValue?.first?.dictValue?["mcx_preference_settings"]?.dictValue
         )
         #expect(settings["Deadline"] == .date(try Date(DemoFixtures.configuredDateISO, strategy: .iso8601)))
@@ -89,7 +89,7 @@ struct ClassicParsingTests {
     func list() throws {
         let list = try ClassicProfileList.parse(Data(DemoFixtures.profileListJSON(platform: .macOS).utf8), platform: .macOS)
         #expect(list.map(\.profileID) == [101, 102, 103, 104, 105, 106, 107])
-        #expect(list.first?.name == "Classic – Managed Login Items")
+        #expect(list.first?.name == "Contoso – Managed Login Items")
     }
 
     @Test("Malformed payloads produce a parse error, not a crash")
