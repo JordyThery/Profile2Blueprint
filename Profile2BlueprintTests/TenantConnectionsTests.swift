@@ -8,14 +8,14 @@ import Testing
 /// formatting as a real one, with made-up values).
 private let savedBeforeJTKit = #"""
 {
-  "currentTenantID" : "CF96D75C-0E79-4B25-ADD2-6F98E1E819C7",
+  "currentTenantID" : "A2A2A2A2-0000-4000-8000-000000000002",
   "tenants" : [
     {
       "allowClassicScopeChanges" : true,
       "clientID" : "11111111-aaaa-bbbb-cccc-222222222222",
       "descriptionTemplate" : "Migrated from Jamf Pro classic {platform} configuration profile ID {id} (“{name}”) by Profile2Blueprint.",
       "environmentID" : "e77c1408-10c8-4007-b177-abc9157fbcaa",
-      "id" : "2593A69B-7002-4E7B-83CC-D3BE4527E817",
+      "id" : "A1A1A1A1-0000-4000-8000-000000000001",
       "jamfProURL" : "https:\/\/example.jamfcloud.com",
       "name" : "Jamf Pro",
       "naming" : {
@@ -30,7 +30,7 @@ private let savedBeforeJTKit = #"""
       "descriptionTemplate" : "Migrated from Jamf Pro classic {platform} configuration profile ID {id} (“{name}”) by Profile2Blueprint.",
       "environmentID" : "a1b2c3d4-10c8-4007-b177-abc9157fbcaa",
       "hostOverride" : "us1.api.stage.platform.jamflabs.com",
-      "id" : "CF96D75C-0E79-4B25-ADD2-6F98E1E819C7",
+      "id" : "A2A2A2A2-0000-4000-8000-000000000002",
       "jamfProURL" : "",
       "name" : "Sandbox",
       "naming" : {
@@ -43,8 +43,8 @@ private let savedBeforeJTKit = #"""
 }
 """#
 
-private let jamfProID = UUID(uuidString: "2593A69B-7002-4E7B-83CC-D3BE4527E817")!
-private let sandboxID = UUID(uuidString: "CF96D75C-0E79-4B25-ADD2-6F98E1E819C7")!
+private let jamfProID = UUID(uuidString: "A1A1A1A1-0000-4000-8000-000000000001")!
+private let sandboxID = UUID(uuidString: "A2A2A2A2-0000-4000-8000-000000000002")!
 
 @MainActor
 @Suite("Tenants in JTKit's connections")
@@ -144,8 +144,8 @@ struct TenantConnectionsTests {
         let model = makeModel()
 
         model.makeCurrent(jamfProID)
-        let expected = savedBeforeJTKit.replacingOccurrences(of: #""currentTenantID" : "CF96D75C-0E79-4B25-ADD2-6F98E1E819C7""#,
-                                                             with: #""currentTenantID" : "2593A69B-7002-4E7B-83CC-D3BE4527E817""#)
+        let expected = savedBeforeJTKit.replacingOccurrences(of: #""currentTenantID" : "A2A2A2A2-0000-4000-8000-000000000002""#,
+                                                             with: #""currentTenantID" : "A1A1A1A1-0000-4000-8000-000000000001""#)
         #expect(try fileText() == expected)
         #expect(makeModel().currentTenantID == jamfProID)
     }
