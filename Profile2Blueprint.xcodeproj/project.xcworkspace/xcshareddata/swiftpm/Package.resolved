@@ -6,8 +6,17 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/JordyThery/JTKit.git",
       "state" : {
-        "revision" : "9be34e17624952aaa6c806e32d78fe81d0f003d0",
-        "version" : "0.8.5"
+        "revision" : "dc7279ee4fe08d6741824121426a4047564fbb34",
+        "version" : "0.10.0"
+      }
+    },
+    {
+      "identity" : "microsoft-authentication-library-for-objc",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/AzureAD/microsoft-authentication-library-for-objc",
+      "state" : {
+        "revision" : "8dfe5bf41fe10e6d2afed62a72c4232adbef20f4",
+        "version" : "2.16.0"
       }
     }
   ],
