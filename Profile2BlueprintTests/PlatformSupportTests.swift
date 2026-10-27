@@ -181,9 +181,9 @@ struct PlatformPlumbingTests {
 
     @Test("The mobile Jamf Pro link uses the iOS profiles page")
     func mobileLink() throws {
-        let links = try #require(JamfProLinks("ritualstest.jamfcloud.com"))
+        let links = try #require(JamfProLinks("example.jamfcloud.com"))
         #expect(links.classicProfile(platform: .mobile, id: 10).absoluteString
-                == "https://ritualstest.jamfcloud.com/iOSConfigurationProfiles.html?id=10&o=r")
+                == "https://example.jamfcloud.com/iOSConfigurationProfiles.html?id=10&o=r")
     }
 
     @Test("{platform} renders per platform, and the default template keeps the old macOS wording")

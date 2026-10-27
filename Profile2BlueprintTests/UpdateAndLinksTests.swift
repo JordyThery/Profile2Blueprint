@@ -10,11 +10,11 @@ import Testing
 struct JamfProLinksTests {
 
     @Test("The address is accepted however it is pasted",
-          arguments: ["jamf.lab9.be", "https://jamf.lab9.be", "https://jamf.lab9.be/", "  jamf.lab9.be  ",
-                      "https://jamf.lab9.be/OSXConfigurationProfiles.html?id=477&o=r"])
+          arguments: ["example.jamfcloud.com", "https://example.jamfcloud.com", "https://example.jamfcloud.com/", "  example.jamfcloud.com  ",
+                      "https://example.jamfcloud.com/OSXConfigurationProfiles.html?id=477&o=r"])
     func normalises(address: String) throws {
         let links = try #require(JamfProLinks(address))
-        #expect(links.base.absoluteString == "https://jamf.lab9.be")
+        #expect(links.base.absoluteString == "https://example.jamfcloud.com")
     }
 
     @Test("A port is kept")
@@ -29,11 +29,11 @@ struct JamfProLinksTests {
 
     @Test("Links match the routes Jamf Pro's own console uses")
     func routes() throws {
-        let links = try #require(JamfProLinks("jamf.lab9.be"))
-        #expect(links.classicProfile(platform: .macOS, id: 477).absoluteString == "https://jamf.lab9.be/OSXConfigurationProfiles.html?id=477&o=r",
+        let links = try #require(JamfProLinks("example.jamfcloud.com"))
+        #expect(links.classicProfile(platform: .macOS, id: 477).absoluteString == "https://example.jamfcloud.com/OSXConfigurationProfiles.html?id=477&o=r",
                 "o=r opens read-only")
         #expect(links.blueprint(id: "4b23b59a-ba36-4f7c-9aea-00cf63ce9d13").absoluteString
-                == "https://jamf.lab9.be/view/mfe/blueprints/4b23b59a-ba36-4f7c-9aea-00cf63ce9d13")
+                == "https://example.jamfcloud.com/view/mfe/blueprints/4b23b59a-ba36-4f7c-9aea-00cf63ce9d13")
     }
 
     @Test("A tenant saved before the address existed decodes with none")
