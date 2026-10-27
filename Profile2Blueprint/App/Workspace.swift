@@ -2,7 +2,7 @@ import Foundation
 import JTKit
 import Observation
 
-/// The APIs and identity of the place migrations run against: a live tenant or offline demo.
+/// The APIs and identity of the place migrations run against: a live tenant or demo mode.
 nonisolated struct MigrationEnvironment: Sendable {
     let displayName: String
     let isDemo: Bool
@@ -14,8 +14,9 @@ nonisolated struct MigrationEnvironment: Sendable {
     /// Links into the Jamf Pro console, when the tenant has its address set.
     let jamfProLinks: JamfProLinks?
     let classic: any ClassicAPI
-    /// JTKit's Jamf Platform API client: device groups and Blueprints. In demo
-    /// mode its requests are answered by `DemoBlueprintServer`, inside the app.
+    /// JTKit's Jamf Platform API client: device groups, Blueprints and the
+    /// Classic API. In demo mode its requests are answered by JTKit's demo
+    /// server and the app's `DemoClassicServer`, inside the app.
     let platform: JamfPlatform.Client
     /// Present only when classic scope changes are explicitly enabled for the tenant.
     let classicScopeWriter: (any ClassicScopeWriter)?
@@ -40,27 +41,6 @@ nonisolated struct MigrationEnvironment: Sendable {
     }
 
     var blueprints: JamfPlatform.Blueprints { JamfPlatform.Blueprints(client: platform) }
-
-    /// The offline demo's name, in history, scope backups and the activity log.
-    static let demoDisplayName = "Offline demo"
-
-    /// Offline demo. Classic scope changes are enabled here (in memory only) so the
-    /// full flow, including unscope and restore, can be tried without a tenant.
-    /// With a log, the demo's Platform API requests show in the activity log.
-    static func demo(
-        log: ActivityLog? = nil,
-        server: DemoBlueprintServer = DemoBlueprintServer(),
-        classicServer: DemoClassicServer = DemoClassicServer()
-    ) -> MigrationEnvironment {
-        MigrationEnvironment(
-            displayName: demoDisplayName,
-            isDemo: true,
-            environmentID: nil,
-            classic: DemoClassicAPI(server: classicServer),
-            platform: server.client(log: log),
-            classicScopeWriter: DemoClassicScopeWriter(server: classicServer)
-        )
-    }
 }
 
 enum LoadPhase: Equatable {

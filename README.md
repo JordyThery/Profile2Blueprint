@@ -10,7 +10,7 @@ Download the latest `Profile2Blueprint-x.y.zip` from [Releases](https://github.c
 
 ## Try it without a tenant
 
-Switch on **Offline demo mode** in the sidebar. The full flow — eligibility, scope mapping, create, verify, deploy, unscope and restore — runs against bundled fixtures, with no tenant contacted and nothing to configure. This is the quickest way to see whether the app fits your environment.
+Choose **Demo Mode** in the connection picker in the toolbar (or the Connection menu). The full flow — eligibility, scope mapping, create, verify, deploy, unscope and restore — runs against a sample tenant, “Contoso (Demo)”, answered inside the app: no tenant is contacted, nothing is saved to your tenants or the Keychain, and there is nothing to configure. Every window title ends in “— Demo” while it is on. This is the quickest way to see whether the app fits your environment.
 
 ## Connect to Jamf
 
@@ -90,11 +90,11 @@ Profile2Blueprint/
     Persistence/ TenantStore, HistoryStore, ActivityStore, SessionStateStore
   Features/    Connect, ProfileList, ProfileDetail, ScopeMapping, Review,
                Deploy, Batch, History, Activity, About
-  Resources/   Fixtures (demo profiles and in-memory demo servers)
+  Resources/   Fixtures (Contoso demo profiles and the demo Classic server)
 Profile2BlueprintTests/   Swift Testing suite (300+ cases, mock URLProtocol)
 ```
 
-Each API sits behind a protocol with live and demo implementations, so the pipeline and UI run unchanged against fixtures.
+Demo mode uses JTKit's demo network and Jamf Platform server, with the app's Classic profiles added to it, so the same client, allow-list, pipeline and UI run in demo mode as against a tenant.
 
 ## Known limitations
 

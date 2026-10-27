@@ -1,8 +1,8 @@
 import Foundation
 
-/// Where offline demo mode keeps its history, scope backups and migration
-/// sessions: a folder of its own in the app's temporary directory, new for each
-/// launch. Demo runs never write into the real `history.json`,
+/// Where demo mode keeps its history, scope backups and migration sessions:
+/// a folder of its own in the app's temporary directory, new for each launch
+/// (the app uses JTKit's `DemoMode.scratchDirectory`). Demo runs never write into the real `history.json`,
 /// `scope-backups.json` or `sessions.json`, and are gone after a restart.
 nonisolated struct DemoFiles: Sendable {
     let folder: URL

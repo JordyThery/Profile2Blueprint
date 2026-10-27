@@ -83,3 +83,23 @@ func blueprintDetail(
     ]))
     return try JamfPlatform.BlueprintDetail(data: json.serialized())
 }
+
+// MARK: - Demo mode
+
+extension DemoJamfPlatformServer {
+    /// JTKit's client for this server as demo mode builds it: the app's
+    /// groups and Classic profiles added, its allow-list, a demo network.
+    func client(log: ActivityLog?, classic: DemoClassicServer = DemoClassicServer()) -> JamfPlatform.Client {
+        MigrationEnvironment.demoClient(log: log, server: self, classicServer: classic)
+    }
+}
+
+/// The app's real Classic reader, answered by `classic` behind JTKit's demo server.
+func demoClassicAPI(_ classic: DemoClassicServer = DemoClassicServer()) -> LiveClassicAPI {
+    LiveClassicAPI(client: DemoJamfPlatformServer().client(log: nil, classic: classic))
+}
+
+/// The app's real scope writer, answered by `classic` behind JTKit's demo server.
+func demoScopeWriter(_ classic: DemoClassicServer) -> LiveClassicScopeWriter {
+    LiveClassicScopeWriter(client: DemoJamfPlatformServer().client(log: nil, classic: classic))
+}

@@ -13,7 +13,6 @@ struct ContentView: View {
     @State private var selection: SidebarItem? = .profiles
 
     var body: some View {
-        @Bindable var model = model
         @Bindable var updates = updates
 
         NavigationSplitView {
@@ -24,15 +23,6 @@ struct ContentView: View {
                     Label("History", systemImage: "clock.arrow.circlepath")
                         .tag(SidebarItem.history)
                 }
-            }
-            .safeAreaInset(edge: .bottom) {
-                Toggle(isOn: $model.isDemoMode) {
-                    Label("Offline demo mode", systemImage: "testtube.2")
-                }
-                .toggleStyle(.switch)
-                .controlSize(.small)
-                .padding(10)
-                .help("Run the full flow against bundled fixtures. No tenant is contacted.")
             }
             .navigationSplitViewColumnWidth(min: 200, ideal: 240)
         } detail: {

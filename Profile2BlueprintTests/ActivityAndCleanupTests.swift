@@ -166,8 +166,8 @@ struct ClassicScopeServiceTests {
         let server = DemoClassicServer()
         return (MigrationEnvironment(
             displayName: "Test", isDemo: true, environmentID: nil,
-            classic: DemoClassicAPI(server: server), platform: DemoBlueprintServer().client(log: nil),
-            classicScopeWriter: writer ? DemoClassicScopeWriter(server: server) : nil
+            classic: demoClassicAPI(server), platform: DemoJamfPlatformServer().client(log: nil),
+            classicScopeWriter: writer ? demoScopeWriter(server) : nil
         ), server)
     }
 
@@ -187,7 +187,7 @@ struct ClassicScopeServiceTests {
         #expect(backup.scopeXML == before.rawScopeXML)
         #expect(try ClassicXMLParser.parseScopeXML(backup.scopeXML, platform: .macOS) == before.scope)
         #expect(await store.latest(key: ProfileKey(platform: .macOS, id: 102), environmentID: nil, environmentName: "Test")?.id == backup.id)
-        let writes = await server.scopeWrites
+        let writes = server.scopeWrites
         #expect(writes.count == 1 && RequestPolicy.isScopeOnlyProfileXML(Data(writes[0].body.utf8)))
 
         let restored = try await ClassicScopeService.restore(backup, environment: env, backups: store)
@@ -252,7 +252,7 @@ struct SessionCleanupTests {
         #expect(session.fidelity?.passed == true)
         #expect(session.unscopeStatus == .notRequested, "nothing happens before deploy")
 
-        await session.deploy(DeployConfirmation(blueprintID: blueprintID, blueprintName: "n", groupNames: ["Engineers"], deviceCount: 12, confirmedAt: Date()))
+        await session.deploy(DeployConfirmation(blueprintID: blueprintID, blueprintName: "n", groupNames: ["Engineering Macs"], deviceCount: 12, confirmedAt: Date()))
         guard case .unscoped = session.unscopeStatus else { Issue.record("\(session.unscopeStatus)"); return }
         let unscoped = try await workspace.environment.classic.profile(key: ProfileKey(platform: .macOS, id: 101))
         #expect(!ClassicScopeService.hasTargets(unscoped.scope))
@@ -272,7 +272,7 @@ struct SessionCleanupTests {
         session.dryRun = false
         await session.create()
         let blueprintID = try #require(session.blueprintID)
-        await session.deploy(DeployConfirmation(blueprintID: blueprintID, blueprintName: "n", groupNames: ["Engineers"], deviceCount: 12, confirmedAt: Date()))
+        await session.deploy(DeployConfirmation(blueprintID: blueprintID, blueprintName: "n", groupNames: ["Engineering Macs"], deviceCount: 12, confirmedAt: Date()))
         #expect(session.unscopeStatus == .notRequested)
         #expect(ClassicScopeService.hasTargets(try await workspace.environment.classic.profile(key: ProfileKey(platform: .macOS, id: 101)).scope))
     }
@@ -348,8 +348,8 @@ struct ScopeBackupEnvironmentTests {
         MigrationEnvironment(
             displayName: demo ? MigrationEnvironment.demoDisplayName : "Sandbox", isDemo: demo,
             environmentID: demo ? nil : (id ?? realID),
-            classic: DemoClassicAPI(server: server), platform: DemoBlueprintServer().client(log: nil),
-            classicScopeWriter: DemoClassicScopeWriter(server: server)
+            classic: demoClassicAPI(server), platform: DemoJamfPlatformServer().client(log: nil),
+            classicScopeWriter: demoScopeWriter(server)
         )
     }
 
@@ -366,7 +366,7 @@ struct ScopeBackupEnvironmentTests {
         await #expect(throws: ScopeChangeError.self) {
             _ = try await ClassicScopeService.restore(backup, environment: environment(demo: false, server: server), backups: store)
         }
-        #expect(await server.scopeWrites.count == 1, "only the unscope, no restore write")
+        #expect(server.scopeWrites.count == 1, "only the unscope, no restore write")
         #expect(await store.all.first?.restoredAt == nil)
     }
 
@@ -384,10 +384,10 @@ struct ScopeBackupEnvironmentTests {
                                                                                        id: "0f0e0d0c-0b0a-4000-8000-000000000001"),
                                                       backups: store)
         }
-        #expect(await server.scopeWrites.count == 1)
+        #expect(server.scopeWrites.count == 1)
 
         _ = try await ClassicScopeService.restore(backup, environment: environment(demo: false, server: server), backups: store)
-        #expect(await server.scopeWrites.count == 2, "restored on its own tenant")
+        #expect(server.scopeWrites.count == 2, "restored on its own tenant")
     }
 
     @Test("A backup without an Environment ID matches by name, never the demo's")

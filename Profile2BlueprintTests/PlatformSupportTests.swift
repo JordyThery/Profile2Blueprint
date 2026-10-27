@@ -51,11 +51,15 @@ struct MobileProfileTests {
 
     @Test("Scope mapping never crosses platforms")
     func mappingIsPlatformScoped() {
-        // "Engineers" exists as both a COMPUTER and a MOBILE demo group.
+        // "Engineering Macs" exists here as both a COMPUTER and a MOBILE group.
+        let groups = DemoFixtures.platformGroups + [
+            JamfPlatform.DeviceGroup(id: DemoSamples.uuid(0xd6a3), name: "Engineering Macs", description: "Mobile twin of the computer group",
+                                     deviceType: .mobile, groupType: .smart, memberCount: 4),
+        ]
         var scope = ClassicScope()
-        scope.deviceGroups = [ClassicReference(id: 1, name: "Engineers")]
-        let forMac = ScopeMapper.propose(for: scope, platform: .macOS, platformGroups: DemoFixtures.platformGroups)
-        let forMobile = ScopeMapper.propose(for: scope, platform: .mobile, platformGroups: DemoFixtures.platformGroups)
+        scope.deviceGroups = [ClassicReference(id: 1, name: "Engineering Macs")]
+        let forMac = ScopeMapper.propose(for: scope, platform: .macOS, platformGroups: groups)
+        let forMobile = ScopeMapper.propose(for: scope, platform: .mobile, platformGroups: groups)
         #expect(forMac.first?.autoMatch?.deviceType == .computer)
         #expect(forMobile.first?.autoMatch?.deviceType == .mobile)
         #expect(forMac.first?.autoMatch?.id != forMobile.first?.autoMatch?.id)
@@ -114,8 +118,8 @@ struct MobileCleanupTests {
         let server = DemoClassicServer()
         return (MigrationEnvironment(
             displayName: "Test", isDemo: true, environmentID: nil,
-            classic: DemoClassicAPI(server: server), platform: DemoBlueprintServer().client(log: nil),
-            classicScopeWriter: DemoClassicScopeWriter(server: server)
+            classic: demoClassicAPI(server), platform: DemoJamfPlatformServer().client(log: nil),
+            classicScopeWriter: demoScopeWriter(server)
         ), server)
     }
 
@@ -140,7 +144,7 @@ struct MobileCleanupTests {
         #expect(backup.platform == .mobile)
         #expect(!ClassicScopeService.hasTargets(after.scope))
         #expect(after.payloadsPlist == before.payloadsPlist, "payloads untouched")
-        let writes = await server.scopeWrites
+        let writes = server.scopeWrites
         #expect(writes.count == 1 && writes[0].key == mobileKey)
 
         let restored = try await ClassicScopeService.restore(backup, environment: env, backups: store)
@@ -212,7 +216,7 @@ struct GuardTests {
 
     @Test("A payload whose UUID differs from its identifier is Blocked")
     func payloadUUIDMismatch() throws {
-        // uploadedPPPC's TCC payload has identifier com.example.pppc.terminal.tcc
+        // uploadedPPPC's TCC payload has identifier com.contoso.example.pppc.terminal.tcc
         // but a UUID-shaped PayloadUUID; the API would rewrite the UUID.
         let profile = try ClassicXMLParser.parseProfile(Data(DemoFixtures.uploadedPPPC.utf8), platform: .macOS)
         let report = EligibilityChecker.check(profile, platformGroups: DemoFixtures.platformGroups)
@@ -255,7 +259,7 @@ struct GuardTests {
         let request = BlueprintRequest(name: "uuid rewrite", description: nil, deviceGroupIDs: [DemoFixtures.engineersPlatformGroupID],
                                        stepName: "s", componentIdentifier: BlueprintBuilder.componentIdentifier, configuration: configuration)
         // Through JTKit's client, as demo mode does.
-        let blueprints = JamfPlatform.Blueprints(client: DemoBlueprintServer().client(log: nil))
+        let blueprints = JamfPlatform.Blueprints(client: DemoJamfPlatformServer().client(log: nil))
         let id = try await blueprints.create(name: request.name, description: request.description,
                                              deviceGroups: request.deviceGroupIDs, steps: request.steps)
         let detail = try await blueprints.detail(id: id)
@@ -268,7 +272,7 @@ struct GuardTests {
 
     @Test("Demo mode answers JTKit's requests: device groups, the duplicate search, deploy and report")
     func demoServerThroughJTKit() async throws {
-        let server = DemoBlueprintServer(pollsToSucceed: 1)
+        let server = DemoJamfPlatformServer(pollsToSucceed: 1)
         let client = server.client(log: nil)
         let groups = try await client.deviceGroups(pageSize: 3)
         #expect(groups == DemoFixtures.platformGroups, "every page, read back as JTKit's DeviceGroup")
@@ -299,7 +303,7 @@ struct GuardTests {
         let list = #"{"results":[{"id":"dc0ca4c9-c567-440a-a5b3-750437c58c8a","name":null,"description":null,"created":"2026-04-08T13:48:29.408600Z","updated":"2026-04-08T14:05:56.892810Z","deploymentState":{"state":"NOT_DEPLOYED","lastDeployment":null}},{"id":"b","name":"Real","deploymentState":null}],"totalCount":2}"#
         let server = MockServer { _ in .json(200, list) }
         let client = try JamfPlatform.Client(
-            baseURL: URL(string: "https://us.api.jamfcloud.com")!, scope: .environment(DemoBlueprintServer.environmentID),
+            baseURL: URL(string: "https://us.api.jamfcloud.com")!, scope: .environment(DemoSamples.platformEnvironmentID),
             tokens: NoToken(), recorder: RequestRecorder(session: server.session, log: nil))
         let blueprints = JamfPlatform.Blueprints(client: client)
         #expect(try await blueprints.blueprints(named: "Real").map(\.id) == ["b"])

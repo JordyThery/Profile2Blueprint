@@ -26,8 +26,9 @@ nonisolated struct ScopeBackup: Codable, Hashable, Sendable, Identifiable {
             return environmentID == nil && environmentName == environment.displayName
         }
         guard let environmentID else {
-            // Backups without an Environment ID: matched by name, never the demo's.
-            return environmentName == environment.displayName && environmentName != MigrationEnvironment.demoDisplayName
+            // Backups without an Environment ID: matched by name, never the demo's (today's or its earlier name).
+            return environmentName == environment.displayName
+                && ![MigrationEnvironment.demoDisplayName, MigrationEnvironment.earlierDemoDisplayName].contains(environmentName)
         }
         return environmentID == environment.environmentID
     }

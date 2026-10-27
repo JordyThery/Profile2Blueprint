@@ -161,12 +161,12 @@ extension NetworkingTests {
 
 @Suite("Demo mode Classic server")
 struct DemoClassicListTests {
-    @Test("The demo lists answer in Jamf Pro's JSON shape and read back as before", arguments: ProfilePlatform.allCases)
+    @Test("The demo lists answer in Jamf Pro's JSON shape and read back sorted by name, as from a tenant", arguments: ProfilePlatform.allCases)
     func demoList(platform: ProfilePlatform) async throws {
         let json = DemoFixtures.profileListJSON(platform: platform)
         #expect(json.hasPrefix(#"{"\#(platform.listRootElement)":[{"id":"#))
-        let list = try await DemoClassicAPI().listProfiles(platform: platform)
-        #expect(list.map(\.profileID) == (platform == .macOS ? [101, 102, 103, 104, 105, 106, 107] : [201, 202]))
+        let list = try await demoClassicAPI().listProfiles(platform: platform)
+        #expect(list.map(\.profileID) == (platform == .macOS ? [103, 104, 101, 105, 102, 107, 106] : [202, 201]))
         #expect(list.allSatisfy { !$0.name.isEmpty && !$0.name.contains("&amp;") })
     }
 }
