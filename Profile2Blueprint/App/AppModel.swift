@@ -23,6 +23,8 @@ final class AppModel {
     }
 
     let history: HistoryLog
+    /// Demo mode's own history, kept in `demoFiles`, never in the real file.
+    let demoHistory: HistoryLog
     let activity: ActivityLog
     let updates: UpdateChecker
     /// Cache only; views observe `isDemoMode` / `currentTenantID`, which drive rebuilds.
@@ -30,6 +32,7 @@ final class AppModel {
 
     @ObservationIgnored private let store: TenantStore
     @ObservationIgnored private let secrets: RecordingSecretStore
+    @ObservationIgnored private let demoFiles: DemoFiles
     private let session: URLSession
     private static let demoModeKey = "demoMode"
 
@@ -38,9 +41,11 @@ final class AppModel {
         secrets: any SecretStore = KeychainSecretStore.profile2Blueprint(),
         session: URLSession = .shared,
         history: HistoryStore = .appDefault(),
+        demoFiles: DemoFiles = DemoFiles(),
         demoMode: Bool? = nil
     ) {
         self.store = store
+        self.demoFiles = demoFiles
         let recording = RecordingSecretStore(secrets)
         self.secrets = recording
         self.session = session
@@ -49,6 +54,7 @@ final class AppModel {
         let activityLog = ActivityLog()
         self.activity = activityLog
         self.history = HistoryLog(store: history, activity: activityLog)
+        demoHistory = HistoryLog(store: demoFiles.history, activity: activityLog)
         updates = UpdateChecker(configuration: .profile2Blueprint) { line in
             // JTKit reports plain lines; failures keep their warning level in Activity.
             activityLog.app(line, level: line.hasPrefix("Update check failed") ? .warning : .info)
@@ -99,10 +105,16 @@ final class AppModel {
         let activity = self.activity
         let name = environment.displayName
         Task { activity.app("Opened workspace for \(name).", environment: name) }
-        let created = Workspace(environment: environment, history: history)
+        let created = isDemoMode
+            ? Workspace(environment: environment, history: demoHistory,
+                        scopeBackups: demoFiles.scopeBackups, sessionStates: demoFiles.sessionStates)
+            : Workspace(environment: environment, history: history)
         workspace = created
         return created
     }
+
+    /// The history the History page shows: demo mode's own while it's on.
+    var currentHistory: HistoryLog { isDemoMode ? demoHistory : history }
 
     /// Drops the cached workspace so the next access rebuilds it with fresh settings.
     private func invalidateWorkspace(for tenantID: UUID?) {
