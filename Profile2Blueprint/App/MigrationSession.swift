@@ -98,8 +98,7 @@ final class MigrationSession: Identifiable {
         let environment = workspace.environment
         let environmentKey = environment.environmentID ?? environment.displayName
         Task { [scopeBackups, sessionStates] in
-            if let existing = await scopeBackups.latest(key: key, environmentID: environment.environmentID,
-                                                        environmentName: environment.displayName) {
+            if let existing = await scopeBackups.latest(key: key, environment: environment) {
                 self.scopeBackup = existing
                 self.unscopeStatus = .unscoped(existing.createdAt)
             }
@@ -257,6 +256,9 @@ final class MigrationSession: Identifiable {
     func deploy(_ confirmation: DeployConfirmation) async {
         stopReportMonitor()
         await perform { [self] in
+            // Recorded only once the pipeline accepts this confirmation; a
+            // refused deploy sends nothing and leaves no "confirmed" line.
+            try await pipeline.checkDeployable(confirmation: confirmation)
             history.record(.deploy, environment: environment, profile: profile, blueprintID: confirmation.blueprintID,
                                      blueprintName: confirmation.blueprintName, result: .success,
                                      message: "Confirmed by user for \(confirmation.groupNames.joined(separator: ", ")) (\(confirmation.deviceCount) devices).")

@@ -91,13 +91,11 @@ actor ScopeBackupStore {
 
     var all: [ScopeBackup] { backups }
 
-    /// The newest unrestored backup for a profile, matched by environment ID when
-    /// one exists (tenant names can be edited) and by name otherwise (demo mode).
-    func latest(key: ProfileKey, environmentID: String?, environmentName: String) -> ScopeBackup? {
-        backups.last {
-            $0.key == key && $0.restoredAt == nil
-                && ($0.environmentID ?? $0.environmentName) == (environmentID ?? environmentName)
-        }
+    /// The newest unrestored backup for a profile taken in `environment`, matched
+    /// exactly as Restore checks it (`ScopeBackup.belongs(to:)`), so the app
+    /// never offers a Restore it would then refuse.
+    func latest(key: ProfileKey, environment: MigrationEnvironment) -> ScopeBackup? {
+        backups.last { $0.key == key && $0.restoredAt == nil && $0.belongs(to: environment) }
     }
 
     /// Saves before any write. Throws if the backup can't be written, which aborts the unscope.

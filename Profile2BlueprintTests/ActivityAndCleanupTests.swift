@@ -186,14 +186,14 @@ struct ClassicScopeServiceTests {
         #expect(after.payloadsPlist == before.payloadsPlist, "payloads untouched")
         #expect(backup.scopeXML == before.rawScopeXML)
         #expect(try ClassicXMLParser.parseScopeXML(backup.scopeXML, platform: .macOS) == before.scope)
-        #expect(await store.latest(key: ProfileKey(platform: .macOS, id: 102), environmentID: nil, environmentName: "Test")?.id == backup.id)
+        #expect(await store.latest(key: ProfileKey(platform: .macOS, id: 102), environment: env)?.id == backup.id)
         let writes = server.scopeWrites
         #expect(writes.count == 1 && RequestPolicy.isScopeOnlyProfileXML(Data(writes[0].body.utf8)))
 
         let restored = try await ClassicScopeService.restore(backup, environment: env, backups: store)
         #expect(restored.scope == before.scope)
         #expect(restored.payloadsPlist == before.payloadsPlist)
-        #expect(await store.latest(key: ProfileKey(platform: .macOS, id: 102), environmentID: nil, environmentName: "Test") == nil, "backup marked restored")
+        #expect(await store.latest(key: ProfileKey(platform: .macOS, id: 102), environment: env) == nil, "backup marked restored")
         #expect(await store.all.first?.restoredAt != nil)
     }
 

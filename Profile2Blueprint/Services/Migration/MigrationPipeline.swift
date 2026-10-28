@@ -116,6 +116,11 @@ actor MigrationPipeline {
     /// 2. Validate eligibility.
     func validate(platformGroups: [JamfPlatform.DeviceGroup]) throws -> EligibilityReport {
         guard let profile else { throw PipelineError(message: "Fetch the profile before validating.") }
+        // Once a Blueprint exists, going back a stage would hide it; load the
+        // profile again (which starts over) instead.
+        guard Self.isBeforeCreate(state) else {
+            throw PipelineError(message: "This migration has already created its Blueprint. Load the profile again to start over.")
+        }
         let result = EligibilityChecker.check(profile, platformGroups: platformGroups)
         report = result
         state = .validated
@@ -125,6 +130,10 @@ actor MigrationPipeline {
     /// 3+4+5. Distill, map scope and build the request body.
     func build(name: String, description: String?, deviceGroupIDs: [String], acknowledgedWarnings: Bool) throws -> BlueprintRequest {
         guard let profile, let report else { throw PipelineError(message: "Validate the profile before building.") }
+        switch state {
+        case .validated, .built: break
+        default: throw PipelineError(message: "Validate the profile before building.")
+        }
         guard report.status != .blocked else {
             throw PipelineError(message: "This profile is blocked: " + report.reasons.filter { $0.severity == .blocker }.map(\.title).joined(separator: ", "))
         }
@@ -197,6 +206,22 @@ actor MigrationPipeline {
         confirmation: DeployConfirmation,
         onProgress: @Sendable (JamfPlatform.DeploymentStatus) async -> Void = { _ in }
     ) async throws -> DeploymentOutcome {
+        let blueprintID = try checkDeployable(confirmation: confirmation)
+        do {
+            state = .deploying(nil)
+            previousDeploymentStart = try await blueprints.startDeployment(id: blueprintID)
+            Log.app.info("Deploy accepted for blueprint \(blueprintID, privacy: .public)")
+            return try await monitor(id: blueprintID, onProgress: onProgress)
+        } catch {
+            state = .failed(stage: "deploy", ErrorReport(error))
+            throw error
+        }
+    }
+
+    /// Whether `deploy(confirmation:)` would go ahead: a verified, passing
+    /// blueprint and a confirmation naming it. Sends nothing. Returns the blueprint's ID.
+    @discardableResult
+    func checkDeployable(confirmation: DeployConfirmation) throws -> String {
         guard let blueprintID, case let .verified(passed) = state else {
             throw PipelineError(message: "Verify the blueprint before deploying.")
         }
@@ -206,15 +231,14 @@ actor MigrationPipeline {
         guard passed else {
             throw PipelineError(message: "Verification found mismatches. Deploying was refused.")
         }
+        return blueprintID
+    }
 
-        do {
-            state = .deploying(nil)
-            previousDeploymentStart = try await blueprints.startDeployment(id: blueprintID)
-            Log.app.info("Deploy accepted for blueprint \(blueprintID, privacy: .public)")
-            return try await monitor(id: blueprintID, onProgress: onProgress)
-        } catch {
-            state = .failed(stage: "deploy", ErrorReport(error))
-            throw error
+    /// Before a Blueprint is created: where validating and building may run again.
+    static func isBeforeCreate(_ state: MigrationState) -> Bool {
+        switch state {
+        case .fetched, .validated, .built: true
+        default: false
         }
     }
 

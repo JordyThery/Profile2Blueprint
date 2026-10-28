@@ -33,6 +33,11 @@ final class AppModel {
     @ObservationIgnored private let store: TenantStore
     @ObservationIgnored private let secrets: RecordingSecretStore
     @ObservationIgnored private let demoFiles: DemoFiles
+    /// Where a tenant's workspace keeps scope backups and sessions; nil means
+    /// the real files in Application Support (opened per workspace). A sandbox
+    /// run passes files in its temporary folder.
+    @ObservationIgnored private let tenantScopeBackups: ScopeBackupStore?
+    @ObservationIgnored private let tenantSessionStates: SessionStateStore?
     /// The network for real tenants, also while demo mode is on (Test Connection).
     private let session: URLSession
     /// Demo mode as the workspace was last built for, to notice a switch.
@@ -44,15 +49,21 @@ final class AppModel {
     ///   - demoMode: for tests and previews, demo mode on or off for this
     ///     model only, never saved. Without either, demo mode is off and not saved.
     ///   - demoFiles: where demo mode keeps its files; `demo`'s temporary folder by default.
+    ///   - scopeBackups, sessionStates: a tenant workspace's files; the real
+    ///     ones in Application Support when nil.
     init(
         store: TenantStore = .appDefault(),
         secrets: any SecretStore = KeychainSecretStore.profile2Blueprint(),
         session: URLSession = .shared,
         history: HistoryStore = .appDefault(),
+        scopeBackups: ScopeBackupStore? = nil,
+        sessionStates: SessionStateStore? = nil,
         demo: DemoMode? = nil,
         demoFiles: DemoFiles? = nil,
         demoMode: Bool? = nil
     ) {
+        tenantScopeBackups = scopeBackups
+        tenantSessionStates = sessionStates
         let demo = demo ?? DemoMode(key: Self.demoModeKey,
                                     arguments: [DemoMode.launchArgument, demoMode == true ? "YES" : "NO"])
         self.demo = demo
@@ -95,11 +106,19 @@ final class AppModel {
     static func forLaunch() -> AppModel {
         let demo = DemoMode(key: demoModeKey)
         guard demo.isSandbox else { return AppModel(demo: demo) }
+        return sandbox(demo: demo)
+    }
+
+    /// A sandbox run's model: tenants, history, scope backups and sessions in
+    /// `demo`'s temporary folder, secrets in memory, a network that reaches nothing.
+    static func sandbox(demo: DemoMode) -> AppModel {
         let folder = demo.scratchDirectory
         return AppModel(store: TenantStore(fileURL: folder.appending(path: "sandbox-tenants.json")),
                         secrets: SandboxSecretStore(),
                         session: DemoNetwork(servers: [:]).session,
                         history: HistoryStore(fileURL: folder.appending(path: "sandbox-history.json")),
+                        scopeBackups: ScopeBackupStore(fileURL: folder.appending(path: "sandbox-scope-backups.json")),
+                        sessionStates: SessionStateStore(fileURL: folder.appending(path: "sandbox-sessions.json")),
                         demo: demo)
     }
 
@@ -158,7 +177,9 @@ final class AppModel {
         let created = isDemoMode
             ? Workspace(environment: environment, history: demoHistory,
                         scopeBackups: demoFiles.scopeBackups, sessionStates: demoFiles.sessionStates)
-            : Workspace(environment: environment, history: history)
+            : Workspace(environment: environment, history: history,
+                        scopeBackups: tenantScopeBackups ?? .appDefault(),
+                        sessionStates: tenantSessionStates ?? .appDefault())
         workspace = created
         return created
     }
