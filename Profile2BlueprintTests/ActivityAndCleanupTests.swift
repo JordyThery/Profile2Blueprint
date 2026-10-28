@@ -233,6 +233,37 @@ struct ClassicScopeServiceTests {
     func cleanDeploymentGate(outcome: DeploymentOutcome, allowed: Bool) {
         #expect(ClassicScopeService.deploymentAllowsUnscope(outcome) == allowed)
     }
+
+    @Test("A clean deployment is one success with nothing failed or pending, at the boundary", arguments: [
+        (1, 0, 0, true),
+        (1, 1, 0, false),
+        (1, 0, 1, false),
+        (0, 0, 0, false), // a Blueprint scoped to empty groups: nothing succeeded
+        (0, 1, 0, false),
+        (0, 0, 1, false),
+    ])
+    func cleanDeploymentBoundary(succeeded: Int, failed: Int, pending: Int, allowed: Bool) {
+        let report = JamfPlatform.BlueprintReport(succeeded: succeeded, failed: failed, pending: pending)
+        #expect(ClassicScopeService.deploymentAllowsUnscope(.succeeded(report)) == allowed)
+    }
+
+    @Test("Every mix of counts: clean only with at least one success and no failures or pending")
+    func cleanDeploymentEveryMix() {
+        for succeeded in 0...3 {
+            for failed in 0...2 {
+                for pending in 0...2 {
+                    let report = JamfPlatform.BlueprintReport(succeeded: succeeded, failed: failed, pending: pending)
+                    let expected = succeeded >= 1 && failed == 0 && pending == 0
+                    #expect(ClassicScopeService.deploymentAllowsUnscope(.succeeded(report)) == expected,
+                            "succeeded \(succeeded), failed \(failed), pending \(pending)")
+                }
+            }
+        }
+        // Without a finished deployment's report it never qualifies.
+        #expect(!ClassicScopeService.deploymentAllowsUnscope(nil))
+        #expect(!ClassicScopeService.deploymentAllowsUnscope(.timedOut(nil)))
+        #expect(!ClassicScopeService.deploymentAllowsUnscope(.succeeded(nil)))
+    }
 }
 
 @Suite("Session cleanup flow", .serialized)

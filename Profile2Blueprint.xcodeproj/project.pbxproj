@@ -9,10 +9,19 @@
 /* Begin PBXBuildFile section */
 		087B2E9C308E37F000D0CB8A /* JTKit in Frameworks */ = {isa = PBXBuildFile; productRef = 0A0000000000000000000002 /* JTKit */; };
 		087B3DFE308E87AF00D0CB8A /* JTKitTestSupport in Frameworks */ = {isa = PBXBuildFile; productRef = 087B3DFD308E87AF00D0CB8A /* JTKitTestSupport */; };
+		088B839130921EDD00F87877 /* JTKitUITestSupport in Frameworks */ = {isa = PBXBuildFile; productRef = 088B839030921EDD00F87877 /* JTKitUITestSupport */; };
+		0B12C1A1309F000000D0CB8A /* JTKitLiveCheck in Frameworks */ = {isa = PBXBuildFile; productRef = 0B12C1A0309F000000D0CB8A /* JTKitLiveCheck */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
 		087B430F308F264D00D0CB8A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 000000000000000000000000 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 000000000000000100000000;
+			remoteInfo = Profile2Blueprint;
+		};
+		088B838B30921ED500F87877 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 000000000000000000000000 /* Project object */;
 			proxyType = 1;
@@ -24,6 +33,7 @@
 /* Begin PBXFileReference section */
 		000000000000000000000120 /* Profile2Blueprint.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Profile2Blueprint.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		08540C31306E587800F03FA7 /* Profile2BlueprintTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = Profile2BlueprintTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		088B838730921ED500F87877 /* Profile2BlueprintUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = Profile2BlueprintUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -35,6 +45,11 @@
 		08540C32306E587800F03FA7 /* Profile2BlueprintTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = Profile2BlueprintTests;
+			sourceTree = "<group>";
+		};
+		088B838830921ED500F87877 /* Profile2BlueprintUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Profile2BlueprintUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -50,6 +65,13 @@
 			isa = PBXFrameworksBuildPhase;
 			files = (
 				087B3DFE308E87AF00D0CB8A /* JTKitTestSupport in Frameworks */,
+				0B12C1A1309F000000D0CB8A /* JTKitLiveCheck in Frameworks */,
+			);
+		};
+		088B838430921ED500F87877 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+				088B839130921EDD00F87877 /* JTKitUITestSupport in Frameworks */,
 			);
 		};
 /* End PBXFrameworksBuildPhase section */
@@ -60,6 +82,7 @@
 			children = (
 				000000000000000000000010 /* Profile2Blueprint */,
 				08540C32306E587800F03FA7 /* Profile2BlueprintTests */,
+				088B838830921ED500F87877 /* Profile2BlueprintUITests */,
 				087B3DFC308E87AF00D0CB8A /* Frameworks */,
 				000000000000000000000020 /* Products */,
 			);
@@ -70,6 +93,7 @@
 			children = (
 				000000000000000000000120 /* Profile2Blueprint.app */,
 				08540C31306E587800F03FA7 /* Profile2BlueprintTests.xctest */,
+				088B838730921ED500F87877 /* Profile2BlueprintUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -124,10 +148,35 @@
 			name = Profile2BlueprintTests;
 			packageProductDependencies = (
 				087B3DFD308E87AF00D0CB8A /* JTKitTestSupport */,
+				0B12C1A0309F000000D0CB8A /* JTKitLiveCheck */,
 			);
 			productName = Profile2BlueprintTests;
 			productReference = 08540C31306E587800F03FA7 /* Profile2BlueprintTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		088B838630921ED500F87877 /* Profile2BlueprintUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 088B838D30921ED500F87877 /* Build configuration list for PBXNativeTarget "Profile2BlueprintUITests" */;
+			buildPhases = (
+				088B838330921ED500F87877 /* Sources */,
+				088B838430921ED500F87877 /* Frameworks */,
+				088B838530921ED500F87877 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				088B838C30921ED500F87877 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				088B838830921ED500F87877 /* Profile2BlueprintUITests */,
+			);
+			name = Profile2BlueprintUITests;
+			packageProductDependencies = (
+				088B839030921EDD00F87877 /* JTKitUITestSupport */,
+			);
+			productName = Profile2BlueprintUITests;
+			productReference = 088B838730921ED500F87877 /* Profile2BlueprintUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
 		};
 /* End PBXNativeTarget section */
 
@@ -136,7 +185,7 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 2700;
+				LastSwiftUpdateCheck = 2710;
 				LastUpgradeCheck = 2700;
 				TargetAttributes = {
 					000000000000000100000000 = {
@@ -144,6 +193,10 @@
 					};
 					08540C30306E587800F03FA7 = {
 						CreatedOnToolsVersion = 27.0;
+					};
+					088B838630921ED500F87877 = {
+						CreatedOnToolsVersion = 27.1;
+						TestTargetID = 000000000000000100000000;
 					};
 				};
 			};
@@ -166,6 +219,7 @@
 			targets = (
 				000000000000000100000000 /* Profile2Blueprint */,
 				08540C30306E587800F03FA7 /* Profile2BlueprintTests */,
+				088B838630921ED500F87877 /* Profile2BlueprintUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -177,6 +231,11 @@
 			);
 		};
 		08540C2F306E587800F03FA7 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		088B838530921ED500F87877 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			files = (
 			);
@@ -194,6 +253,11 @@
 			files = (
 			);
 		};
+		088B838330921ED500F87877 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -201,6 +265,11 @@
 			isa = PBXTargetDependency;
 			target = 000000000000000100000000 /* Profile2Blueprint */;
 			targetProxy = 087B430F308F264D00D0CB8A /* PBXContainerItemProxy */;
+		};
+		088B838C30921ED500F87877 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 000000000000000100000000 /* Profile2Blueprint */;
+			targetProxy = 088B838B30921ED500F87877 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -449,6 +518,48 @@
 			};
 			name = Release;
 		};
+		088B838E30921ED500F87877 /* Debug configuration for PBXNativeTarget "Profile2BlueprintUITests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = K3LQ9NPBMG;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = be.jordythery.Profile2BlueprintUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = Profile2Blueprint;
+			};
+			name = Debug;
+		};
+		088B838F30921ED500F87877 /* Release configuration for PBXNativeTarget "Profile2BlueprintUITests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = K3LQ9NPBMG;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = be.jordythery.Profile2BlueprintUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = Profile2Blueprint;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -476,6 +587,14 @@
 			);
 			defaultConfigurationName = Release;
 		};
+		088B838D30921ED500F87877 /* Build configuration list for PBXNativeTarget "Profile2BlueprintUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				088B838E30921ED500F87877 /* Debug configuration for PBXNativeTarget "Profile2BlueprintUITests" */,
+				088B838F30921ED500F87877 /* Release configuration for PBXNativeTarget "Profile2BlueprintUITests" */,
+			);
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
@@ -484,7 +603,7 @@
 			repositoryURL = "https://github.com/JordyThery/JTKit.git";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 0.11.7;
+				minimumVersion = 0.12.2;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
@@ -495,10 +614,20 @@
 			package = 0A0000000000000000000001 /* XCRemoteSwiftPackageReference "JTKit" */;
 			productName = JTKitTestSupport;
 		};
+		088B839030921EDD00F87877 /* JTKitUITestSupport */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0A0000000000000000000001 /* XCRemoteSwiftPackageReference "JTKit" */;
+			productName = JTKitUITestSupport;
+		};
 		0A0000000000000000000002 /* JTKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 0A0000000000000000000001 /* XCRemoteSwiftPackageReference "JTKit" */;
 			productName = JTKit;
+		};
+		0B12C1A0309F000000D0CB8A /* JTKitLiveCheck */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0A0000000000000000000001 /* XCRemoteSwiftPackageReference "JTKit" */;
+			productName = JTKitLiveCheck;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
