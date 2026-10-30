@@ -195,8 +195,9 @@ struct LiveTenant {
             + classicGroups.map { (Self.classicGroups, $0.id, $0.name) }
     }
 
-    /// Deletes a test object; already gone (404) counts as removed (the
-    /// guarded network marks it so in the ledger).
+    /// Deletes a test object. Its answer, 404 included, never counts: JTKit's
+    /// read-back (0.12.6) marks it removed only once the object is gone, and
+    /// a leftover fails the run.
     func delete(resource: String, id: String) async throws {
         let request: HTTPRequest
         let privilege: JamfPro.Privilege?
