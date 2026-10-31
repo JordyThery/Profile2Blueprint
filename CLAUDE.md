@@ -1,5 +1,7 @@
 # Profile2Blueprint: instructions for Claude
 
+At the start of every conversation, run ../JTKit/Scripts/check-versions.sh (or fetch it from GitHub if ../JTKit isn’t there) and mention the result in one line if anything is out of date.
+
 Shared code and the standards for every app: see JTKit's CLAUDE.md and ROADMAP.md (github.com/JordyThery/JTKit, or ../JTKit in the workspace).
 
 ## What the app does
@@ -37,8 +39,8 @@ When something is needed that JTKit could share, extend JTKit instead of adding 
 - **The allow-list (`RequestPolicy`) is the safety net.** Allowed: any GET; POST to create or deploy a Blueprint; a classic profile PUT whose XML has only `<scope>`, and only when the tenant's classic-cleanup switch is on. Everything else (PATCH, DELETE, undeploy, group writes) is refused. Don't widen it without Jordy.
 - **Classic cleanup is guarded three times:** per-tenant `allowClassicScopeChanges` (off by default, with a confirmation), a per-profile opt-in, and a clean deploy report (0 failed, 0 pending). The original scope is backed up and can be restored.
 - **In-place transform is the whole point.** Never adopt jamf-cli's `--strip-defaults`, MCX rewrapping, native DDM conversion (`--convert`) or synthesized identifiers: each changes the payloads, so the takeover fails. Block the profile instead.
-- **Sites: don't build yet.** The public Blueprints API has no site field (last checked 2026-10-13). When it gains one, propose: read and set the Blueprint's site, filter profiles by site. Until then, possible small changes (only if asked): a site-filtered profile list, raising the `.site` finding from info to a warning, a README limitation line. `ClassicProfile.site` is already parsed.
-- **Jamf School: not supported.** A Jamf School platform environment offers only Blueprints and device actions, no configuration-profiles or device-groups capability, so profiles can't be read and a Blueprint can't be scoped. Don't build a Jamf School-native API path. Revisit only if Jamf adds those capabilities.
+- **Sites: don’t build yet.** Until the public Blueprints API has a site field, possible small changes (only if asked): a site-filtered profile list, raising the `.site` finding from info to a warning, a README limitation line. `ClassicProfile.site` is already parsed.
+- **Jamf School: not supported.** A Jamf School platform environment offers only Blueprints and device actions, no configuration-profiles or device-groups capability, so profiles can't be read and a Blueprint can't be scoped. Don't build a Jamf School-native API path.
 - **Local Jamf Pro accounts can't work:** Blueprints exist only behind the Platform API gateway, which needs a Jamf Account integration.
 - **Exclusions and limitations are not carried over**; the checker warns. jamf-cli shows exclusions could be carried as a step `activationPredicate` (`NONE @property(jamf.device.groups) IN {...}`) when the classic profile doesn't exclude the same group; not built.
 - **History stays in the app** (`history.json`); JTKit's in-memory activity log is not a substitute. The old `activity.json` stays on disk untouched and unread.
@@ -49,7 +51,7 @@ When something is needed that JTKit could share, extend JTKit instead of adding 
 ## Verified Jamf behaviour
 
 - Blueprint create takes only name, description, `scope.deviceGroups` and steps. The gateway answers 403 for any unknown path, so probing undocumented paths proves nothing.
-- Assigning a site to an existing, undeployed migrated Blueprint in the Jamf Pro UI removed its payload component and target group (UI and API) and renamed the step to "Components in this blueprint". Unknown whether this always happens.
+- Assigning a site to an existing, undeployed migrated Blueprint in the Jamf Pro UI removed its payload component and target group (UI and API) and renamed the step to "Components in this blueprint".
 - The API overwrites each payload's `PayloadUUID` with its `PayloadIdentifier`, so a payload where the two differ is blocked. Top-level identity is stored as sent.
 - Keys outside Apple's schema are silently dropped and stop being enforced after takeover.
 - The server rewrites some strings (CR/LF, trimmed edges, `&`/`<` escaped twice per Jamf PI-827, non-BMP characters); `PlistJSONComparator` tolerates exactly these.
@@ -57,7 +59,11 @@ When something is needed that JTKit could share, extend JTKit instead of adding 
 - Undeploying a Blueprint whose classic profile is gone removes the settings from devices. The app can't undeploy.
 - The Classic API works through the gateway with the environment-scoped token (`X-Environment-Id`). Profile lists are asked for as JSON (Jamf labels them `text/plain`); single profiles stay XML for the payload and the scope backup.
 - The scope-only partial-XML PUT is verified live on macOS and mobile; the mobile takeover was verified on an iPhone.
-- Payload-type tables (`EligibilityChecker`: blocked, supported, non-canonical) and the string-rewrite classes come from jamf-cli's `internal/profileconvert`. They drift silently. When working on the app, compare with jamf-cli (last reviewed 2026-10-12 at commit `3999e358`; tables last probed 2026-07-17). If they changed, update the sets, `payloadTableProbeDate` and the user-facing text. The supported list is a warning only, never a blocker.
+- Payload-type tables (`EligibilityChecker`: blocked, supported, non-canonical) and the string-rewrite classes come from jamf-cli's `internal/profileconvert`. They drift silently. When working on the app, compare with jamf-cli. If they changed, update the sets, `payloadTableProbeDate`, the user-facing text and the dates in WATCHLIST.md. The supported list is a warning only, never a blocker.
+
+## Watchlist
+
+What this app waits for from Apple, Jamf or Microsoft, or must recheck: see WATCHLIST.md.
 
 ## Testing
 
