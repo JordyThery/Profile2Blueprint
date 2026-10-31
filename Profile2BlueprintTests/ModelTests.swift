@@ -62,7 +62,7 @@ struct ErrorReportTests {
         let body = JamfPlatform.ErrorBody(httpStatus: 403, traceID: "t-1", errors: [
             .init(code: "BAD_PERMISSIONS", field: "scope", description: "Not allowed"),
         ])
-        let report = ErrorReport(JamfPlatformError(.status(403, body: body, text: nil, method: "GET", path: "/device-groups/v1/device-groups")))
+        let report = ErrorReport(JamfPlatform.APIError(.status(403, body: body, text: nil, method: "GET", path: "/device-groups/v1/device-groups")))
         #expect(report.title == "HTTP 403 Forbidden")
         #expect(report.httpStatus == 403)
         #expect(report.traceID == "t-1")
@@ -73,8 +73,8 @@ struct ErrorReportTests {
 
     @Test("A refused request says what the app does send")
     func refused() {
-        let error = JamfPlatformError(.refused(method: "PUT", path: "proclassic/osxconfigurationprofiles/id/1"))
-        let report = ErrorReport(JamfPlatformError(error.kind, appHints: RequestPolicy.hints(for: error)))
+        let error = JamfPlatform.APIError(.refused(method: "PUT", path: "proclassic/osxconfigurationprofiles/id/1"))
+        let report = ErrorReport(JamfPlatform.APIError(error.kind, appHints: RequestPolicy.hints(for: error)))
         #expect(report.title.hasPrefix("Refused before sending: PUT"))
         #expect(report.details == ["This app only reads, creates and deploys blueprints, and changes classic scope only when that is explicitly enabled."])
     }

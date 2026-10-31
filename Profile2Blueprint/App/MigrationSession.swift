@@ -384,7 +384,7 @@ final class MigrationSession: Identifiable {
                 state = await pipeline.state
                 try await verifyStage()
             } catch {
-                if let error = error as? JamfPlatformError, error.status == 404 {
+                if let error = error as? JamfPlatform.APIError, error.status == 404 {
                     await sessionStates.remove(environmentKey: environmentKey, key: key)
                     blueprintID = nil
                     createdName = nil

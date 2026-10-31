@@ -28,8 +28,6 @@ CREDENTIALS=(
     "jamf-test-a:jamfPlatform:client-id"
     "jamf-test-a:jamfPlatform:client-secret"
 )
-# No older test objects: the app never had tests that reached a tenant.
-LEGACY_PREFIXES=""
 DOMAIN="be.jordythery.profile2blueprint"
 # The app is sandboxed: its test host reaches only its own container, so the
 # live folder (allow-list copy, ledger, results) lives there (JTKit 0.12.2).

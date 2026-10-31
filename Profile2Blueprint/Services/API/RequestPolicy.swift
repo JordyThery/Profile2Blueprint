@@ -47,7 +47,7 @@ nonisolated enum RequestPolicy {
     }
 
     /// The app's hint for a refused request: what it does send.
-    static func hints(for error: JamfPlatformError) -> [String] {
+    static func hints(for error: JamfPlatform.APIError) -> [String] {
         guard case let .refused(method, _) = error.kind else { return [] }
         return ["This app only reads, creates and deploys blueprints"
             + (method.uppercased() == "PUT" ? ", and changes classic scope only when that is explicitly enabled." : ".")]

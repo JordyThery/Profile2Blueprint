@@ -10,7 +10,7 @@ private let tokenBody = #"{"access_token":"SECRET-TOKEN-VALUE","expires_in":900,
 private func client(_ log: ActivityLog, policy: ClassicWritePolicy = .denied) throws -> JamfPlatform.Client {
     let recorder = RequestRecorder(session: MockURLProtocol.makeSession(), log: log,
                                    service: "Jamf Platform API", connection: "Test")
-    let tokens = JamfTokenProvider(tokenURL: base.appending(path: "auth/token"), method: .apiClient(clientID: "c"),
+    let tokens = JamfPlatform.TokenProvider(tokenURL: base.appending(path: "auth/token"), method: .apiClient(clientID: "c"),
                                    secret: { "s" }, recorder: recorder)
     return try JamfPlatform.Client(baseURL: base, scope: .environment("e77c1408-10c8-4007-b177-abc9157fbcaa"), tokens: tokens,
                                    recorder: recorder, permits: { RequestPolicy.isPermitted($0, classicWrites: policy) },
@@ -36,7 +36,7 @@ extension NetworkingTests {
         }
         let log = ActivityLog()
         let client = try client(log)
-        await #expect(throws: JamfPlatformError.self) {
+        await #expect(throws: JamfPlatform.APIError.self) {
             _ = try await client.send(HTTPRequest(path: "blueprints/v1/blueprints"))
         }
 
@@ -61,7 +61,7 @@ extension NetworkingTests {
         MockURLProtocol.install { _ in Issue.record("nothing should be sent"); return .json(500, "{}") }
         let log = ActivityLog()
         let client = try client(log)
-        await #expect(throws: JamfPlatformError.self) {
+        await #expect(throws: JamfPlatform.APIError.self) {
             _ = try await client.send(HTTPRequest(method: "DELETE", path: "blueprints/v1/blueprints/x"))
         }
         #expect(log.entries.map(\.category) == ["Blocked"])
@@ -84,7 +84,7 @@ extension NetworkingTests {
         let log = ActivityLog()
         let client = try client(log)
         _ = try await client.send(HTTPRequest(path: "proclassic/osxconfigurationprofiles/id/1", accept: "application/xml"))
-        await #expect(throws: JamfPlatformError.self) {
+        await #expect(throws: JamfPlatform.APIError.self) {
             _ = try await client.send(HTTPRequest(method: "POST", path: "blueprints/v1/blueprints",
                                                   body: Data(#"{"steps":[{"Password":"wifi-psk-123"}]}"#.utf8),
                                                   contentType: "application/json"))

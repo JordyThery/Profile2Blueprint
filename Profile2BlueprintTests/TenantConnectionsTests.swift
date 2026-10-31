@@ -252,10 +252,131 @@ struct TenantConnectionsTests {
 
     @Test func aFailedTestShowsTheSameDetailsAsTheErrorPanel() throws {
         let body = try #require(JamfPlatform.ErrorBody(data: Data(#"{"httpStatus":403,"traceId":"trace-1","errors":[{"code":"FORBIDDEN","field":"scope","description":"Missing permission"}]}"#.utf8)))
-        let report = ErrorReport(JamfPlatformError(.status(403, body: body, text: nil, method: "GET", path: "/groups")))
+        let report = ErrorReport(JamfPlatform.APIError(.status(403, body: body, text: nil, method: "GET", path: "/groups")))
         let error = ConnectionTestError(report: report)
         #expect(error.errorDescription == report.title)
         #expect(error.failureReason == report.detailText)
         #expect(error.failureReason?.hasPrefix("FORBIDDEN (scope): Missing permission\nTrace ID: trace-1\n") == true)
+    }
+}
+
+/// A secret store that gives its own answers to JTKit's throwing calls, so the
+/// tests can tell a forwarded answer from JTKit's default one.
+private final class AnsweringSecretStore: SecretStore, @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [String: String]
+    private var log: [String] = []
+    var writeStatus: OSStatus?
+    var readStatus: OSStatus?
+
+    init(_ values: [String: String] = [:]) {
+        self.values = values
+    }
+
+    var calls: [String] { lock.withLock { log } }
+
+    func secret(for account: String) -> String? {
+        lock.withLock { log.append("secret"); return values[account] }
+    }
+
+    func setSecret(_ secret: String?, for account: String) -> Bool {
+        lock.withLock {
+            log.append("setSecret")
+            values[account] = secret
+            return true
+        }
+    }
+
+    func writeSecret(_ secret: String?, for account: String) throws {
+        try lock.withLock {
+            log.append("writeSecret")
+            if let writeStatus { throw SecretWriteError(status: writeStatus) }
+            values[account] = secret
+        }
+    }
+
+    func hasSecret(for account: String) throws -> Bool {
+        try lock.withLock {
+            log.append("hasSecret")
+            if let readStatus { throw SecretStoreError(status: readStatus) }
+            return values[account] != nil
+        }
+    }
+
+    func readSecret(for account: String) throws -> String? {
+        try lock.withLock {
+            log.append("readSecret")
+            if let readStatus { throw SecretStoreError(status: readStatus) }
+            return values[account]
+        }
+    }
+}
+
+@Suite("Recording secret store")
+struct RecordingSecretStoreTests {
+
+    @Test func writesAreForwardedAndANewSecretIsRecordedAsBefore() throws {
+        let base = AnsweringSecretStore()
+        let recording = RecordingSecretStore(base)
+
+        try recording.writeSecret("hunter2", for: "a")
+        #expect(base.calls == ["writeSecret"])
+        #expect(base.secret(for: "a") == "hunter2")
+        #expect(recording.takeWrittenAccounts() == ["a"])
+        #expect(recording.takeWrittenAccounts().isEmpty)
+
+        // deleting isn't a new secret, with either call
+        try recording.writeSecret(nil, for: "a")
+        #expect(recording.setSecret(nil, for: "b"))
+        #expect(recording.takeWrittenAccounts().isEmpty)
+
+        #expect(recording.setSecret("one", for: "b"))
+        #expect(recording.takeWrittenAccounts() == ["b"])
+    }
+
+    @Test func aRefusedWriteKeepsTheKeychainsErrorCodeAndIsNotRecorded() {
+        let base = AnsweringSecretStore()
+        base.writeStatus = -25308
+        let recording = RecordingSecretStore(base)
+
+        #expect(throws: SecretWriteError(status: -25308)) { try recording.writeSecret("hunter2", for: "a") }
+        #expect(base.calls == ["writeSecret"])
+        #expect(recording.takeWrittenAccounts().isEmpty)
+    }
+
+    @Test func checksAndReadsAreForwardedWithTheirErrors() throws {
+        let base = AnsweringSecretStore(["a": "stored"])
+        let recording = RecordingSecretStore(base)
+        #expect(try recording.hasSecret(for: "a"))
+        #expect(try recording.readSecret(for: "a") == "stored")
+        #expect(base.calls == ["hasSecret", "readSecret"])
+
+        base.readStatus = -25308
+        #expect(throws: SecretStoreError(status: -25308)) { _ = try recording.hasSecret(for: "a") }
+        #expect(throws: SecretStoreError(status: -25308)) { _ = try recording.readSecret(for: "a") }
+        #expect(recording.takeWrittenAccounts().isEmpty)
+    }
+
+    @MainActor @Test func savingATenantReportsTheKeychainsErrorCodeAndLogsNoNewSecret() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: "p2b-recording-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let base = AnsweringSecretStore()
+        let model = AppModel(store: TenantStore(fileURL: folder.appending(path: "tenants.json")),
+                             secrets: base,
+                             history: HistoryStore(fileURL: folder.appending(path: "history.json")),
+                             demoMode: false)
+        let tenant = Tenant(name: "Refused")
+        try model.connections.save(tenant)
+        base.writeStatus = -25308
+
+        #expect(throws: ConnectionStoreError.keychainRefused(status: -25308)) {
+            try model.connections.save(tenant, secrets: [.main: "hunter2"])
+        }
+        #expect(!model.activity.entries.contains { $0.detail.contains("Stored a new client secret") })
+
+        base.writeStatus = nil
+        try model.connections.save(tenant, secrets: [.main: "hunter2"])
+        #expect(base.calls.contains("writeSecret") && !base.calls.contains("setSecret"))
+        #expect(model.activity.entries.contains { $0.detail.contains("Stored a new client secret") && $0.detail.contains("Refused") })
     }
 }

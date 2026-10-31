@@ -2,7 +2,7 @@ import Foundation
 import JTKit
 
 /// The app's own failures. Every failed request comes back as JTKit's
-/// `JamfPlatformError` instead, in the format every app shows.
+/// `JamfPlatform.APIError` instead, in the format every app shows.
 nonisolated enum APIError: Error, LocalizedError, Sendable {
     case decoding(String)
     case invalidConfiguration(String)
@@ -32,7 +32,7 @@ nonisolated struct ErrorReport: Hashable, Sendable {
     var traceID: String?
 
     init(_ error: any Error) {
-        let platformError = (error as? JamfPlatformError) ?? (error as? HTTPError).map(JamfPlatformError.init)
+        let platformError = (error as? JamfPlatform.APIError) ?? (error as? HTTPError).map(JamfPlatform.APIError.init)
         if let platformError {
             let lines = platformError.message().components(separatedBy: "\n").filter { !$0.isEmpty }
             title = lines.first ?? "The request failed."

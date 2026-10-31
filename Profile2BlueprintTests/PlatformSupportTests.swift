@@ -291,7 +291,7 @@ struct GuardTests {
         #expect(outcome.value?.didSucceed == true)
         #expect(outcome.value?.report == JamfPlatform.BlueprintReport(succeeded: 12, failed: 0, pending: 0))
 
-        let error = await #expect(throws: JamfPlatformError.self) { _ = try await blueprints.detail(id: "missing") }
+        let error = await #expect(throws: JamfPlatform.APIError.self) { _ = try await blueprints.detail(id: "missing") }
         #expect(error?.status == 404)
         #expect(error?.hasCode(.notFound) == true)
         #expect(ErrorReport(try #require(error)).traceID == "demo-trace")

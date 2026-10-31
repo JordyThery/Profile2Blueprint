@@ -12,7 +12,7 @@ private let tokenBody = #"{"access_token":"tok","expires_in":900,"token_type":"B
 
 private func client(policy: ClassicWritePolicy = .scopeOnly) throws -> JamfPlatform.Client {
     let recorder = RequestRecorder(session: MockURLProtocol.makeSession(), log: nil)
-    let tokens = JamfTokenProvider(tokenURL: base.appending(path: "auth/token"), method: .apiClient(clientID: "c"),
+    let tokens = JamfPlatform.TokenProvider(tokenURL: base.appending(path: "auth/token"), method: .apiClient(clientID: "c"),
                                    secret: { "s" }, recorder: recorder)
     return try JamfPlatform.Client(baseURL: base, scope: .environment("e77c1408-10c8-4007-b177-abc9157fbcaa"), tokens: tokens,
                                    recorder: recorder, permits: { RequestPolicy.isPermitted($0, classicWrites: policy) },
@@ -117,9 +117,9 @@ extension NetworkingTests {
         let classic = LiveClassicAPI(client: try client())
         let writer = LiveClassicScopeWriter(client: try client())
 
-        let list = await #expect(throws: JamfPlatformError.self) { _ = try await classic.listProfiles(platform: platform) }
-        let read = await #expect(throws: JamfPlatformError.self) { _ = try await classic.profile(key: key) }
-        let write = await #expect(throws: JamfPlatformError.self) {
+        let list = await #expect(throws: JamfPlatform.APIError.self) { _ = try await classic.listProfiles(platform: platform) }
+        let read = await #expect(throws: JamfPlatform.APIError.self) { _ = try await classic.profile(key: key) }
+        let write = await #expect(throws: JamfPlatform.APIError.self) {
             try await writer.replaceScope(key: key, body: ClassicScopeService.unscopedBody(platform: platform))
         }
         #expect(list?.privileges == [platform.readPrivilege])
@@ -147,7 +147,7 @@ extension NetworkingTests {
                                 body: Data(page.utf8))
         }
         let writer = LiveClassicScopeWriter(client: try client())
-        let error = await #expect(throws: JamfPlatformError.self) {
+        let error = await #expect(throws: JamfPlatform.APIError.self) {
             try await writer.replaceScope(key: ProfileKey(platform: .macOS, id: 42), body: ClassicScopeService.unscopedBody(platform: .macOS))
         }
         let report = ErrorReport(try #require(error))

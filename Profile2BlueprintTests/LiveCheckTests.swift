@@ -203,23 +203,23 @@ struct LiveTenant {
         let privilege: JamfPro.Privilege?
         switch Ledger.Item(target: "", resource: resource, id: "", name: "").resource {
         case "blueprints":
-            request = HTTPRequest(method: "DELETE", path: "\(JamfPlatform.Blueprints.path)/\(JamfPlatform.pathSegment(id))", safeToRepeat: true)
+            request = HTTPRequest(method: "DELETE", path: "\(JamfPlatform.Blueprints.path)/\(JamfPlatform.pathSegment(id))", repeating: .safe)
             privilege = nil
         case "devicegroups":
-            request = HTTPRequest(method: "DELETE", path: "\(JamfPlatform.Client.deviceGroupsPath)/\(JamfPlatform.pathSegment(id))", safeToRepeat: true)
+            request = HTTPRequest(method: "DELETE", path: "\(JamfPlatform.Client.deviceGroupsPath)/\(JamfPlatform.pathSegment(id))", repeating: .safe)
             privilege = .deleteStaticComputerGroups
         case Self.profiles:
-            request = HTTPRequest(method: "DELETE", path: JamfClassic.path(Self.profiles, id: id), accept: "application/xml", safeToRepeat: true)
+            request = HTTPRequest(method: "DELETE", path: JamfClassic.path(Self.profiles, id: id), accept: "application/xml", repeating: .safe)
             privilege = .deleteMacOSConfigurationProfiles
         case Self.classicGroups:
-            request = HTTPRequest(method: "DELETE", path: JamfClassic.path(Self.classicGroups, id: id), accept: "application/xml", safeToRepeat: true)
+            request = HTTPRequest(method: "DELETE", path: JamfClassic.path(Self.classicGroups, id: id), accept: "application/xml", repeating: .safe)
             privilege = .deleteStaticComputerGroups
         default:
             throw PipelineError(message: "No way to remove \(resource) \(id)")
         }
         do {
             _ = try await api.send(request, privilege: privilege)
-        } catch let error as JamfPlatformError where error.status == 404 {
+        } catch let error as JamfPlatform.APIError where error.status == 404 {
             return
         }
     }
@@ -234,7 +234,7 @@ struct LiveTenant {
         while true {
             do {
                 return try await delete(resource: resource, id: id)
-            } catch let error as JamfPlatformError
+            } catch let error as JamfPlatform.APIError
                         where (error.status == 422 && error.hasDependencies || error.status == 409) && Date() < deadline {
                 try await Task.sleep(for: .seconds(5))
             }
@@ -247,7 +247,7 @@ struct LiveTenant {
         while Date() < deadline {
             do {
                 _ = try await blueprints.detail(id: id)
-            } catch let error as JamfPlatformError where error.status == 404 {
+            } catch let error as JamfPlatform.APIError where error.status == 404 {
                 return
             }
             try await Task.sleep(for: .seconds(3))
@@ -263,7 +263,7 @@ struct LiveTenant {
     }
 }
 
-private extension JamfPlatformError {
+private extension JamfPlatform.APIError {
     var hasDependencies: Bool {
         body?.errors.contains { $0.code == "HAS_DEPENDENCIES" } == true
     }
@@ -324,7 +324,7 @@ func liveFolder() throws -> URL {
 
 /// Records a failed step and names the missing Jamf privilege when the tenant refused one.
 func failure(_ error: any Error) -> String {
-    if let error = error as? JamfPlatformError, error.status == 401 || error.status == 403 {
+    if let error = error as? JamfPlatform.APIError, error.status == 401 || error.status == 403 {
         return "MISSING PRIVILEGE on the API client's role: \(error.localizedDescription)"
     }
     return error.localizedDescription

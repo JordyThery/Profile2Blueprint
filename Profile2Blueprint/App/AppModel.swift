@@ -283,12 +283,12 @@ final class AppModel {
         let recorder = RequestRecorder(session: session, log: activity,
                                        service: ConnectionService.jamfPlatform.displayName,
                                        connection: tenant.displayName)
-        let tokens: JamfTokenProvider
+        let tokens: JamfPlatform.TokenProvider
         do {
-            tokens = try JamfTokenProvider(connection: tenant.connection, secret: secret(for: tenant, override: secretOverride),
+            tokens = try JamfPlatform.TokenProvider(connection: tenant.connection, secret: secret(for: tenant, override: secretOverride),
                                            recorder: recorder)
         } catch let error as HTTPError {
-            throw JamfPlatformError(error)
+            throw JamfPlatform.APIError(error)
         }
         let classicWrites: ClassicWritePolicy = tenant.allowClassicScopeChanges ? .scopeOnly : .denied
         return try JamfPlatform.Client(

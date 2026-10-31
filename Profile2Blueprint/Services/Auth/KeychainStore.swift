@@ -39,6 +39,24 @@ nonisolated final class RecordingSecretStore: SecretStore, @unchecked Sendable {
         return saved
     }
 
+    // Forwarded so the Keychain's own answers (its error code on a failed
+    // write, "can't tell" apart from "no secret") reach JTKit unchanged.
+
+    func writeSecret(_ secret: String?, for account: String) throws {
+        try base.writeSecret(secret, for: account)
+        if secret != nil {
+            lock.withLock { _ = written.insert(account) }
+        }
+    }
+
+    func hasSecret(for account: String) throws -> Bool {
+        try base.hasSecret(for: account)
+    }
+
+    func readSecret(for account: String) throws -> String? {
+        try base.readSecret(for: account)
+    }
+
     /// The accounts that got a new secret since the last call.
     func takeWrittenAccounts() -> Set<String> {
         lock.withLock {

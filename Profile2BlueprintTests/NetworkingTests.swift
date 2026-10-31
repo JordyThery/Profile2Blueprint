@@ -20,8 +20,8 @@ private func pageJSON(page: Int, totalPages: Int, items: [Int]) -> String {
     #"{"page":\#(page),"pageSize":\#(items.count),"totalCount":\#(totalPages * items.count),"totalPages":\#(totalPages),"hasNext":\#(page + 1 < totalPages),"hasPrevious":\#(page > 0),"results":[\#(items.map(groupJSON).joined(separator: ","))]}"#
 }
 
-private func makeTokens(clock: TestClock = TestClock()) -> JamfTokenProvider {
-    JamfTokenProvider(
+private func makeTokens(clock: TestClock = TestClock()) -> JamfPlatform.TokenProvider {
+    JamfPlatform.TokenProvider(
         tokenURL: base.appending(path: "auth/token"),
         method: .apiClient(clientID: "client-123"),
         secret: { secretValue },
@@ -32,7 +32,7 @@ private func makeTokens(clock: TestClock = TestClock()) -> JamfTokenProvider {
 
 /// JTKit's client as the app builds it (its allow-list and hints), with no
 /// randomness in the waits, so they can be compared exactly.
-private func makeClient(tokens: JamfTokenProvider, sleeper: SleepRecorder = SleepRecorder()) throws -> JamfPlatform.Client {
+private func makeClient(tokens: JamfPlatform.TokenProvider, sleeper: SleepRecorder = SleepRecorder()) throws -> JamfPlatform.Client {
     try JamfPlatform.Client(
         baseURL: base,
         scope: .environment(environmentID),
@@ -190,7 +190,7 @@ struct NetworkingTests {
         }
         let sleeper = SleepRecorder()
         let client = try makeClient(tokens: makeTokens(), sleeper: sleeper)
-        let error = await #expect(throws: JamfPlatformError.self) { _ = try await client.deviceGroups() }
+        let error = await #expect(throws: JamfPlatform.APIError.self) { _ = try await client.deviceGroups() }
         #expect(error?.status == 429)
         #expect(sleeper.recorded.count == RetryRules.standard.maxAttempts - 1)
     }
@@ -254,7 +254,7 @@ struct NetworkingTests {
                 : .json(200, pageJSON(page: 0, totalPages: 99, items: [1]))
         }
         let client = try makeClient(tokens: makeTokens())
-        let error = await #expect(throws: JamfPlatformError.self) { _ = try await client.deviceGroups(pageSize: 1, maxPages: 3) }
+        let error = await #expect(throws: JamfPlatform.APIError.self) { _ = try await client.deviceGroups(pageSize: 1, maxPages: 3) }
         guard case .pageLimitReached(_, 3)? = error?.kind else { Issue.record("Got \(String(describing: error))"); return }
     }
 }

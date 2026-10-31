@@ -64,7 +64,7 @@ struct DemoModeThroughJTKitTests {
         #expect(!ClassicScopeService.hasTargets(try await environment.classic.profile(key: key).scope))
 
         let whole = Data(try #require(DemoFixtures.profilesByKey[key]).utf8)
-        let error = await #expect(throws: JamfPlatformError.self) { try await writer.replaceScope(key: key, body: whole) }
+        let error = await #expect(throws: JamfPlatform.APIError.self) { try await writer.replaceScope(key: key, body: whole) }
         guard case .refused = error?.kind else { Issue.record("not refused: \(String(describing: error))"); return }
         #expect(classic.scopeWrites.count == 1, "nothing more reached the demo server")
     }
