@@ -22,11 +22,11 @@ struct BatchMigrationView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Text("Batch migration").font(.title2.weight(.semibold))
+                Text("Batch Migration").font(.title2.weight(.semibold))
                 Spacer()
                 Text(workspace.environment.displayName).foregroundStyle(workspace.environment.isDemo ? Color.secondary : Color.orange)
             }
-            Text("Each profile is created as its own blueprint (not deployed) and verified. Items that need attention are skipped unless you include them, and blocked items are always skipped. Group choices come from each profile's Scope tab.")
+            Text("Each profile is created as its own Blueprint (not deployed) and verified. Items that need attention are skipped unless you include them, and blocked items are always skipped. Group choices come from each profile’s Scope tab.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -39,7 +39,7 @@ struct BatchMigrationView: View {
                     ))
                     .labelsHidden()
                     .disabled(session.effectiveReport.status != .needsAttention || session.blueprintID != nil || running)
-                    .help(session.effectiveReport.status == .needsAttention ? "Including acknowledges this item's warnings" : "")
+                    .help(session.effectiveReport.status == .needsAttention ? "Including acknowledges this item’s warnings" : "")
                 }
                 .width(50)
                 TableColumn("Profile") { session in
@@ -123,26 +123,13 @@ struct BatchMigrationView: View {
     private func run() async {
         running = true
         defer { running = false; progressText = nil }
-        let items = eligible
-        for (index, session) in items.enumerated() {
-            progressText = "\(dryRun ? "Checking" : "Creating") \(index + 1) of \(items.count): \(session.profile.name)"
-            if dryRun {
-                await session.runDryRun()
-            } else {
-                session.dryRun = false
-                await session.create()
-            }
-        }
+        await BatchMigration.run(eligible, dryRun: dryRun) { progressText = $0 }
     }
 
     private func deploy(_ confirmations: [DeployConfirmation]) async {
         running = true
         defer { running = false; progressText = nil }
-        for (index, confirmation) in confirmations.enumerated() {
-            guard let session = sessions.first(where: { $0.blueprintID == confirmation.blueprintID }) else { continue }
-            progressText = "Deploying \(index + 1) of \(confirmations.count): \(confirmation.blueprintName)"
-            await session.deploy(confirmation)
-        }
+        await BatchMigration.deploy(confirmations, sessions: sessions) { progressText = $0 }
     }
 
     @ViewBuilder
@@ -152,7 +139,7 @@ struct BatchMigrationView: View {
         } else if let error = session.lastError {
             Text(error.title).foregroundStyle(.red).lineLimit(2).help(error.title)
         } else if session.duplicates != nil {
-            Text("Name exists. Resolve it in the profile's Migrate tab.").foregroundStyle(.orange)
+            Text("Name exists. Resolve it in the profile’s Migrate tab.").foregroundStyle(.orange)
         } else if case let .deployed(report) = session.state {
             Text("Deployed" + (report.map { " · \($0.succeeded)/\($0.total) ok" } ?? "")).foregroundStyle(.green)
         } else if case .deploying = session.state {
@@ -170,6 +157,32 @@ struct BatchMigrationView: View {
             Text("Dry run OK").foregroundStyle(.secondary)
         } else {
             Text("Ready").foregroundStyle(.secondary)
+        }
+    }
+}
+
+/// The batch's two loops. One item's failure, refusal or name clash is left
+/// on that item (its status column) and never stops the others.
+enum BatchMigration {
+    static func run(_ sessions: [MigrationSession], dryRun: Bool, progress: (String) -> Void = { _ in }) async {
+        for (index, session) in sessions.enumerated() {
+            progress("\(dryRun ? "Checking" : "Creating") \(index + 1) of \(sessions.count): \(session.profile.name)")
+            if dryRun {
+                await session.runDryRun()
+            } else {
+                session.dryRun = false
+                await session.create()
+            }
+        }
+    }
+
+    /// Each confirmation goes to the session that created its Blueprint, and only there.
+    static func deploy(_ confirmations: [DeployConfirmation], sessions: [MigrationSession],
+                       progress: (String) -> Void = { _ in }) async {
+        for (index, confirmation) in confirmations.enumerated() {
+            guard let session = sessions.first(where: { $0.blueprintID == confirmation.blueprintID }) else { continue }
+            progress("Deploying \(index + 1) of \(confirmations.count): \(confirmation.blueprintName)")
+            await session.deploy(confirmation)
         }
     }
 }

@@ -9,7 +9,7 @@ nonisolated enum FidelityStatus: Hashable, Sendable {
     /// Same value but a key's casing changed. The device reads keys case-sensitively,
     /// so this needs a human look.
     case caseChanged
-    /// Expected server canonicalisation, or a difference that doesn't affect the transform.
+    /// Expected server canonicalization, or a difference that doesn't affect the transform.
     case info
 }
 
@@ -25,6 +25,9 @@ nonisolated struct FidelityRow: Hashable, Sendable, Identifiable {
 
 nonisolated struct FidelityReport: Hashable, Sendable {
     var rows: [FidelityRow]
+
+    /// The verdict when everything matches, in the Verify step and the history.
+    static let allMatchSentence = "Identifiers, order, count, settings and scope all match."
 
     var mismatches: [FidelityRow] { rows.filter { $0.status == .mismatch } }
     var caseChanges: [FidelityRow] { rows.filter { $0.status == .caseChanged } }
@@ -76,7 +79,7 @@ nonisolated enum FidelityVerifier {
         row("payloadIdentifier (top level)", document.payloadIdentifier, configuration.value(forKeyIgnoringCase: "payloadIdentifier")?.value.stringValue)
         row("payloadUUID (top level)", document.payloadUUID, configuration.value(forKeyIgnoringCase: "payloadUUID")?.value.stringValue)
         row("payloadDisplayName (top level)", document.payloadDisplayName, configuration.value(forKeyIgnoringCase: "payloadDisplayName")?.value.stringValue,
-            required: false, note: "Display name may be normalised by the server.")
+            required: false, note: "Display name may be normalized by the server.")
 
         // Rule 4: payload count.
         let returned = configuration.value(forKeyIgnoringCase: "payloadContent")?.value.arrayValue?.compactMap(\.objectValue) ?? []
@@ -104,10 +107,10 @@ nonisolated enum FidelityVerifier {
                 // silently enable a disabled payload, so that one is a real mismatch.
                 if key == "PayloadEnabled", payload.content[key] == .bool(false), server != "false" {
                     rows.append(FidelityRow(field: field, classic: "false", blueprint: server ?? "(dropped)", status: .mismatch,
-                                            note: "The payload was disabled in the classic profile but isn't in the blueprint."))
+                                            note: "The payload was disabled in the classic profile but isn’t in the Blueprint."))
                 } else {
                     rows.append(FidelityRow(field: field, classic: source ?? "—", blueprint: server ?? "(dropped)", status: .info,
-                                            note: "Server-managed metadata; the server re-adds, normalises or drops these."))
+                                            note: "Server-managed metadata; the server re-adds, normalizes or drops these."))
                 }
             }
 
@@ -155,7 +158,7 @@ nonisolated enum FidelityVerifier {
                 // payload type, and a dropped key stops being enforced once the
                 // blueprint owns the profile. Still a mismatch: deploying would
                 // silently weaken the profile.
-                note = "The server stores only keys in Apple's schema for this payload type. This key was dropped and would no longer be enforced after the transform."
+                note = "The server stores only keys in Apple’s schema for this payload type. This key was dropped and would no longer be enforced after the transform."
             }
             return FidelityRow(
                 field: "\(label) \(difference.path)", classic: difference.expected, blueprint: difference.actual,
@@ -225,15 +228,15 @@ nonisolated enum FidelityVerifier {
 
         return [
             RuleCheck(number: 1, title: "Classic profile was installed by MDM", status: .confirmOnDevice,
-                      detail: "Not visible through the API. Profiles installed manually or by another tool won't transform."),
+                      detail: "Not visible through the API. Profiles installed manually or by another tool won’t transform."),
             RuleCheck(number: 2, title: "DDM is enabled", status: .confirmOnDevice,
                       detail: "Requires Declarative Device Management on each target device."),
             RuleCheck(number: 3, title: "Top-level PayloadIdentifier and PayloadUUID match", status: rule3 ? .pass : .fail,
                       detail: "Classic \(document.payloadIdentifier ?? "—") / \(document.payloadUUID ?? "—") · Blueprint \(topIdentifier ?? "—") / \(topUUID ?? "—")"),
             RuleCheck(number: 4, title: "Same number of payloads", status: rule4 ? .pass : .fail,
                       detail: "Classic \(document.payloads.count) · Blueprint \(payloads.count)"),
-            RuleCheck(number: 5, title: "Each payload's type, identifier and UUID match, in order", status: mismatched.isEmpty ? .pass : .fail,
-                      detail: mismatched.isEmpty ? "All \(document.payloads.count) payload(s) match in order." : "Differs: " + mismatched.joined(separator: ", ")),
+            RuleCheck(number: 5, title: "Each payload’s type, identifier and UUID match, in order", status: mismatched.isEmpty ? .pass : .fail,
+                      detail: mismatched.isEmpty ? "All \(document.payloads.count) payload\(document.payloads.count == 1 ? "" : "s") match in order." : "Differs: " + mismatched.joined(separator: ", ")),
         ]
     }
 

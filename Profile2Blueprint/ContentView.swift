@@ -48,7 +48,7 @@ struct ContentView: View {
             UpdateView()
         }
         .alert(
-            "Couldn't Save",
+            "Couldn’t Save",
             isPresented: Binding(
                 get: { model.persistenceError != nil },
                 set: { if !$0 { model.persistenceError = nil } }

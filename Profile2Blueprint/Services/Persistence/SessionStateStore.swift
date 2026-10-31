@@ -11,12 +11,15 @@ nonisolated struct PersistedMigration: Codable, Hashable, Sendable {
     var blueprintName: String
     var selectedGroupIDs: [String]
     var unscopeAfterDeploy: Bool
+    /// The description sent on create; nil in records saved before it was kept.
+    var blueprintDescription: String?
     var updatedAt = Date()
 
     var key: ProfileKey { ProfileKey(platform: platform, id: profileID) }
 
     private enum CodingKeys: String, CodingKey {
-        case environmentKey, platform, profileID, blueprintID, blueprintName, selectedGroupIDs, unscopeAfterDeploy, updatedAt
+        case environmentKey, platform, profileID, blueprintID, blueprintName, selectedGroupIDs, unscopeAfterDeploy,
+             blueprintDescription, updatedAt
     }
 
     /// Records saved before mobile support decode as macOS.
@@ -29,12 +32,14 @@ nonisolated struct PersistedMigration: Codable, Hashable, Sendable {
         blueprintName = try container.decode(String.self, forKey: .blueprintName)
         selectedGroupIDs = try container.decode([String].self, forKey: .selectedGroupIDs)
         unscopeAfterDeploy = try container.decode(Bool.self, forKey: .unscopeAfterDeploy)
+        blueprintDescription = try container.decodeIfPresent(String.self, forKey: .blueprintDescription)
         updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
     }
 
     init(
         environmentKey: String, platform: ProfilePlatform, profileID: Int, blueprintID: String,
-        blueprintName: String, selectedGroupIDs: [String], unscopeAfterDeploy: Bool, updatedAt: Date = Date()
+        blueprintName: String, selectedGroupIDs: [String], unscopeAfterDeploy: Bool,
+        blueprintDescription: String? = nil, updatedAt: Date = Date()
     ) {
         self.environmentKey = environmentKey
         self.platform = platform
@@ -43,60 +48,60 @@ nonisolated struct PersistedMigration: Codable, Hashable, Sendable {
         self.blueprintName = blueprintName
         self.selectedGroupIDs = selectedGroupIDs
         self.unscopeAfterDeploy = unscopeAfterDeploy
+        self.blueprintDescription = blueprintDescription
         self.updatedAt = updatedAt
     }
 }
 
 /// Persists migration sessions as JSON in Application Support (`sessions.json`).
-/// Keyed by environment + profile; keeps the newest `limit` records.
+/// Keyed by environment + profile; keeps the newest `limit` records. One
+/// instance per file (`AppModel` owns it), so no two copies overwrite each
+/// other; a file that can't be read is kept and not written (`StoredList`).
 actor SessionStateStore {
     let fileURL: URL
     private let limit: Int
     private var records: [PersistedMigration]
+    private let list: StoredList<PersistedMigration>
 
     init(fileURL: URL, limit: Int = 200) {
         self.fileURL = fileURL
         self.limit = limit
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        records = (try? Data(contentsOf: fileURL)).flatMap { try? decoder.decode([PersistedMigration].self, from: $0) } ?? []
+        (records, list) = StoredList.open(fileURL)
     }
 
     static func appDefault() -> SessionStateStore {
-        let base = (try? FileManager.default.url(
-            for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true
-        )) ?? FileManager.default.temporaryDirectory
-        return SessionStateStore(fileURL: base.appending(path: "Profile2Blueprint/sessions.json"))
+        SessionStateStore(fileURL: StoredList<PersistedMigration>.appSupportFile("sessions.json"))
     }
+
+    /// Why sessions aren't saved, when the file couldn't be read.
+    var problem: String? { list.problem }
 
     func record(environmentKey: String, key: ProfileKey) -> PersistedMigration? {
         records.first { $0.environmentKey == environmentKey && $0.key == key }
     }
 
-    func save(_ record: PersistedMigration) {
+    /// Throws when the file couldn't be written; the record stays in memory for this launch.
+    func save(_ record: PersistedMigration) throws {
         records.removeAll { $0.environmentKey == record.environmentKey && $0.key == record.key }
         records.append(record)
         if records.count > limit {
             records.sort { $0.updatedAt < $1.updatedAt }
             records.removeFirst(records.count - limit)
         }
-        persist()
+        try persist()
     }
 
-    func remove(environmentKey: String, key: ProfileKey) {
+    func remove(environmentKey: String, key: ProfileKey) throws {
         records.removeAll { $0.environmentKey == environmentKey && $0.key == key }
-        persist()
+        try persist()
     }
 
-    private func persist() {
+    private func persist() throws {
         do {
-            try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            encoder.dateEncodingStrategy = .iso8601
-            try encoder.encode(records).write(to: fileURL, options: .atomic)
+            try list.write(records)
         } catch {
             Log.app.error("Could not write sessions.json: \(error.localizedDescription, privacy: .public)")
+            throw error
         }
     }
 }

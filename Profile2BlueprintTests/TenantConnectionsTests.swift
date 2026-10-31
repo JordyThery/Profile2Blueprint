@@ -14,7 +14,7 @@ private let savedBeforeJTKit = #"""
       "allowClassicScopeChanges" : true,
       "clientID" : "11111111-aaaa-bbbb-cccc-222222222222",
       "descriptionTemplate" : "Migrated from Jamf Pro classic {platform} configuration profile ID {id} (“{name}”) by Profile2Blueprint.",
-      "environmentID" : "e77c1408-10c8-4007-b177-abc9157fbcaa",
+      "environmentID" : "0f0e0d0c-0b0a-4000-8000-00000000abcd",
       "id" : "A1A1A1A1-0000-4000-8000-000000000001",
       "jamfProURL" : "https:\/\/example.jamfcloud.com",
       "name" : "Jamf Pro",
@@ -28,8 +28,8 @@ private let savedBeforeJTKit = #"""
       "allowClassicScopeChanges" : false,
       "clientID" : "33333333-aaaa-bbbb-cccc-444444444444",
       "descriptionTemplate" : "Migrated from Jamf Pro classic {platform} configuration profile ID {id} (“{name}”) by Profile2Blueprint.",
-      "environmentID" : "a1b2c3d4-10c8-4007-b177-abc9157fbcaa",
-      "hostOverride" : "us1.api.stage.platform.jamflabs.com",
+      "environmentID" : "0f0e0d0c-0b0a-4000-8000-00000000abce",
+      "hostOverride" : "staging.example.com",
       "id" : "A2A2A2A2-0000-4000-8000-000000000002",
       "jamfProURL" : "",
       "name" : "Sandbox",
@@ -79,7 +79,7 @@ struct TenantConnectionsTests {
         #expect(model.tenants.map(\.name) == ["Jamf Pro", "Sandbox"])
         #expect(model.currentTenantID == sandboxID)
         let sandbox = try #require(model.tenant(id: sandboxID))
-        #expect(sandbox.hostOverride == "us1.api.stage.platform.jamflabs.com")
+        #expect(sandbox.hostOverride == "staging.example.com")
         #expect(sandbox.naming == BlueprintNaming(prefix: "TEST - ", suffix: ""))
         #expect(model.tenant(id: jamfProID)?.allowClassicScopeChanges == true)
         #expect(model.tenant(id: jamfProID)?.jamfProURL == "https://example.jamfcloud.com")
@@ -230,7 +230,7 @@ struct TenantConnectionsTests {
         tenant.allowClassicScopeChanges = false
         try model.connections.save(tenant)
         #expect(model.workspaceGeneration > generation)
-        #expect(model.activity.entries.contains { $0.category == ActivityCategory.classicWrite.rawValue && $0.detail.contains("disabled") })
+        #expect(model.activity.entries.contains { $0.category == ActivityCategory.classicWrite.rawValue && $0.detail.contains("turned off") })
     }
 
     @Test func demoModeIsNeverPartOfTheTenantList() throws {

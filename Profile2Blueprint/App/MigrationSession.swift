@@ -2,11 +2,17 @@ import Foundation
 import JTKit
 import Observation
 
-/// Progress of the optional classic-profile cleanup.
+/// Progress of the optional classic profile cleanup.
 enum UnscopeStatus: Equatable {
     case notRequested
+    /// Opted in; waiting for a clean device report.
     case waiting(String)
+    /// Opted in, but the automatic cleanup won't run (the classic scope reaches
+    /// devices the Blueprint doesn't, or the report stopped refreshing).
+    case heldBack(String)
     case unscoped(Date)
+    /// A scope change whose outcome isn't known: Restore is offered.
+    case uncertain(Date)
     case restored(Date)
     case failed(ErrorReport)
 }
@@ -37,6 +43,15 @@ final class MigrationSession: Identifiable {
     private let scopeBackups: ScopeBackupStore
     private let sessionStates: SessionStateStore
     @ObservationIgnored private var reportMonitor: Task<Void, Never>?
+    /// Reading the scope backup and the saved migration from an earlier launch.
+    @ObservationIgnored private var savedStateTask: Task<Void, Never>?
+    /// The automatic cleanup came due while another action was running; it
+    /// runs as soon as that action ends.
+    @ObservationIgnored private var cleanupQueued = false
+    /// The last report and deferral written to the history, so Refresh Status
+    /// doesn't repeat the same line.
+    @ObservationIgnored private var recordedReport: JamfPlatform.BlueprintReport??
+    @ObservationIgnored private var recordedDeferral: String?
 
     // MARK: Draft
 
@@ -48,8 +63,8 @@ final class MigrationSession: Identifiable {
     var acknowledgedWarnings = false
     /// Dry run is the default; creating requires switching it off.
     var dryRun = true
-    /// Per-profile opt-in: unscope the classic profile once the blueprint is deployed
-    /// to every device. Only offered when classic scope changes are enabled for the tenant.
+    /// Per-profile opt-in: unscope the classic profile once the Blueprint is deployed
+    /// to every device. Only offered when classic scope changes are on for the tenant.
     var unscopeAfterDeploy = false {
         didSet {
             if blueprintID != nil, oldValue != unscopeAfterDeploy { persistSessionRecord() }
@@ -62,7 +77,7 @@ final class MigrationSession: Identifiable {
     private(set) var isBusy = false
     private(set) var lastError: ErrorReport?
     private(set) var dryRunSummary: String?
-    /// Same-named blueprints found right before create; non-nil means "ask the user".
+    /// Same-named Blueprints found right before create; non-nil means "ask the user".
     private(set) var duplicates: [JamfPlatform.BlueprintOverview]?
     private(set) var blueprintID: String?
     private(set) var readBack: JamfPlatform.BlueprintDetail?
@@ -72,13 +87,20 @@ final class MigrationSession: Identifiable {
     private(set) var deviceReport: JamfPlatform.BlueprintReport?
     /// Name that was actually sent on create (the draft may be edited afterwards).
     private(set) var createdName: String?
-    /// The most recent unrestored scope backup for this profile, if any.
+    /// The most recent unrestored scope backup for this profile whose change
+    /// may have happened, if any.
     private(set) var scopeBackup: ScopeBackup?
+    /// The app changed this profile's scope before (restored since or not):
+    /// the automatic cleanup runs at most once, so a Restore is never undone.
+    private(set) var scopeChangedBefore = false
     private(set) var unscopeStatus: UnscopeStatus = .notRequested
     /// The device report is being refreshed in the background after a deployment.
     private(set) var reportMonitorActive = false
-    /// A blueprint from an earlier launch is being re-attached.
-    private(set) var isRestoring = false
+    /// The scope backup and a Blueprint from an earlier launch are being read
+    /// and re-attached; create, dry run, verify and deploy wait for it.
+    private(set) var isLoadingSavedState = true
+    /// The workspace was replaced: no more cleanup from this session.
+    private(set) var isClosed = false
 
     init(profile: ClassicProfile, report: EligibilityReport, workspace: Workspace) {
         key = profile.key
@@ -97,15 +119,37 @@ final class MigrationSession: Identifiable {
         let key = profile.key
         let environment = workspace.environment
         let environmentKey = environment.environmentID ?? environment.displayName
-        Task { [scopeBackups, sessionStates] in
+        savedStateTask = Task { [scopeBackups, sessionStates] in
             if let existing = await scopeBackups.latest(key: key, environment: environment) {
-                self.scopeBackup = existing
-                self.unscopeStatus = .unscoped(existing.createdAt)
+                // A change whose outcome wasn't recorded is checked against the profile first.
+                if let settled = await ClassicScopeService.settle(existing, environment: environment, backups: scopeBackups) {
+                    self.showBackup(settled)
+                }
             }
+            self.scopeChangedBefore = await scopeBackups.hasScopeChange(key: key, environment: environment)
             if let saved = await sessionStates.record(environmentKey: environmentKey, key: key) {
                 await self.restore(from: saved)
             }
+            self.isLoadingSavedState = false
         }
+    }
+
+    /// Waits until the saved state from an earlier launch is read and re-attached.
+    func waitUntilReady() async {
+        await savedStateTask?.value
+    }
+
+    /// The workspace was replaced: stops watching the report and never runs
+    /// the cleanup again.
+    func close() {
+        isClosed = true
+        cleanupQueued = false
+        stopReportMonitor()
+    }
+
+    private func showBackup(_ backup: ScopeBackup) {
+        scopeBackup = backup
+        unscopeStatus = backup.writeState == .written ? .unscoped(backup.createdAt) : .uncertain(backup.createdAt)
     }
 
     /// Live groups from the workspace, or the snapshot if it has gone away.
@@ -124,8 +168,12 @@ final class MigrationSession: Identifiable {
 
     var selectedGroups: [JamfPlatform.DeviceGroup] { selectedGroupIDs.compactMap { id in platformGroups.first { $0.id == id } } }
 
-    /// Sum of member counts. Groups can overlap, so this is an upper bound when > 1 group.
-    var deviceCount: Int { selectedGroups.reduce(0) { $0 + $1.members } }
+    /// Sum of the known member counts. Groups can overlap, so this is an upper
+    /// bound when > 1 group; a group without a count adds nothing (see `deviceCountIsPartial`).
+    var deviceCount: Int { selectedGroups.knownDeviceCount }
+
+    /// Some selected group came without a member count.
+    var deviceCountIsPartial: Bool { selectedGroups.hasUnknownDeviceCount }
 
     /// Eligibility with the pick-a-group findings resolved by the current selection.
     /// Warnings about information loss (exclusions, limitations, …) remain.
@@ -141,26 +189,44 @@ final class MigrationSession: Identifiable {
     var needsAcknowledgement: Bool { effectiveReport.status == .needsAttention }
 
     var canCreate: Bool {
-        !isBusy && !dryRun && blueprintID == nil && effectiveReport.status != .blocked
+        !isBusy && !isLoadingSavedState && !dryRun && blueprintID == nil && effectiveReport.status != .blocked
+            && (!needsAcknowledgement || acknowledgedWarnings) && (try? preview.get()) != nil
+    }
+
+    /// A dry run is for before create; afterwards it would start the pipeline over.
+    var canRunDryRun: Bool {
+        !isBusy && !isLoadingSavedState && blueprintID == nil && effectiveReport.status != .blocked
             && (!needsAcknowledgement || acknowledgedWarnings) && (try? preview.get()) != nil
     }
 
     var canDeploy: Bool {
-        guard !isBusy, blueprintID != nil, let fidelity else { return false }
+        guard !isBusy, !isLoadingSavedState, blueprintID != nil, let fidelity else { return false }
         if case .deployed = state { return false }
         if case .deploying = state { return false }
         return fidelity.passed
     }
 
-    /// Classic scope changes are enabled for this tenant (explicit opt-in in tenant settings).
+    /// Classic scope changes are on for this tenant (explicit opt-in in its
+    /// settings), read live: turning the switch off stops every scope change.
     var canChangeClassicScope: Bool { environment.classicScopeWriter != nil }
 
     /// Manual unscope is allowed only after a clean deployment and when nothing is backed up yet.
     var canUnscopeNow: Bool {
-        canChangeClassicScope && !isBusy && scopeBackup == nil && ClassicScopeService.deploymentAllowsUnscope(outcome)
+        canChangeClassicScope && !isBusy && !isLoadingSavedState && !isClosed && scopeBackup == nil
+            && ClassicScopeService.deploymentAllowsUnscope(outcome)
     }
 
-    var canRestoreScope: Bool { canChangeClassicScope && !isBusy && scopeBackup != nil }
+    var canRestoreScope: Bool { canChangeClassicScope && !isBusy && !isClosed && scopeBackup != nil }
+
+    /// What the Blueprint targets: its read-back scope once it exists.
+    var scopeCoverage: ScopeCoverage {
+        ScopeCoverage(platform: platform, platformGroups: platformGroups,
+                      blueprintGroupIDs: readBack?.scopeDeviceGroups ?? selectedGroupIDs)
+    }
+
+    /// Classic scope targets the Blueprint's groups don't cover; unscoping
+    /// would remove the profile from those devices. Empty when all are covered.
+    var uncoveredClassicTargets: [String] { scopeCoverage.uncovered(in: profile.scope) }
 
     // MARK: Draft editing
 
@@ -172,24 +238,29 @@ final class MigrationSession: Identifiable {
         }
     }
 
-    func sourceDidChange(profile: ClassicProfile, report: EligibilityReport?) {
+    /// The profile was fetched again (Reload or Reload Profile). Ignored once
+    /// a Blueprint exists: the migration stays with what it created.
+    func sourceDidChange(profile: ClassicProfile, report: EligibilityReport) {
         guard blueprintID == nil else { return }
         self.profile = profile
-        if let report { self.report = report }
+        self.report = report
     }
 
     // MARK: Stages
 
     /// Validates and builds locally, and checks for name clashes. Nothing is written.
     func runDryRun() async {
+        await waitUntilReady()
+        guard canRunDryRun else { return }
         await perform { [self] in
             let request = try await prepareRequest()
             let existing = try await pipeline.existingBlueprints()
             let groups = selectedGroups.map(\.name).joined(separator: ", ")
             let payloads = profile.document.payloadCount
-            var summary = "Would create “\(request.name)” (not deployed) with \(payloads) payload\(payloads == 1 ? "" : "s"), targeting \(groups) — \(deviceCount) device\(deviceCount == 1 ? "" : "s")."
+            let devices = "\(deviceCountIsPartial ? "at least " : "")\(deviceCount) device\(deviceCount == 1 ? "" : "s")"
+            var summary = "Would create “\(request.name)” (not deployed) with \(payloads) payload\(payloads == 1 ? "" : "s"), targeting \(groups): \(devices)."
             if !existing.isEmpty {
-                summary += " A blueprint with this name already exists (\(existing.map(\.id).joined(separator: ", ")))."
+                summary += " A Blueprint with this name already exists (\(existing.map(\.id).joined(separator: ", ")))."
             }
             dryRunSummary = summary
             history.record(.dryRun, environment: environment, profile: profile, blueprintName: request.name,
@@ -197,8 +268,9 @@ final class MigrationSession: Identifiable {
         }
     }
 
-    /// Creates the blueprint without deploying, then reads it back and verifies it.
+    /// Creates the Blueprint without deploying, then reads it back and verifies it.
     func create() async {
+        await waitUntilReady()
         guard canCreate else { return }
         await perform { [self] in
             let request = try await prepareRequest()
@@ -215,9 +287,9 @@ final class MigrationSession: Identifiable {
             persistSessionRecord()
             state = await pipeline.state
             var message = "Created, not deployed. Scope: \(selectedGroups.map(\.name).joined(separator: ", "))."
-            let unlisted = profile.document.unrecognisedPayloadTypes
+            let unlisted = profile.document.unrecognizedPayloadTypes
             if !unlisted.isEmpty {
-                message += " The API accepted \(unlisted.joined(separator: ", ")), which the app's payload-type registry doesn't list; the registry may have grown."
+                message += " The API accepted \(unlisted.joined(separator: ", ")), which the app’s payload-type registry doesn’t list; the registry may have grown."
             }
             history.record(.create, environment: environment, profile: profile, blueprintID: createdID, blueprintName: request.name,
                                      result: .success, message: message)
@@ -231,7 +303,7 @@ final class MigrationSession: Identifiable {
         switch resolution {
         case .skip:
             history.record(.skipExisting, environment: environment, profile: profile, blueprintID: found.first?.id,
-                                     blueprintName: blueprintName, result: .warning, message: "Skipped: a blueprint with this name already exists.")
+                                     blueprintName: blueprintName, result: .warning, message: "Skipped: a Blueprint with this name already exists.")
         case .rename:
             blueprintName = Self.nextName(after: blueprintName)
         case let .openExisting(existing):
@@ -242,26 +314,32 @@ final class MigrationSession: Identifiable {
                 persistSessionRecord()
                 state = await pipeline.state
                 history.record(.adoptExisting, environment: environment, profile: profile, blueprintID: existing.id,
-                                         blueprintName: existing.name, result: .success, message: "Using the existing blueprint instead of creating one.")
+                                         blueprintName: existing.name, result: .success, message: "Using the existing Blueprint instead of creating one.")
                 try await verifyStage()
             }
         }
     }
 
+    /// Reads the Blueprint back again. While a deployment may still be
+    /// running this only refreshes the check; it never makes the Blueprint
+    /// deployable on top of it.
     func verify() async {
+        await waitUntilReady()
         await perform { [self] in try await verifyStage() }
     }
 
     /// Deploys after the confirmation sheet, then polls until done or timed out.
     func deploy(_ confirmation: DeployConfirmation) async {
+        await waitUntilReady()
         stopReportMonitor()
         await perform { [self] in
             // Recorded only once the pipeline accepts this confirmation; a
             // refused deploy sends nothing and leaves no "confirmed" line.
             try await pipeline.checkDeployable(confirmation: confirmation)
+            let devices = "\(confirmation.deviceCount) device\(confirmation.deviceCount == 1 ? "" : "s")"
             history.record(.deploy, environment: environment, profile: profile, blueprintID: confirmation.blueprintID,
                                      blueprintName: confirmation.blueprintName, result: .success,
-                                     message: "Confirmed by user for \(confirmation.groupNames.joined(separator: ", ")) (\(confirmation.deviceCount) devices).")
+                                     message: "Confirmed by user for \(confirmation.groupNames.joined(separator: ", ")) (\(devices)).")
             let result = try await pipeline.deploy(confirmation: confirmation) { [weak self] progress in
                 await MainActor.run { self?.deployment = progress }
             }
@@ -289,16 +367,20 @@ final class MigrationSession: Identifiable {
         await perform { [self] in try await unscopeStage() }
     }
 
-    /// Puts the backed-up scope back.
+    /// Puts the backed-up scope back. The automatic cleanup is turned off for
+    /// good, so no later refresh or relaunch unscopes the profile again.
     func restoreClassicScope() async {
         guard canRestoreScope, let backup = scopeBackup else { return }
         await perform { [self] in
             do {
                 _ = try await ClassicScopeService.restore(backup, environment: environment, backups: scopeBackups)
                 scopeBackup = nil
+                scopeChangedBefore = true
+                cleanupQueued = false
+                unscopeAfterDeploy = false
                 unscopeStatus = .restored(Date())
                 history.record(.restoreClassicScope, environment: environment, profile: profile, blueprintID: blueprintID,
-                               blueprintName: createdName, result: .success, message: "Restored the classic profile's scope from the backup taken \(backup.createdAt.formatted()).")
+                               blueprintName: createdName, result: .success, message: "Restored the classic profile’s scope from the backup taken \(backup.createdAt.formatted()).")
             } catch {
                 unscopeStatus = .failed(ErrorReport(error))
                 history.record(.restoreClassicScope, environment: environment, profile: profile, blueprintID: blueprintID,
@@ -308,15 +390,25 @@ final class MigrationSession: Identifiable {
         }
     }
 
-    private func unscopeStage() async throws {
+    /// Unscopes the classic profile. `automatic` (the opt-in cleanup) also
+    /// requires the Blueprint's groups to cover the fresh classic scope.
+    private func unscopeStage(automatic: Bool = false) async throws {
+        guard !isClosed else { return }
         do {
             let result = try await ClassicScopeService.unscope(key: key, blueprintID: blueprintID,
-                                                              environment: environment, backups: scopeBackups)
-            scopeBackup = result.backup
-            unscopeStatus = .unscoped(result.backup.createdAt)
+                                                              environment: environment, backups: scopeBackups,
+                                                              requiring: automatic ? scopeCoverage : nil)
+            scopeChangedBefore = true
+            showBackup(result.backup)
             history.record(.unscopeClassic, environment: environment, profile: profile, blueprintID: blueprintID, blueprintName: createdName,
                            result: .success, message: "Removed all scope targets from the classic profile (payloads untouched). Scope backup saved; restore is available.")
         } catch {
+            // If the change reached Jamf Pro before the error (the read-back
+            // failed, say), its backup is offered for Restore right away.
+            if let backup = await scopeBackups.latest(key: key, environment: environment) {
+                scopeBackup = backup
+                scopeChangedBefore = true
+            }
             unscopeStatus = .failed(ErrorReport(error))
             history.record(.unscopeClassic, environment: environment, profile: profile, blueprintID: blueprintID, blueprintName: createdName,
                            result: .failure, message: error.localizedDescription)
@@ -324,25 +416,46 @@ final class MigrationSession: Identifiable {
         }
     }
 
-    /// The user opted into cleanup and it hasn't run; whether the deployment was clean
-    /// enough is a separate check (`ClassicScopeService.deploymentAllowsUnscope`).
-    /// The deploy confirmation reads this too, so the sheet promises cleanup
-    /// exactly when the session would run it.
-    var autoUnscopeArmed: Bool {
-        unscopeAfterDeploy && canChangeClassicScope && scopeBackup == nil
+    /// The user opted into cleanup, it can still run, and it hasn't run before.
+    private var autoUnscopeRequested: Bool {
+        unscopeAfterDeploy && canChangeClassicScope && scopeBackup == nil && !scopeChangedBefore && !isClosed
     }
 
-    /// Runs the opt-in auto-unscope after a deployment result, if (and only if) it was clean.
+    /// The cleanup will run once the deployment is clean: requested, and the
+    /// Blueprint's groups cover the classic scope. The deploy confirmation reads
+    /// this, so the sheet promises cleanup exactly when the session would run it.
+    var autoUnscopeArmed: Bool {
+        autoUnscopeRequested && uncoveredClassicTargets.isEmpty
+    }
+
+    /// Runs the opt-in auto-unscope after a deployment result, if (and only if)
+    /// the Blueprint covers the classic scope and the deployment was clean.
     private func autoUnscopeIfRequested() async throws {
-        guard autoUnscopeArmed else { return }
-        if ClassicScopeService.deploymentAllowsUnscope(outcome) {
-            try await unscopeStage()
+        guard autoUnscopeRequested else { return }
+        let uncovered = uncoveredClassicTargets
+        if !uncovered.isEmpty {
+            holdBack(ClassicScopeService.uncoveredMessage(uncovered))
+        } else if ClassicScopeService.deploymentAllowsUnscope(outcome) {
+            try await unscopeStage(automatic: true)
         } else {
-            let detail = deviceReport.map { "\($0.failed) failed, \($0.pending) pending" } ?? "no device report yet"
+            let detail = deviceReport.map { "\($0.failed) failed, \($0.pending) pending" + ($0.succeeded == 0 ? ", none succeeded" : "") }
+                ?? "no device report yet"
             unscopeStatus = .waiting("Not unscoped yet: \(detail). The report refreshes automatically and cleanup runs once every device succeeds.")
-            history.record(.unscopeClassic, environment: environment, profile: profile, blueprintID: blueprintID, blueprintName: createdName,
-                           result: .warning, message: "Auto-unscope deferred: \(detail). Watching the device report.")
+            recordDeferral("Auto-unscope deferred: \(detail). Watching the device report.", result: .warning)
         }
+    }
+
+    /// The automatic cleanup won't run by itself; says why, once in the history.
+    private func holdBack(_ reason: String) {
+        unscopeStatus = .heldBack(reason)
+        recordDeferral(reason, result: .warning)
+    }
+
+    private func recordDeferral(_ message: String, result: MigrationResult) {
+        guard message != recordedDeferral else { return }
+        recordedDeferral = message
+        history.record(.unscopeClassic, environment: environment, profile: profile, blueprintID: blueprintID, blueprintName: createdName,
+                       result: result, message: message)
     }
 
     // MARK: Session persistence
@@ -359,17 +472,23 @@ final class MigrationSession: Identifiable {
             blueprintID: blueprintID,
             blueprintName: createdName ?? blueprintName,
             selectedGroupIDs: selectedGroupIDs,
-            unscopeAfterDeploy: unscopeAfterDeploy
+            unscopeAfterDeploy: unscopeAfterDeploy,
+            blueprintDescription: blueprintDescription
         )
-        Task { [sessionStates] in await sessionStates.save(record) }
+        Task { [sessionStates] in
+            do {
+                try await sessionStates.save(record)
+            } catch {
+                lastError = ErrorReport(PipelineError(message: "This migration couldn’t be saved for the next launch: \(error.localizedDescription)"))
+            }
+        }
     }
 
-    /// Re-attaches a blueprint created in an earlier launch: rebuilds the request,
-    /// adopts the blueprint and verifies it. A 404 clears the stale record.
+    /// Re-attaches a Blueprint created in an earlier launch: rebuilds the request,
+    /// adopts the Blueprint and verifies it. A 404 clears the stale record.
     private func restore(from record: PersistedMigration) async {
-        isRestoring = true
-        defer { isRestoring = false }
         blueprintName = record.blueprintName
+        if let description = record.blueprintDescription { blueprintDescription = description }
         selectedGroupIDs = record.selectedGroupIDs
         unscopeAfterDeploy = record.unscopeAfterDeploy
         if effectiveReport.status == .needsAttention {
@@ -385,11 +504,11 @@ final class MigrationSession: Identifiable {
                 try await verifyStage()
             } catch {
                 if let error = error as? JamfPlatform.APIError, error.status == 404 {
-                    await sessionStates.remove(environmentKey: environmentKey, key: key)
+                    try? await sessionStates.remove(environmentKey: environmentKey, key: key)
                     blueprintID = nil
                     createdName = nil
                     state = .fetched
-                    throw PipelineError(message: "The blueprint created in an earlier session no longer exists on the server. The saved reference was removed; create it again if needed.")
+                    throw PipelineError(message: "The Blueprint created in an earlier session no longer exists on the server. The saved reference was removed; create it again if needed.")
                 }
                 throw error
             }
@@ -399,21 +518,35 @@ final class MigrationSession: Identifiable {
     // MARK: Device report monitor
 
     /// Refreshes the device report in the background until no device is pending,
-    /// then runs the opt-in classic cleanup.
+    /// then runs the opt-in classic cleanup. A time-out or error says so.
     private func startReportMonitor() {
-        guard let blueprintID else { return }
+        guard let blueprintID, !isClosed else { return }
         reportMonitor?.cancel()
         reportMonitorActive = true
         reportMonitor = Task { [pipeline] in
-            let final = try? await pipeline.monitorReport(id: blueprintID) { [weak self] update in
-                await MainActor.run {
-                    self?.deviceReport = update
-                    self?.outcome = .succeeded(update)
+            let result = await Result {
+                try await pipeline.monitorReport(id: blueprintID) { [weak self] update in
+                    await MainActor.run {
+                        self?.deviceReport = update
+                        self?.outcome = .succeeded(update)
+                    }
                 }
             }
             guard !Task.isCancelled else { return }
             reportMonitorActive = false
-            await reportBecameFinal(final)
+            switch result {
+            case let .success(final) where final?.pending == 0:
+                await reportBecameFinal(final)
+            case let .success(final):
+                if let final { deviceReport = final }
+                if autoUnscopeRequested {
+                    holdBack("Stopped watching the device report after 30 minutes with devices still pending. Click Refresh Status to check again; cleanup runs only after a clean report.")
+                }
+            case let .failure(error):
+                if autoUnscopeRequested {
+                    holdBack("The device report couldn’t be refreshed (\(error.localizedDescription)). Click Refresh Status to check again; cleanup runs only after a clean report.")
+                }
+            }
         }
     }
 
@@ -423,14 +556,21 @@ final class MigrationSession: Identifiable {
         reportMonitorActive = false
     }
 
-    private func reportBecameFinal(_ report: JamfPlatform.BlueprintReport?) async {
+    /// The device report stopped changing (or a queued cleanup came due).
+    /// Internal for tests; the app calls it from the report watch.
+    func reportBecameFinal(_ report: JamfPlatform.BlueprintReport?) async {
         if let report {
             deviceReport = report
             outcome = .succeeded(report)
             state = .deployed(report)
         }
-        guard autoUnscopeArmed, ClassicScopeService.deploymentAllowsUnscope(outcome) else { return }
-        await perform { [self] in try await unscopeStage() }
+        guard autoUnscopeRequested else { return }
+        // Another action is running: the cleanup waits for it instead of being dropped.
+        if isBusy {
+            cleanupQueued = true
+            return
+        }
+        await perform { [self] in try await autoUnscopeIfRequested() }
     }
 
     // MARK: Helpers
@@ -441,10 +581,14 @@ final class MigrationSession: Identifiable {
         switch result {
         case let .succeeded(report):
             deviceReport = report
-            let counts = report.map { "succeeded \($0.succeeded), failed \($0.failed), pending \($0.pending)" } ?? "report unavailable"
-            history.record(.deploymentResult, environment: environment, profile: profile, blueprintID: blueprintID,
-                                     blueprintName: createdName, result: (report?.failed ?? 0) > 0 ? .warning : .success,
-                                     message: "Deployed. Devices: \(counts).")
+            // Refresh Status reads the same result again; it's written once.
+            if recordedReport != .some(report) {
+                recordedReport = .some(report)
+                let counts = report.map { "succeeded \($0.succeeded), failed \($0.failed), pending \($0.pending)" } ?? "report unavailable"
+                history.record(.deploymentResult, environment: environment, profile: profile, blueprintID: blueprintID,
+                                         blueprintName: createdName, result: (report?.failed ?? 0) > 0 ? .warning : .success,
+                                         message: "Deployed. Devices: \(counts).")
+            }
             try? await autoUnscopeIfRequested()
             if (report?.pending ?? 1) > 0 { startReportMonitor() }
         case let .failed(deployment):
@@ -457,7 +601,12 @@ final class MigrationSession: Identifiable {
         }
     }
 
+    /// Starts the pipeline from the profile and builds the request. Only before
+    /// a Blueprint exists: loading starts the pipeline over.
     private func prepareRequest() async throws -> BlueprintRequest {
+        guard blueprintID == nil else {
+            throw PipelineError(message: "This migration has already created its Blueprint.")
+        }
         await pipeline.load(profile)
         _ = try await pipeline.validate(platformGroups: platformGroups)
         let request = try await pipeline.build(
@@ -477,7 +626,7 @@ final class MigrationSession: Identifiable {
         fidelity = result
         readBack = await pipeline.readBack
         state = await pipeline.state
-        // An already-deployed blueprint (restored session, or adopted duplicate) resumes
+        // An already-deployed Blueprint (restored session, or adopted duplicate) resumes
         // at the deployed stage, with the report refreshing until it is clean.
         if let detail = readBack, detail.overview.deploymentState?.isDeployedSuccessfully == true {
             let report = await environment.blueprints.reportIfAny(id: detail.id)
@@ -487,11 +636,12 @@ final class MigrationSession: Identifiable {
             if (report?.pending ?? 1) > 0 {
                 startReportMonitor()
             } else {
+                // Runs after this action ends (it queues while busy).
                 Task { await reportBecameFinal(report) }
             }
         }
         let summary = result.passed
-            ? "All identity, order, count, settings and scope checks match."
+            ? FidelityReport.allMatchSentence
                 + (result.caseChanges.isEmpty ? "" : " \(result.caseChanges.count) key casing change\(result.caseChanges.count == 1 ? "" : "s") to review.")
             : "\(result.mismatches.count) mismatch\(result.mismatches.count == 1 ? "" : "es"): " + result.mismatches.prefix(3).map(\.field).joined(separator: "; ")
         history.record(.verify, environment: environment, profile: profile, blueprintID: blueprintID, blueprintName: createdName,
@@ -502,12 +652,16 @@ final class MigrationSession: Identifiable {
         guard !isBusy else { return }
         isBusy = true
         lastError = nil
-        defer { isBusy = false }
         do {
             try await work()
         } catch {
             lastError = ErrorReport(error)
             state = await pipeline.state
+        }
+        isBusy = false
+        if cleanupQueued {
+            cleanupQueued = false
+            await reportBecameFinal(nil)
         }
     }
 
@@ -524,7 +678,7 @@ extension Result<ProfileDocument, PlistParseError> {
     nonisolated var payloadCount: Int { (try? get())?.payloads.count ?? 0 }
 
     /// Payload types outside the app's known registry (neither supported nor blocked).
-    nonisolated var unrecognisedPayloadTypes: [String] {
+    nonisolated var unrecognizedPayloadTypes: [String] {
         let types = (try? get())?.payloads.compactMap(\.type) ?? []
         var seen = Set<String>()
         return types.filter {

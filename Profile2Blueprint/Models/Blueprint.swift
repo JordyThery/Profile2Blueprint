@@ -62,8 +62,23 @@ private nonisolated struct NamedOverview: Sendable {
 }
 
 nonisolated extension JamfPlatform.DeviceGroup {
-    /// The group's device count; 0 when the server leaves it out.
-    var members: Int { memberCount ?? 0 }
+    /// The group's device count for display: "12 devices", or "unknown
+    /// device count" when the server leaves it out (never shown as 0).
+    var memberCountText: String {
+        guard let memberCount else { return "unknown device count" }
+        return "\(memberCount) device\(memberCount == 1 ? "" : "s")"
+    }
+
+    /// The bare count, or "unknown".
+    var memberCountShort: String { memberCount.map(String.init) ?? "unknown" }
+}
+
+nonisolated extension Array where Element == JamfPlatform.DeviceGroup {
+    /// Sum of the member counts the server gave; groups without one add nothing.
+    var knownDeviceCount: Int { reduce(0) { $0 + ($1.memberCount ?? 0) } }
+
+    /// Some group came without a member count, so `knownDeviceCount` is a lower bound.
+    var hasUnknownDeviceCount: Bool { contains { $0.memberCount == nil } }
 }
 
 nonisolated extension JamfPlatform.DeploymentState {

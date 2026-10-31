@@ -16,13 +16,13 @@ struct ScopeMappingView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 if locked {
-                    Label("The blueprint has been created. Scope can no longer be changed here.", systemImage: "lock")
+                    Label("The Blueprint has been created. Scope can no longer be changed here.", systemImage: "lock")
                         .foregroundStyle(.secondary)
                 }
 
                 GroupBox("Classic \(platform.deviceNoun) groups") {
                     if report.scopeMapping.isEmpty {
-                        Text("This profile isn't scoped to any \(platform.deviceNoun) group.")
+                        Text("This profile isn’t scoped to any \(platform.deviceNoun) group.")
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(4)
@@ -63,7 +63,7 @@ struct ScopeMappingView: View {
                                     Text(group.name)
                                     Text(group.groupType.displayName).font(.caption).foregroundStyle(.secondary)
                                     Spacer()
-                                    Text("^[\(group.members) device](inflect: true)").font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                                    Text(group.memberCountText).font(.caption).monospacedDigit().foregroundStyle(.secondary)
                                 }
                             }
                             .disabled(locked)
@@ -99,13 +99,13 @@ struct ScopeMappingView: View {
             )) {
                 Text("None").tag(String?.none)
                 ForEach(candidates) { group in
-                    Text("\(group.name) (\(group.groupType.displayName), \(group.members))").tag(String?.some(group.id))
+                    Text("\(group.name) (\(group.groupType.displayName), \(group.memberCountShort))").tag(String?.some(group.id))
                 }
             }
             .labelsHidden()
             .frame(maxWidth: 360)
             .disabled(locked)
-            Text(selected.map { "\($0.members)" } ?? "—").monospacedDigit()
+            Text(selected.map(\.memberCountShort) ?? "—").monospacedDigit()
             matchLabel(entry)
         }
     }
@@ -141,14 +141,14 @@ struct ScopeMappingView: View {
         GroupBox("Blueprint scope") {
             VStack(alignment: .leading, spacing: 6) {
                 if session.selectedGroups.isEmpty {
-                    Label("No platform group selected. A blueprint needs at least one.", systemImage: "exclamationmark.triangle.fill")
+                    Label("No platform group selected. A Blueprint needs at least one.", systemImage: "exclamationmark.triangle.fill")
                         .foregroundStyle(.orange)
                 } else {
                     ForEach(session.selectedGroups) { group in
                         HStack {
                             Text(group.name)
                             Spacer()
-                            Text("^[\(group.members) device](inflect: true)").monospacedDigit().foregroundStyle(.secondary)
+                            Text(group.memberCountText).monospacedDigit().foregroundStyle(.secondary)
                         }
                     }
                     Divider()

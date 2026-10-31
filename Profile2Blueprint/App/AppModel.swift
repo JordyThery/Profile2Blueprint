@@ -33,11 +33,19 @@ final class AppModel {
     @ObservationIgnored private let store: TenantStore
     @ObservationIgnored private let secrets: RecordingSecretStore
     @ObservationIgnored private let demoFiles: DemoFiles
-    /// Where a tenant's workspace keeps scope backups and sessions; nil means
-    /// the real files in Application Support (opened per workspace). A sandbox
-    /// run passes files in its temporary folder.
-    @ObservationIgnored private let tenantScopeBackups: ScopeBackupStore?
-    @ObservationIgnored private let tenantSessionStates: SessionStateStore?
+    /// Where tenant workspaces keep scope backups and sessions, passed in or
+    /// the real files in Application Support (opened on first use). One store
+    /// per file for every workspace, so none overwrites another's records.
+    @ObservationIgnored private let givenScopeBackups: ScopeBackupStore?
+    @ObservationIgnored private let givenSessionStates: SessionStateStore?
+    @ObservationIgnored private var openedScopeBackups: ScopeBackupStore?
+    @ObservationIgnored private var openedSessionStates: SessionStateStore?
+    /// Demo mode's stores, in `demoFiles`, opened once.
+    @ObservationIgnored private let demoScopeBackups: ScopeBackupStore
+    @ObservationIgnored private let demoSessionStates: SessionStateStore
+    /// Each tenant's "Allow classic scope changes" switch as it's saved now,
+    /// read by its client and workspace at every scope change.
+    @ObservationIgnored private var scopeSwitches: [UUID: ClassicWriteSwitch] = [:]
     /// The network for real tenants, also while demo mode is on (Test Connection).
     private let session: URLSession
     /// Demo mode as the workspace was last built for, to notice a switch.
@@ -62,8 +70,8 @@ final class AppModel {
         demoFiles: DemoFiles? = nil,
         demoMode: Bool? = nil
     ) {
-        tenantScopeBackups = scopeBackups
-        tenantSessionStates = sessionStates
+        givenScopeBackups = scopeBackups
+        givenSessionStates = sessionStates
         let demo = demo ?? DemoMode(key: Self.demoModeKey,
                                     arguments: [DemoMode.launchArgument, demoMode == true ? "YES" : "NO"])
         self.demo = demo
@@ -71,11 +79,13 @@ final class AppModel {
         let demoFiles = demoFiles ?? DemoFiles(folder: demo.scratchDirectory)
         self.store = store
         self.demoFiles = demoFiles
+        demoScopeBackups = demoFiles.scopeBackups
+        demoSessionStates = demoFiles.sessionStates
         let recording = RecordingSecretStore(secrets)
         self.secrets = recording
         self.session = session
-        // JTKit's in-memory log (Window › Activity Log). The activity.json of
-        // earlier versions stays on disk untouched and is no longer read.
+        // JTKit's in-memory log (Window › Activity Log). The app doesn't read
+        // or change activity.json, which may still be on disk.
         let activityLog = ActivityLog()
         self.activity = activityLog
         self.history = HistoryLog(store: history, activity: activityLog)
@@ -97,7 +107,13 @@ final class AppModel {
         store.didSaveTenants = { [weak self] old, new in
             self?.tenantsSaved(old: old, new: new)
         }
+        for log in [self.history, demoHistory] {
+            log.onSaveFailure = { [weak self] message in self?.persistenceError = message }
+        }
         observeDemoSwitch()
+        Task { [history] in
+            if let problem = await history.problem { self.persistenceError = problem }
+        }
     }
 
     /// The model for this launch: the saved tenants and demo mode, or, for a
@@ -136,7 +152,7 @@ final class AppModel {
         guard demo.isOn != workspaceIsDemo else { return }
         workspaceIsDemo = demo.isOn
         // A view may already have built the new mode's workspace; keep that one.
-        if workspace?.environment.isDemo != demo.isOn { workspace = nil }
+        if workspace?.environment.isDemo != demo.isOn { closeWorkspace() }
         workspaceGeneration += 1
         activity.app("\(DemoMode.title) turned \(demo.isOn ? "on" : "off").")
     }
@@ -157,7 +173,8 @@ final class AppModel {
             guard let tenant = currentTenant else {
                 throw APIError.invalidConfiguration("Choose a current tenant, or turn on \(DemoMode.title).")
             }
-            let client = try makeClient(for: tenant)
+            let scopeChanges = scopeSwitch(for: tenant)
+            let client = try makeClient(for: tenant, scopeChanges: scopeChanges)
             environment = MigrationEnvironment(
                 displayName: tenant.displayName,
                 isDemo: false,
@@ -167,7 +184,8 @@ final class AppModel {
                 jamfProLinks: tenant.jamfProLinks,
                 classic: LiveClassicAPI(client: client),
                 platform: client,
-                classicScopeWriter: tenant.allowClassicScopeChanges ? LiveClassicScopeWriter(client: client) : nil
+                classicScopeWriter: LiveClassicScopeWriter(client: client),
+                scopeChanges: scopeChanges
             )
         }
         // Called from view bodies; defer the log write so it doesn't mutate state mid-update.
@@ -176,12 +194,49 @@ final class AppModel {
         Task { activity.app("Opened workspace for \(name).", environment: name) }
         let created = isDemoMode
             ? Workspace(environment: environment, history: demoHistory,
-                        scopeBackups: demoFiles.scopeBackups, sessionStates: demoFiles.sessionStates)
+                        scopeBackups: demoScopeBackups, sessionStates: demoSessionStates)
             : Workspace(environment: environment, history: history,
-                        scopeBackups: tenantScopeBackups ?? .appDefault(),
-                        sessionStates: tenantSessionStates ?? .appDefault())
+                        scopeBackups: tenantScopeBackups, sessionStates: tenantSessionStates)
         workspace = created
+        reportStoreProblems(scopeBackups: created.scopeBackups, sessionStates: created.sessionStates)
         return created
+    }
+
+    private var tenantScopeBackups: ScopeBackupStore {
+        if let store = givenScopeBackups ?? openedScopeBackups { return store }
+        let opened = ScopeBackupStore.appDefault()
+        openedScopeBackups = opened
+        return opened
+    }
+
+    private var tenantSessionStates: SessionStateStore {
+        if let store = givenSessionStates ?? openedSessionStates { return store }
+        let opened = SessionStateStore.appDefault()
+        openedSessionStates = opened
+        return opened
+    }
+
+    /// Shows a scope backup or session file that couldn't be read (nothing is
+    /// saved to it, and no scope change runs without a backup).
+    private func reportStoreProblems(scopeBackups: ScopeBackupStore, sessionStates: SessionStateStore) {
+        Task {
+            let problems = [await scopeBackups.problem, await sessionStates.problem].compactMap { $0 }
+            if !problems.isEmpty { persistenceError = problems.joined(separator: "\n\n") }
+        }
+    }
+
+    /// The tenant's switch, set to its saved "Allow classic scope changes".
+    private func scopeSwitch(for tenant: Tenant) -> ClassicWriteSwitch {
+        let existing = scopeSwitches[tenant.id] ?? ClassicWriteSwitch(tenant.allowClassicScopeChanges)
+        existing.isOn = tenant.allowClassicScopeChanges
+        scopeSwitches[tenant.id] = existing
+        return existing
+    }
+
+    /// Stops the replaced workspace's loading, deployment watches and pending cleanups.
+    private func closeWorkspace() {
+        workspace?.close()
+        workspace = nil
     }
 
     /// The history the History page shows: demo mode's own while it's on.
@@ -191,7 +246,7 @@ final class AppModel {
     private func invalidateWorkspace(for tenantID: UUID?) {
         guard !isDemoMode else { return }
         if tenantID == nil || tenantID == currentTenantID {
-            workspace = nil
+            closeWorkspace()
             workspaceGeneration += 1
         }
     }
@@ -222,7 +277,7 @@ final class AppModel {
         do {
             try store.saveCurrentTenantID(id)
         } catch {
-            persistenceError = "Could not save the current tenant: \(error.localizedDescription)"
+            persistenceError = "The current tenant couldn’t be saved: \(error.localizedDescription)"
             return
         }
         currentTenantID = id
@@ -239,13 +294,17 @@ final class AppModel {
         let newSecrets = secrets.takeWrittenAccounts()
         let previous = Dictionary(old.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let remaining = Set(new.map(\.id))
+        // A switch turned off (or a tenant deleted) stops scope changes at once,
+        // also in migrations that are still running.
+        for tenant in new { scopeSwitches[tenant.id]?.isOn = tenant.allowClassicScopeChanges }
+        for removed in old where !remaining.contains(removed.id) { scopeSwitches[removed.id]?.isOn = false }
         for tenant in new {
             guard let before = previous[tenant.id] else {
                 activity.app("Added tenant “\(tenant.displayName)”.")
                 continue
             }
             if before.allowClassicScopeChanges != tenant.allowClassicScopeChanges {
-                activity.app("Classic scope changes \(tenant.allowClassicScopeChanges ? "ENABLED" : "disabled") for “\(tenant.displayName)”.",
+                activity.app("Classic scope changes turned \(tenant.allowClassicScopeChanges ? "on" : "off") for “\(tenant.displayName)”.",
                              environment: tenant.displayName, level: tenant.allowClassicScopeChanges ? .warning : .info, category: .classicWrite)
             }
             let hasNewSecret = newSecrets.contains(tenant.id.uuidString)
@@ -272,8 +331,11 @@ final class AppModel {
 
     /// Builds JTKit's client for a tenant, with the app's list of allowed
     /// requests. `secretOverride` lets the Connect screen test unsaved
-    /// credentials without writing them to the Keychain.
-    func makeClient(for tenant: Tenant, secretOverride: String? = nil) throws -> JamfPlatform.Client {
+    /// credentials without writing them to the Keychain. `scopeChanges` is
+    /// the switch the allow-list reads at every request; by default a fixed
+    /// one from `tenant`.
+    func makeClient(for tenant: Tenant, secretOverride: String? = nil,
+                    scopeChanges: ClassicWriteSwitch? = nil) throws -> JamfPlatform.Client {
         if let issue = tenant.validationIssues.first {
             throw APIError.invalidConfiguration(issue)
         }
@@ -290,13 +352,13 @@ final class AppModel {
         } catch let error as HTTPError {
             throw JamfPlatform.APIError(error)
         }
-        let classicWrites: ClassicWritePolicy = tenant.allowClassicScopeChanges ? .scopeOnly : .denied
+        let scopeChanges = scopeChanges ?? ClassicWriteSwitch(tenant.allowClassicScopeChanges)
         return try JamfPlatform.Client(
             baseURL: baseURL,
             scope: .environment(tenant.normalizedEnvironmentID),
             tokens: tokens,
             recorder: recorder,
-            permits: { RequestPolicy.isPermitted($0, classicWrites: classicWrites) },
+            permits: { RequestPolicy.isPermitted($0, classicWrites: scopeChanges.policy) },
             hints: RequestPolicy.hints(for:)
         )
     }

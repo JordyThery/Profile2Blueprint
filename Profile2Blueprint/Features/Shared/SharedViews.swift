@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import JTKit
 
 extension EligibilityStatus {
     var color: Color {
@@ -11,7 +12,7 @@ extension EligibilityStatus {
     }
 }
 
-/// ✅ Ready / ⚠️ Needs attention / ⛔ Blocked.
+/// Ready / Needs attention / Blocked, each with its SF Symbol.
 struct EligibilityBadge: View {
     let status: EligibilityStatus?
     var compact = false
@@ -160,6 +161,10 @@ struct PlistOutline: View {
 struct JSONTextView: View {
     let json: String
     var title: String?
+    /// The JSON holds credentials from the profile (Wi-Fi passwords, SCEP
+    /// challenges): copied with JTKit's `SecretPasteboard` (concealed, this
+    /// Mac only, cleared after a minute).
+    var containsSecrets = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -167,10 +172,11 @@ struct JSONTextView: View {
                 if let title { Text(title).font(.headline) }
                 Spacer()
                 Button("Copy JSON", systemImage: "doc.on.doc") {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(json, forType: .string)
+                    Self.copy(json, containsSecrets: containsSecrets)
                 }
-                .help("Copy the exact JSON to the clipboard")
+                .help(containsSecrets
+                      ? "Copy the exact JSON; it holds credentials, so the clipboard is cleared after a minute"
+                      : "Copy the exact JSON to the clipboard")
             }
             ScrollView([.vertical, .horizontal]) {
                 Text(JSONHighlighter.highlight(json))
@@ -185,7 +191,19 @@ struct JSONTextView: View {
     }
 }
 
-/// Tiny tokenizer for colouring already-serialised JSON.
+extension JSONTextView {
+    /// Copies the JSON; with secrets through JTKit's `SecretPasteboard`.
+    static func copy(_ json: String, containsSecrets: Bool, to pasteboard: NSPasteboard = .general) {
+        if containsSecrets {
+            SecretPasteboard.copy(json, to: pasteboard)
+        } else {
+            pasteboard.clearContents()
+            pasteboard.setString(json, forType: .string)
+        }
+    }
+}
+
+/// Tiny tokenizer for coloring already-serialized JSON.
 enum JSONHighlighter {
     static func highlight(_ text: String) -> AttributedString {
         var result = AttributedString()

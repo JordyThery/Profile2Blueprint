@@ -11,7 +11,7 @@ struct TenantPicker: View {
     var body: some View {
         ConnectionPicker(store: model.connections,
                          selection: tenantSelection(model),
-                         editTitle: "Edit Tenants…",
+                         editTitle: ConnectionMenuText.editTitle,
                          itemTitle: \.displayName,
                          label: label,
                          help: help) {
@@ -39,14 +39,14 @@ struct TenantPicker: View {
 
 /// The same choice in the menu bar: JTKit's shared Connection menu, with the
 /// same items as the toolbar picker (the tenants, Demo Mode, then
-/// Edit Tenants…).
+/// Edit Connections…).
 struct TenantCommands: Commands {
     let model: AppModel
 
     var body: some Commands {
         ConnectionCommands(store: model.connections,
                            selection: tenantSelection(model),
-                           editTitle: "Edit Tenants…",
+                           editTitle: ConnectionMenuText.editTitle,
                            itemTitle: \.displayName) {
             DemoModeToggle(demo: model.demo)
         }

@@ -99,7 +99,7 @@ final class TenantStore: ConnectionStorage {
         guard id != currentTenantID else { return }
         guard isReadable else {
             throw CocoaError(.fileReadCorruptFile, userInfo: [
-                NSLocalizedDescriptionKey: "The saved tenants couldn't be read, so the current tenant isn't saved until this is fixed.",
+                NSLocalizedDescriptionKey: "The saved tenants couldn’t be read, so the current tenant isn’t saved until this is fixed.",
             ])
         }
         try backUpOnce()

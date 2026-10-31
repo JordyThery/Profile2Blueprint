@@ -5,7 +5,7 @@ import Testing
 @testable import Profile2Blueprint
 
 private let base = URL(string: "https://us.api.jamfcloud.com")!
-private let environmentID = "e77c1408-10c8-4007-b177-abc9157fbcaa"
+private let environmentID = "0f0e0d0c-0b0a-4000-8000-00000000abcd"
 private let secretValue = "s3cr3t+with&specials="
 
 private func tokenJSON(_ token: String, expiresIn: Int = 900) -> String {
@@ -162,7 +162,7 @@ struct NetworkingTests {
         #expect(auth == ["Bearer tok-1", "Bearer tok-2"])
     }
 
-    @Test("429 backs off (honouring Retry-After) and then succeeds")
+    @Test("429 backs off (honoring Retry-After) and then succeeds")
     func rateLimitBackoff() async throws {
         let apiCalls = Counter()
         MockURLProtocol.install { request in

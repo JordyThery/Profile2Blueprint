@@ -83,8 +83,8 @@ nonisolated extension MigrationEnvironment {
     /// demo connection, "Contoso (Demo)".
     static let demoDisplayName = Connection.demoJamfPlatform.name
 
-    /// The name demo mode had before JTKit's demo mode. A backup under it is
-    /// never matched by name on a real tenant.
+    /// Another name a demo backup can carry. A backup under it is never
+    /// matched by name on a real tenant.
     static let earlierDemoDisplayName = "Offline demo"
 
     /// Demo mode: JTKit's demo Jamf Platform connection, with the app's
@@ -140,7 +140,7 @@ nonisolated extension MigrationEnvironment {
                 hints: RequestPolicy.hints(for:)
             )
         } catch {
-            preconditionFailure("JTKit's demo connection is always valid: \(error)")
+            preconditionFailure("JTKit’s demo connection is always valid: \(error)")
         }
     }
 }

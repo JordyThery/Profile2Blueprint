@@ -58,7 +58,7 @@ nonisolated struct ValueDifference: Hashable, Sendable {
     var path: String
     var expected: String
     var actual: String
-    /// Set when the difference is a documented server behaviour rather than data loss.
+    /// Set when the difference is a documented server behavior rather than data loss.
     /// Carries the explanation to show instead of reporting a mismatch.
     var serverRewrite: String?
 }
@@ -93,11 +93,11 @@ nonisolated enum ServerStringRewrite {
         return String(folded).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// The reason a normalised string still differs, when it is a known server behaviour.
+    /// The reason a normalized string still differs, when it is a known server behavior.
     /// `nil` means the difference is real and should be reported as a mismatch.
     static func reason(expected: String, actual: String) -> String? {
         if expected.replacingOccurrences(of: "\n", with: "").replacingOccurrences(of: "\t", with: "") == actual {
-            return "Jamf Pro deletes literal line feeds and tabs in this payload type. Write a line break as “&#13;” (what Jamf Pro's own UI writes), or move the value into an Application & Custom Settings payload, which keeps them."
+            return "Jamf Pro deletes literal line feeds and tabs in this payload type. Write a line break as “&#13;” (what Jamf Pro’s own UI writes), or move the value into an Application & Custom Settings payload, which keeps them."
         }
         if expected.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;") == actual {
             return "The server added an extra layer of & and < escaping (Jamf PI-827). No wire format stores this payload type faithfully."
@@ -117,7 +117,7 @@ nonisolated enum PlistJSONComparator {
         /// Require object keys to appear in the same order.
         var requireKeyOrder = false
         /// Treat documented Jamf Pro string rewrites, and omitted empty values, as
-        /// expected behaviour rather than data loss. Use when comparing against a
+        /// expected behavior rather than data loss. Use when comparing against a
         /// server read-back; leave off when comparing against a locally built body.
         var tolerateServerRewrites = false
     }
@@ -184,7 +184,7 @@ nonisolated enum PlistJSONComparator {
                 match = json[key].map { (key, $0) }
             }
             guard let match else {
-                // An empty value the server simply didn't store back is a harmless
+                // An empty value the server didn't store back is a harmless
                 // omission, not data loss: there was nothing in it to lose.
                 let omittedEmpty = options.tolerateServerRewrites && entry.value.isEmptyContainer
                 result.append(ValueDifference(

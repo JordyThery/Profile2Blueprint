@@ -3,57 +3,45 @@ import JTKit
 import OSLog
 
 /// Append-only local log of migration actions, stored as JSON in Application Support.
+/// A file that can't be read is kept as it is and not written (`StoredList`).
 actor HistoryStore {
     let fileURL: URL
     private var records: [MigrationRecord]
+    private let list: StoredList<MigrationRecord>
 
     init(fileURL: URL) {
         self.fileURL = fileURL
-        records = Self.load(from: fileURL)
+        (records, list) = StoredList.open(fileURL)
     }
 
     static func appDefault() -> HistoryStore {
-        let base = (try? FileManager.default.url(
-            for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true
-        )) ?? FileManager.default.temporaryDirectory
-        return HistoryStore(fileURL: base.appending(path: "Profile2Blueprint/history.json"))
+        HistoryStore(fileURL: StoredList<MigrationRecord>.appSupportFile("history.json"))
     }
 
     var all: [MigrationRecord] { records }
 
-    @discardableResult
-    func append(_ record: MigrationRecord) -> [MigrationRecord] {
+    /// Why the history isn't saved, when its file couldn't be read.
+    var problem: String? { list.problem }
+
+    /// Adds a record and writes the file; throws when it couldn't be written
+    /// (the record stays in memory for this launch).
+    func append(_ record: MigrationRecord) throws {
         var safe = record
         safe.message = Redaction.text(record.message)
         records.append(safe)
-        persist()
-        return records
-    }
-
-    private func persist() {
         do {
-            try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try HistoryExport.json(records).write(to: fileURL, options: .atomic)
+            try list.write(records)
         } catch {
             Log.app.error("Could not write history: \(error.localizedDescription, privacy: .public)")
+            throw error
         }
-    }
-
-    private static func load(from url: URL) -> [MigrationRecord] {
-        guard let data = try? Data(contentsOf: url) else { return [] }
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        return (try? decoder.decode([MigrationRecord].self, from: data)) ?? []
     }
 }
 
 /// Markdown and JSON renderings of the history log.
 nonisolated enum HistoryExport {
     static func json(_ records: [MigrationRecord]) throws -> Data {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        encoder.dateEncodingStrategy = .iso8601
-        return try encoder.encode(records)
+        try JSONFile.encode(records)
     }
 
     static func markdown(_ records: [MigrationRecord]) -> String {
@@ -73,7 +61,7 @@ nonisolated enum HistoryExport {
                 record.action.title,
                 cell("\(record.sourceProfileName) (\(record.platform.displayName) #\(record.sourceProfileID))"),
                 cell(blueprint.isEmpty ? "—" : blueprint),
-                record.result.rawValue,
+                record.result.title,
                 cell(record.message),
             ].joined(separator: " | ") + " |")
         }

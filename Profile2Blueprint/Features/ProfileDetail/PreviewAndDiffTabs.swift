@@ -22,7 +22,8 @@ struct BlueprintPreviewTab: View {
 
             switch session.preview {
             case let .success(request):
-                JSONTextView(json: request.body.prettyText, title: "POST /blueprints/v1/blueprints")
+                JSONTextView(json: request.body.prettyText, title: "POST /blueprints/v1/blueprints",
+                             containsSecrets: session.report.has(.sensitiveContent))
                 if session.report.has(.sensitiveContent) {
                     Label("This body contains credentials from the profile. Treat copies of it as secrets.", systemImage: "key.fill")
                         .font(.callout)
@@ -30,7 +31,7 @@ struct BlueprintPreviewTab: View {
                 }
             case let .failure(error):
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("The request can't be built yet:").font(.headline)
+                    Text("The request can’t be built yet:").font(.headline)
                     ForEach(error.problems, id: \.self) { problem in
                         Label(problem, systemImage: "exclamationmark.circle").foregroundStyle(.orange)
                     }
@@ -80,9 +81,11 @@ struct DiffTab: View {
                 .frame(minHeight: 220)
 
                 HSplitView {
-                    JSONTextView(json: LosslessJSON.object(PlistToJSON.convert(document.root)).prettyText, title: "Classic payload (plist as JSON)")
+                    JSONTextView(json: LosslessJSON.object(PlistToJSON.convert(document.root)).prettyText, title: "Classic payload (plist as JSON)",
+                                 containsSecrets: session.report.has(.sensitiveContent))
                         .padding(8)
-                    JSONTextView(json: LosslessJSON.object(configuration).prettyText, title: "Blueprint configuration")
+                    JSONTextView(json: LosslessJSON.object(configuration).prettyText, title: "Blueprint configuration",
+                                 containsSecrets: session.report.has(.sensitiveContent))
                         .padding(8)
                 }
                 .frame(minHeight: 240)

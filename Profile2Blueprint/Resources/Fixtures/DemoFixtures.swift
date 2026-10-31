@@ -9,7 +9,7 @@ import JTKit
 /// is XML-escaped inside `general/payloads`, `level` is `System`/`User`, and
 /// `general/uuid` carries the top-level PayloadIdentifier.
 nonisolated enum DemoFixtures {
-    // MARK: Fixture 1 — modelled on the profile from Jamf's JNUC transform demo
+    // MARK: Fixture 1 — modeled on the profile from Jamf's JNUC transform demo
 
     static let managedLoginItemsTopUUID = "00000000-0000-4000-8000-00000000A101"
     static let managedLoginItemsPayloadUUID = "00000000-0000-4000-8000-00000000A111"
@@ -241,7 +241,7 @@ nonisolated enum DemoFixtures {
         """
     )
 
-    // MARK: Extra — user-level profile (blocked in v1)
+    // MARK: Extra — user-level profile (blocked)
 
     static let userDock = profileXML(
         id: 106,

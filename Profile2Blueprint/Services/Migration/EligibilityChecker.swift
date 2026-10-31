@@ -132,7 +132,7 @@ nonisolated enum EligibilityChecker {
         // Payload document and rules 3–5 prerequisites
         switch profile.document {
         case let .failure(error):
-            add(.unparseablePayload, .blocker, "Payload plist can't be read", error.message)
+            add(.unparseablePayload, .blocker, "Payload plist can’t be read", error.message)
         case let .success(document):
             checkDocument(document, profile: profile, add: add)
         }
@@ -144,7 +144,7 @@ nonisolated enum EligibilityChecker {
         // Distribution
         if profile.distributionMethod.localizedCaseInsensitiveContains("self service") {
             add(.selfService, .warning, "Self Service profile",
-                "In Jamf Pro this profile is only installed when a user chooses it in Self Service. A blueprint installs on every device in its target group, which may reach devices that never had the classic profile.")
+                "In Jamf Pro this profile is only installed when a user chooses it in Self Service. A Blueprint installs on every device in its target group, which may reach devices that never had the classic profile.")
         }
 
         if let site = profile.site {
@@ -153,7 +153,7 @@ nonisolated enum EligibilityChecker {
         }
 
         add(.cannotVerifyDevicePreconditions, .info, "Confirm on devices: installed by MDM and DDM enabled",
-            "The in-place transform also requires that the classic profile was installed by MDM and that Declarative Device Management is enabled on each device. The API can't verify either, so confirm them before deploying.")
+            "The in-place transform also requires that the classic profile was installed by MDM and that Declarative Device Management is enabled on each device. The API can’t verify either, so confirm them before deploying.")
 
         return EligibilityReport(findings: findings, scopeMapping: mapping)
     }
@@ -167,13 +167,13 @@ nonisolated enum EligibilityChecker {
     ) {
         if document.payloads.isEmpty {
             add(.noPayloads, .blocker, "No payloads",
-                "PayloadContent is empty or missing, so there is nothing to migrate and the payload-count rule can't be met.")
+                "PayloadContent is empty or missing, so there is nothing to migrate and the payload-count rule can’t be met.")
         }
 
         var missing: [String] = []
         if (document.payloadIdentifier ?? "").isEmpty { missing.append("top-level PayloadIdentifier") }
         if (document.payloadUUID ?? "").isEmpty { missing.append("top-level PayloadUUID") }
-        if document.hasMalformedPayloadContent { missing.append("PayloadContent has entries that aren't dictionaries") }
+        if document.hasMalformedPayloadContent { missing.append("PayloadContent has entries that aren’t dictionaries") }
         for payload in document.payloads {
             let label = "payload \(payload.index + 1) (\(payload.type ?? "unknown type"))"
             if (payload.type ?? "").isEmpty { missing.append("\(label): PayloadType") }
@@ -190,7 +190,7 @@ nonisolated enum EligibilityChecker {
         let blocked = types.filter(blockedPayloadTypes.contains)
         if !blocked.isEmpty {
             add(.blockedPayloadType, .blocker, "Payload type the Blueprints API refuses",
-                "Blueprints cannot contain \(Set(blocked).sorted().joined(separator: ", ")). The API rejects the whole blueprint with “Payload disabled”. Probed \(payloadTableProbeDate); if Jamf has since enabled it, the create call is the authority.")
+                "Blueprints cannot contain \(Set(blocked).sorted().joined(separator: ", ")). The API rejects the whole Blueprint with “Payload disabled”. Probed \(payloadTableProbeDate); if Jamf has since enabled it, the create call is the authority.")
         }
 
         let nonCanonical = types.compactMap { type in
@@ -198,21 +198,21 @@ nonisolated enum EligibilityChecker {
         }
         if !nonCanonical.isEmpty {
             add(.nonCanonicalPayloadType, .blocker, "Payload type Jamf Pro spells differently",
-                "Jamf Pro wrote \(nonCanonical.map { "“\($0.written)”" }.joined(separator: ", ")), but the Blueprints API only accepts \(nonCanonical.map { "“\($0.expected)”" }.joined(separator: ", ")). Rewriting the type would break the rule that every payload type matches the installed profile, so this profile can't be transformed in place.")
+                "Jamf Pro wrote \(nonCanonical.map { "“\($0.written)”" }.joined(separator: ", ")), but the Blueprints API only accepts \(nonCanonical.map { "“\($0.expected)”" }.joined(separator: ", ")). Rewriting the type would break the rule that every payload type matches the installed profile, so this profile can’t be transformed in place.")
         }
 
-        let unrecognised = Set(types).subtracting(supportedPayloadTypes)
+        let unrecognized = Set(types).subtracting(supportedPayloadTypes)
             .subtracting(blockedPayloadTypes)
             .subtracting(nonCanonicalPayloadTypes.keys)
-        if !unrecognised.isEmpty {
+        if !unrecognized.isEmpty {
             add(.unsupportedPayloadType, .warning, "Payload type not in the known registry",
-                "The configuration-profile component matches payload types against a fixed registry, and \(unrecognised.sorted().joined(separator: ", ")) wasn't in it when this was probed (\(payloadTableProbeDate)). Create may fail with “Failed to validate configuration.” Attempting it is safe: the API is the authority and the registry may have grown.")
+                "The configuration-profile component matches payload types against a fixed registry, and \(unrecognized.sorted().joined(separator: ", ")) wasn’t in it when this was probed (\(payloadTableProbeDate)). Create may fail with “Failed to validate configuration.” Attempting it is safe: the API is the authority and the registry may have grown.")
         }
 
         let apiOnly = Set(types).intersection(supportedPayloadTypes).subtracting(uiManageablePayloadTypes)
         if !apiOnly.isEmpty {
             add(.apiOnlyPayload, .info, "Not editable in the Jamf Pro UI",
-                "\(apiOnly.sorted().joined(separator: ", ")) will appear in the blueprint as read-only “Legacy payload” items, editable only through the API.")
+                "\(apiOnly.sorted().joined(separator: ", ")) will appear in the Blueprint as read-only “Legacy payload” items, editable only through the API.")
         }
 
         // Wire fact from Jamf's own tooling: the Blueprints API overwrites each
@@ -227,7 +227,7 @@ nonisolated enum EligibilityChecker {
         if !uuidMismatches.isEmpty {
             let list = uuidMismatches.map { "payload \($0.index + 1) (\($0.type ?? "unknown type"))" }.joined(separator: ", ")
             add(.payloadUUIDMismatch, .blocker, "Payload UUID differs from its identifier",
-                "The Blueprints API overwrites each payload's UUID with its identifier, so \(list) could never match the installed profile and the transform would fail on devices. Typical of uploaded profiles. A profile cloned in Jamf Pro gets regenerated, matching identifiers.")
+                "The Blueprints API overwrites each payload’s UUID with its identifier, so \(list) could never match the installed profile and the transform would fail on devices. Typical of uploaded profiles. A profile cloned in Jamf Pro gets regenerated, matching identifiers.")
         }
 
         // The API accepts a payload with no settings, but the Jamf Pro UI refuses to
@@ -238,7 +238,7 @@ nonisolated enum EligibilityChecker {
         }
         if !emptyPayloads.isEmpty {
             add(.emptyPayload, .warning, "Payload with no settings",
-                "Payload \(emptyPayloads.map { String($0.index + 1) }.joined(separator: ", ")) carries only metadata. The API accepts it, but Jamf Pro refuses to deploy a blueprint containing an empty payload. Remove it from the classic profile first.")
+                "Payload \(emptyPayloads.map { String($0.index + 1) }.joined(separator: ", ")) carries only metadata. The API accepts it, but Jamf Pro refuses to deploy a Blueprint containing an empty payload. Remove it from the classic profile first.")
         }
 
         let uuids = document.payloads.compactMap(\.uuid)
@@ -249,21 +249,21 @@ nonisolated enum EligibilityChecker {
 
         if let uuid = document.payloadUUID, !profile.uuid.isEmpty, profile.uuid != uuid {
             add(.recordUUIDMismatch, .warning, "Jamf Pro record UUID differs from the plist PayloadUUID",
-                "Jamf Pro records “\(profile.uuid)” but the payload plist says PayloadUUID “\(uuid)”. This is typical of uploaded or signed profiles. The transform only works if the blueprint matches the UUID actually installed. Check it on a device (`sudo profiles show -type configuration`) before deploying.")
+                "Jamf Pro records “\(profile.uuid)” but the payload plist says PayloadUUID “\(uuid)”. This is typical of uploaded or signed profiles. The transform only works if the Blueprint matches the UUID actually installed. Check it on a device (sudo profiles show -type configuration) before deploying.")
         }
 
         if (document.payloadIdentifier ?? "").hasPrefix("com.jamf.protect.") || profile.uuid.hasPrefix("com.jamf.protect.") {
             add(.jamfProtectManaged, .warning, "Managed by the Jamf Protect integration",
-                "Jamf Protect creates and updates this profile. Migrating it means Protect may keep re-pushing the classic profile, which would conflict with the blueprint.")
+                "Jamf Protect creates and updates this profile. Migrating it means Protect may keep re-pushing the classic profile, which would conflict with the Blueprint.")
         }
 
         let dropped = document.root.keys.filter { !carriedTopLevelKeys.contains($0) }
         if !dropped.isEmpty {
             add(.droppedTopLevelKeys, .info, "Top-level keys not carried over",
-                "The blueprint body has no fields for: \(dropped.joined(separator: ", ")). The server sets its own values.")
+                "The Blueprint body has no fields for: \(dropped.joined(separator: ", ")). The server sets its own values.")
         }
 
-        // Empty strings and empty arrays are artefacts of the classic UI that the DDM API
+        // Empty strings and empty arrays are artifacts of the classic UI that the DDM API
         // rejects. Only a payload's own keys are checked: that is the depth at which the
         // API enforces it. Seen live as an empty Wi-Fi SetupModes (HTTP 400 SIZE).
         var rejected: [String] = []
@@ -341,8 +341,8 @@ nonisolated enum EligibilityChecker {
         if mapping.allSatisfy({ $0.autoMatch == nil }) {
             add(.noMappedGroup, .warning, "No scope group maps to a platform group",
                 scope.deviceGroups.isEmpty
-                    ? "The profile isn't scoped to any \(platform.deviceNoun) group. Pick a platform device group for the blueprint."
-                    : "None of the profile's \(platform.deviceNoun) groups has an exact name match in the platform. Pick a platform device group.")
+                    ? "The profile isn’t scoped to any \(platform.deviceNoun) group. Pick a platform device group for the Blueprint."
+                    : "None of the profile’s \(platform.deviceNoun) groups has an exact name match in the platform. Pick a platform device group.")
         }
 
         let unmatched = mapping.filter(\.isUnmatched)
@@ -369,19 +369,19 @@ nonisolated enum EligibilityChecker {
         for bucket in scope.otherTargets { other.append(bucket.displayName.lowercased()) }
         if scope.allJSSUsers { other.append("all JSS users") }
         if !other.isEmpty {
-            add(.nonGroupTargets, .warning, "Targets without a blueprint equivalent",
-                "Scope also includes \(other.joined(separator: ", ")). These can't be carried over. Pick a platform group that contains those devices.")
+            add(.nonGroupTargets, .warning, "Targets without a Blueprint equivalent",
+                "Scope also includes \(other.joined(separator: ", ")). These can’t be carried over. Pick a platform group that contains those devices.")
         }
 
         if scope.hasLimitations {
-            add(.limitations, .warning, "Limitations are not carried over",
-                "The classic scope is limited by \(scope.limitations.map { $0.displayName.lowercased() }.joined(separator: ", ")). The blueprint has no limitations and will apply to every member of the chosen group.")
+            add(.limitations, .warning, "Limitations aren’t carried over",
+                "The classic scope is limited by \(scope.limitations.map { $0.displayName.lowercased() }.joined(separator: ", ")). The Blueprint has no limitations and will apply to every member of the chosen group.")
         }
 
         if scope.hasExclusions {
             let list = scope.exclusions.map { "\($0.displayName.lowercased()) (\($0.items.map(\.name).joined(separator: ", ")))" }
-            add(.exclusions, .warning, "Exclusions are NOT carried over",
-                "Excluded: \(list.joined(separator: "; ")). The blueprint will reach these devices if they are in the target group. Use a platform group that already leaves them out.")
+            add(.exclusions, .warning, "Exclusions aren’t carried over",
+                "Excluded: \(list.joined(separator: "; ")). The Blueprint will reach these devices if they are in the target group. Use a platform group that already leaves them out.")
         }
     }
 }

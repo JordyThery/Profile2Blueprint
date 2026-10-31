@@ -4,8 +4,7 @@ import JTKit
 /// How a blueprint's suggested name is built from the classic profile's name.
 /// Either affix may be empty; with both empty the name is the profile's name verbatim.
 nonisolated struct BlueprintNaming: Codable, Hashable, Sendable {
-    /// The suffix used before naming was configurable, kept as the default so existing
-    /// tenants and the demo behave as before.
+    /// The default suffix, so saved tenants and the demo keep their Blueprint names.
     static let defaultSuffix = " (migrated)"
     static let `default` = BlueprintNaming()
 
@@ -86,7 +85,7 @@ nonisolated struct Tenant: Codable, Hashable, Identifiable, Sendable {
     /// profiles on this tenant. Off by default; while off, every Classic write is refused.
     var allowClassicScopeChanges: Bool
     /// Prefix and suffix applied to suggested blueprint names on this tenant, so a test
-    /// environment can be labelled differently from production.
+    /// environment can be labeled differently from production.
     var naming: BlueprintNaming
     /// Template for the suggested blueprint description, with the tokens in
     /// `BlueprintBuilder.descriptionTokens`. Empty means no description.
@@ -137,8 +136,8 @@ nonisolated struct Tenant: Codable, Hashable, Identifiable, Sendable {
         naming = try container.decodeIfPresent(BlueprintNaming.self, forKey: .naming) ?? .default
         descriptionTemplate = try container.decodeIfPresent(String.self, forKey: .descriptionTemplate)
             ?? BlueprintBuilder.defaultDescriptionTemplate
-        // Tenants still on the pre-{platform} default move to the new one; edited
-        // templates are left alone.
+        // The older default template is upgraded so the {platform} token reaches
+        // every tenant; edited templates are left alone.
         if descriptionTemplate == BlueprintBuilder.descriptionTemplateV1 {
             descriptionTemplate = BlueprintBuilder.defaultDescriptionTemplate
         }
@@ -148,7 +147,9 @@ nonisolated struct Tenant: Codable, Hashable, Identifiable, Sendable {
     /// Display name with a fallback for unnamed tenants.
     var displayName: String {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? "Untitled tenant" : trimmed
+        var named = connection
+        named.name = trimmed
+        return ConnectionMenuText.name(of: named)
     }
 
     /// The gateway host, with any scheme or trailing slash stripped from the override.
@@ -179,7 +180,7 @@ nonisolated struct Tenant: Codable, Hashable, Identifiable, Sendable {
 
     var jamfProLinks: JamfProLinks? { JamfProLinks(jamfProURL) }
 
-    /// The environment ID normalised to the lowercase form the spec's pattern expects.
+    /// The environment ID normalized to the lowercase form the spec's pattern expects.
     var normalizedEnvironmentID: String {
         environmentID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }

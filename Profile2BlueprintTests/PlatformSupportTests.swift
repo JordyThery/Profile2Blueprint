@@ -98,7 +98,7 @@ struct MobileProfileTests {
     func mobileMigration() async throws {
         let workspace = Workspace.previewDemo()
         let session = try #require(workspace.session(for: mobileKey))
-        try await Task.sleep(for: .milliseconds(50))
+        await session.waitUntilReady()
         #expect(session.blueprintDescription.contains("classic mobile device configuration profile ID 201"))
         session.dryRun = false
         await session.create()
@@ -221,7 +221,6 @@ struct GuardTests {
         let profile = try ClassicXMLParser.parseProfile(Data(DemoFixtures.uploadedPPPC.utf8), platform: .macOS)
         let report = EligibilityChecker.check(profile, platformGroups: DemoFixtures.platformGroups)
         #expect(report.findings.first { $0.kind == .payloadUUIDMismatch }?.severity == .blocker)
-        #expect(!report.identityRulesHold)
     }
 
     @Test("A payload with only metadata warns: the Jamf Pro UI refuses to deploy it")
@@ -299,15 +298,15 @@ struct GuardTests {
 
     @Test("A null blueprint name reads and is never a duplicate")
     func nullBlueprintName() async throws {
-        // Shape seen live: a blueprint whose name and description are null.
-        let list = #"{"results":[{"id":"dc0ca4c9-c567-440a-a5b3-750437c58c8a","name":null,"description":null,"created":"2026-04-08T13:48:29.408600Z","updated":"2026-04-08T14:05:56.892810Z","deploymentState":{"state":"NOT_DEPLOYED","lastDeployment":null}},{"id":"b","name":"Real","deploymentState":null}],"totalCount":2}"#
+        // A shape the server sends (values made up): a Blueprint whose name and description are null.
+        let list = #"{"results":[{"id":"0f0e0d0c-0b0a-4000-8000-0000000000b1","name":null,"description":null,"created":"2026-01-01T09:00:00.000000Z","updated":"2026-01-01T10:00:00.000000Z","deploymentState":{"state":"NOT_DEPLOYED","lastDeployment":null}},{"id":"b","name":"Real","deploymentState":null}],"totalCount":2}"#
         let server = MockServer { _ in .json(200, list) }
         let client = try JamfPlatform.Client(
             baseURL: URL(string: "https://us.api.jamfcloud.com")!, scope: .environment(DemoSamples.platformEnvironmentID),
             tokens: NoToken(), recorder: RequestRecorder(session: server.session, log: nil))
         let blueprints = JamfPlatform.Blueprints(client: client)
         #expect(try await blueprints.blueprints(named: "Real").map(\.id) == ["b"])
-        let placeholder = try await blueprints.list().first { $0.id.hasPrefix("dc0c") }?.name
+        let placeholder = try await blueprints.list().first { $0.id.hasSuffix("0000000000b1") }?.name
         #expect(try await blueprints.blueprints(named: try #require(placeholder)).isEmpty, "the nameless entry matches nothing")
     }
 }

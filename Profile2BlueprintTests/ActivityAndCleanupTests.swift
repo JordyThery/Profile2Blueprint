@@ -12,14 +12,14 @@ private func client(_ log: ActivityLog, policy: ClassicWritePolicy = .denied) th
                                    service: "Jamf Platform API", connection: "Test")
     let tokens = JamfPlatform.TokenProvider(tokenURL: base.appending(path: "auth/token"), method: .apiClient(clientID: "c"),
                                    secret: { "s" }, recorder: recorder)
-    return try JamfPlatform.Client(baseURL: base, scope: .environment("e77c1408-10c8-4007-b177-abc9157fbcaa"), tokens: tokens,
+    return try JamfPlatform.Client(baseURL: base, scope: .environment("0f0e0d0c-0b0a-4000-8000-00000000abcd"), tokens: tokens,
                                    recorder: recorder, permits: { RequestPolicy.isPermitted($0, classicWrites: policy) },
                                    hints: RequestPolicy.hints(for:), sleep: { _ in })
 }
 
 private let scopeOnlyBody = ClassicScopeService.unscopedBody(platform: .macOS)
 
-// MARK: - Milestone 7: activity log (JTKit's, from step 5)
+// MARK: - Activity log (JTKit's)
 
 /// Network-backed activity tests join the serialized `NetworkingTests` suite because
 /// `MockURLProtocol`'s handler is global.
@@ -104,7 +104,7 @@ struct ActivityLogEntryTests {
     func appEntries() {
         let log = ActivityLog()
         log.app("Saved settings, token Bearer abc.def", environment: "Sandbox")
-        log.app("Classic scope changes ENABLED", level: .warning, category: .classicWrite)
+        log.app("Classic scope changes turned on", level: .warning, category: .classicWrite)
         log.app("Create failed", level: .error, category: .migration)
 
         let entries = log.entries
@@ -118,7 +118,7 @@ struct ActivityLogEntryTests {
     }
 }
 
-// MARK: - Milestone 8: guarded classic scope changes
+// MARK: - Guarded classic scope changes
 
 @Suite("Classic scope change guard")
 struct ClassicWriteGuardTests {
@@ -274,7 +274,7 @@ struct SessionCleanupTests {
         let workspace = Workspace.previewDemo()
         let session = try #require(workspace.session(for: ProfileKey(platform: .macOS, id: 101)))
         let originalScope = try #require(workspace.profiles[ProfileKey(platform: .macOS, id: 101)]).scope
-        try await Task.sleep(for: .milliseconds(50)) // let the backup lookup finish
+        await session.waitUntilReady()
 
         session.dryRun = false
         session.unscopeAfterDeploy = true
@@ -373,7 +373,7 @@ struct DemoFilesTests {
 
 @Suite("Scope backups stay with their environment", .serialized)
 struct ScopeBackupEnvironmentTests {
-    private let realID = "e77c1408-10c8-4007-b177-abc9157fbcaa"
+    private let realID = "0f0e0d0c-0b0a-4000-8000-00000000abcd"
 
     private func environment(demo: Bool, server: DemoClassicServer, id: String? = nil) -> MigrationEnvironment {
         MigrationEnvironment(
