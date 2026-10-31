@@ -451,9 +451,13 @@ struct LiveMigrationTests {
         try #require(deployed, "The deployment didn't succeed")
 
         // 6. The app's scope step: with no device in the group the deployment
-        //    isn't "clean" (nothing succeeded), so the app must not change the
-        //    profile's scope by itself.
-        let deferred: Bool = if case .waiting = session.unscopeStatus { true } else { false }
+        //    isn't "clean" (nothing succeeded), and the Classic group isn't one
+        //    of the Blueprint's groups, so the app must not change the
+        //    profile's scope by itself: it waits, or holds back.
+        let deferred: Bool = switch session.unscopeStatus {
+        case .waiting, .heldBack: true
+        default: false
+        }
         let untouched = Self.isScopedToOnly(try await target.classic.profile(key: key).scope, group: classicGroupID)
         let guardHeld = deferred && !session.canUnscopeNow && fence.writes.isEmpty && untouched
         run.record(step: step("the app's scope step waits for a clean deployment"), passed: guardHeld,
@@ -484,7 +488,7 @@ struct LiveMigrationTests {
         let reloaded = try await waitUntil(300) { Self.finishedLoading(reopened) }
         try #require(reloaded && reopened.listPhase == .loaded, "The workspace didn't load again: \(reopened.listPhase)")
         let resumed = try #require(reopened.session(for: key), "The test profile isn't in the reopened workspace")
-        let ready = try await waitUntil(120) { resumed.scopeBackup != nil && resumed.blueprintID == blueprintID && !resumed.isBusy && !resumed.isRestoring }
+        let ready = try await waitUntil(120) { resumed.scopeBackup != nil && resumed.blueprintID == blueprintID && !resumed.isBusy && !resumed.isLoadingSavedState }
         try #require(ready && resumed.canRestoreScope, "The reopened migration doesn't offer Restore (\(resumed.lastError.map { String(describing: $0) } ?? "no error"))")
         await resumed.restoreClassicScope()
         let restored = Self.isScopedToOnly(try await target.classic.profile(key: key).scope, group: classicGroupID)

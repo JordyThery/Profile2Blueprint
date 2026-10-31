@@ -12,7 +12,7 @@ struct JamfProLinksTests {
     @Test("The address is accepted however it is pasted",
           arguments: ["example.jamfcloud.com", "https://example.jamfcloud.com", "https://example.jamfcloud.com/", "  example.jamfcloud.com  ",
                       "https://example.jamfcloud.com/OSXConfigurationProfiles.html?id=477&o=r"])
-    func normalises(address: String) throws {
+    func normalizes(address: String) throws {
         let links = try #require(JamfProLinks(address))
         #expect(links.base.absoluteString == "https://example.jamfcloud.com")
     }
@@ -48,7 +48,7 @@ struct JamfProLinksTests {
 // MARK: - Update check
 //
 // The checker itself is JTKit's and tested there. What stays here is Profile2Blueprint's
-// own configuration, and the one behaviour JTKit's tests don't cover yet.
+// own configuration, and the one behavior JTKit's tests don't cover yet.
 
 @Suite("Update configuration")
 struct UpdateConfigurationTests {

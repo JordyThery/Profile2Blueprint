@@ -16,9 +16,9 @@ nonisolated enum MigrationState: Hashable, Sendable {
     case failed(stage: String, ErrorReport)
 }
 
-/// Proof that a person confirmed deploying one specific blueprint. Only the deploy
+/// Proof that a person confirmed deploying one specific Blueprint. Only the deploy
 /// confirmation sheet creates these; the pipeline refuses to deploy without one
-/// that names the blueprint it created.
+/// that names the Blueprint it created.
 nonisolated struct DeployConfirmation: Hashable, Sendable {
     let blueprintID: String
     let blueprintName: String
@@ -38,12 +38,12 @@ nonisolated struct PipelineError: Error, LocalizedError, Sendable {
     var errorDescription: String? { message }
 }
 
-/// A same-named blueprint already exists. Carries the matches so callers can offer
+/// A same-named Blueprint already exists. Carries the matches so callers can offer
 /// rename / skip / open-existing instead of a plain failure.
 nonisolated struct DuplicateNameError: Error, LocalizedError, Sendable {
     var existing: [JamfPlatform.BlueprintOverview]
     var errorDescription: String? {
-        "A blueprint with this name already exists. Rename, skip, or open the existing one."
+        "A Blueprint with this name already exists. Rename, skip, or open the existing one."
     }
 }
 
@@ -151,15 +151,15 @@ actor MigrationPipeline {
 
     /// Existing blueprints with the same name (idempotency check).
     func existingBlueprints() async throws -> [JamfPlatform.BlueprintOverview] {
-        guard let request else { throw PipelineError(message: "Build the blueprint first.") }
+        guard let request else { throw PipelineError(message: "Build the Blueprint first.") }
         return try await blueprints.blueprints(named: request.name)
     }
 
-    /// 6. Create the blueprint, not deployed. Throws `DuplicateNameError` — leaving the
-    /// pipeline at `built` so the caller can rename and retry — when the name is taken.
+    /// 6. Create the Blueprint, not deployed. Throws `DuplicateNameError` (leaving the
+    /// pipeline at `built` so the caller can rename and retry) when the name is taken.
     /// Returns the new Blueprint's ID.
     func create() async throws -> String {
-        guard let request, state == .built else { throw PipelineError(message: "Build the blueprint before creating it.") }
+        guard let request, state == .built else { throw PipelineError(message: "Build the Blueprint before creating it.") }
         do {
             let existing = try await blueprints.blueprints(named: request.name)
             if !existing.isEmpty { throw DuplicateNameError(existing: existing) }
@@ -167,7 +167,7 @@ actor MigrationPipeline {
                                                  deviceGroups: request.deviceGroupIDs, steps: request.steps)
             blueprintID = id
             state = .created(blueprintID: id)
-            Log.app.info("Created blueprint \(id, privacy: .public) (not deployed)")
+            Log.app.info("Created Blueprint \(id, privacy: .public) (not deployed)")
             return id
         } catch let duplicate as DuplicateNameError {
             throw duplicate
@@ -177,31 +177,35 @@ actor MigrationPipeline {
         }
     }
 
-    /// Uses an existing blueprint instead of creating one ("open existing").
+    /// Uses an existing Blueprint instead of creating one ("open existing").
     func adoptExisting(id: String) throws {
-        guard request != nil else { throw PipelineError(message: "Build the blueprint first.") }
+        guard request != nil else { throw PipelineError(message: "Build the Blueprint first.") }
         blueprintID = id
         state = .created(blueprintID: id)
     }
 
-    /// 7. Read back and compare against the source.
+    /// 7. Read back and compare against the source. While a deployment may
+    /// still be running (deploying, or polling timed out) the state stays as
+    /// it is, so verifying again never makes the Blueprint deployable a second
+    /// time on top of it. After a finished deployment it does: deploying
+    /// again then needs a new confirmation.
     func verify() async throws -> FidelityReport {
-        guard let blueprintID, let profile, let request else { throw PipelineError(message: "Create the blueprint before verifying.") }
-        guard case let .success(document) = profile.document else { throw PipelineError(message: "The source profile can't be parsed.") }
+        guard let blueprintID, let profile, let request else { throw PipelineError(message: "Create the Blueprint before verifying.") }
+        guard case let .success(document) = profile.document else { throw PipelineError(message: "The source profile can’t be parsed.") }
         do {
             let detail = try await blueprints.detail(id: blueprintID)
             let result = FidelityVerifier.verify(document: document, expectedGroupIDs: request.deviceGroupIDs, detail: detail)
             readBack = detail
             fidelity = result
-            state = .verified(passed: result.passed)
+            if case .deploying = state {} else { state = .verified(passed: result.passed) }
             return result
         } catch {
-            state = .failed(stage: "verify", ErrorReport(error))
+            if case .deploying = state {} else { state = .failed(stage: "verify", ErrorReport(error)) }
             throw error
         }
     }
 
-    /// 8. Deploy, only with a confirmation for this exact blueprint, then poll.
+    /// 8. Deploy, only with a confirmation for this exact Blueprint, then poll.
     func deploy(
         confirmation: DeployConfirmation,
         onProgress: @Sendable (JamfPlatform.DeploymentStatus) async -> Void = { _ in }
@@ -210,7 +214,7 @@ actor MigrationPipeline {
         do {
             state = .deploying(nil)
             previousDeploymentStart = try await blueprints.startDeployment(id: blueprintID)
-            Log.app.info("Deploy accepted for blueprint \(blueprintID, privacy: .public)")
+            Log.app.info("Deploy accepted for Blueprint \(blueprintID, privacy: .public)")
             return try await monitor(id: blueprintID, onProgress: onProgress)
         } catch {
             state = .failed(stage: "deploy", ErrorReport(error))
@@ -219,14 +223,14 @@ actor MigrationPipeline {
     }
 
     /// Whether `deploy(confirmation:)` would go ahead: a verified, passing
-    /// blueprint and a confirmation naming it. Sends nothing. Returns the blueprint's ID.
+    /// Blueprint and a confirmation naming it. Sends nothing. Returns the Blueprint's ID.
     @discardableResult
     func checkDeployable(confirmation: DeployConfirmation) throws -> String {
         guard let blueprintID, case let .verified(passed) = state else {
-            throw PipelineError(message: "Verify the blueprint before deploying.")
+            throw PipelineError(message: "Verify the Blueprint before deploying.")
         }
         guard confirmation.blueprintID == blueprintID else {
-            throw PipelineError(message: "The confirmation is for a different blueprint. Nothing was deployed.")
+            throw PipelineError(message: "The confirmation is for a different Blueprint. Nothing was deployed.")
         }
         guard passed else {
             throw PipelineError(message: "Verification found mismatches. Deploying was refused.")
@@ -256,7 +260,8 @@ actor MigrationPipeline {
         }
         switch outcome {
         case let .finished(status) where status.didSucceed:
-            let report = await blueprints.reportIfAny(id: id)
+            // JTKit's watch read the report with the last check; read it only if it didn't.
+            let report = if let report = status.report { report } else { await blueprints.reportIfAny(id: id) }
             state = .deployed(report)
             return .succeeded(report)
         case let .finished(status):
@@ -272,7 +277,7 @@ actor MigrationPipeline {
     }
 
     /// Refreshes the device report until no device is pending, the time limit
-    /// (`WatchPolicy.report`) passes, or the task is cancelled. Returns the last
+    /// (`WatchPolicy.report`) passes, or the task is canceled. Returns the last
     /// report seen (the caller judges cleanliness). No report yet is checked again.
     func monitorReport(
         id: String,

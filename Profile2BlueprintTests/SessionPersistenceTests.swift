@@ -32,17 +32,17 @@ struct SessionStateStoreTests {
         defer { try? FileManager.default.removeItem(at: url) }
         let store = SessionStateStore(fileURL: url, limit: 3)
 
-        await store.save(record())
-        await store.save(record(blueprintID: "bp-2"))
+        try await store.save(record())
+        try await store.save(record(blueprintID: "bp-2"))
         let loaded = await SessionStateStore(fileURL: url).record(environmentKey: "env", key: ProfileKey(platform: .macOS, id: 101))
         #expect(loaded?.blueprintID == "bp-2", "same profile replaces, persisted to disk")
         #expect(loaded?.unscopeAfterDeploy == true)
         #expect(loaded?.selectedGroupIDs == ["g1"])
 
-        for id in 102...105 { await store.save(record(profileID: id)) }
+        for id in 102...105 { try await store.save(record(profileID: id)) }
         #expect(await store.record(environmentKey: "env", key: ProfileKey(platform: .macOS, id: 101)) == nil, "oldest dropped at the cap")
 
-        await store.remove(environmentKey: "env", key: ProfileKey(platform: .macOS, id: 105))
+        try await store.remove(environmentKey: "env", key: ProfileKey(platform: .macOS, id: 105))
         #expect(await store.record(environmentKey: "env", key: ProfileKey(platform: .macOS, id: 105)) == nil)
     }
 }
@@ -112,7 +112,7 @@ struct SessionRestoreTests {
     @Test("A stale record (blueprint deleted on the server) is cleared with an explanation")
     func staleRecordCleared() async throws {
         let states = temporaryStore()
-        await states.save(PersistedMigration(environmentKey: MigrationEnvironment.demoDisplayName, platform: .macOS, profileID: 101,
+        try await states.save(PersistedMigration(environmentKey: MigrationEnvironment.demoDisplayName, platform: .macOS, profileID: 101,
                                              blueprintID: "deleted-on-server", blueprintName: "Gone",
                                              selectedGroupIDs: [DemoFixtures.engineersPlatformGroupID],
                                              unscopeAfterDeploy: false))
@@ -134,10 +134,11 @@ struct SessionRestoreTests {
 struct EffectiveEligibilityTests {
 
     @Test("Picking a group resolves an unmatched-scope warning to Ready, no acknowledgement needed")
-    func unmatchedResolvedBySelection() throws {
+    func unmatchedResolvedBySelection() async throws {
         // Fixture 103 is Needs attention solely because no platform group matches.
         let workspace = Workspace.previewDemo()
         let session = try #require(workspace.session(for: ProfileKey(platform: .macOS, id: 103)))
+        await session.waitUntilReady()
         #expect(session.report.status == .needsAttention)
         #expect(session.selectedGroupIDs.isEmpty)
         #expect(session.effectiveReport.status == .needsAttention)

@@ -16,7 +16,7 @@ struct ProfilesView: View {
                 } description: {
                     Text(error.localizedDescription)
                 } actions: {
-                    SettingsTabLink(SettingsTabName.connections) { Text("Edit Tenants…") }
+                    SettingsTabLink(SettingsTabName.connections) { Text(ConnectionMenuText.editTitle) }
                     Button("Try \(DemoMode.title)") { model.isDemoMode = true }
                 }
             }
@@ -96,10 +96,11 @@ private struct ProfilesContent: View {
         .toolbar {
             ToolbarItemGroup {
                 Button("Reload", systemImage: "arrow.clockwise") { workspace.reload() }
+                    .keyboardShortcut("r")
                     .help("Reload profiles and device groups (read-only)")
                 Button("Migrate Selected…", systemImage: "square.stack.3d.up") { showingBatch = true }
                     .disabled(selection.count < 2)
-                    .help("Batch migration with a per-item summary")
+                    .help("Migrate the selected profiles together, with a summary per profile")
             }
         }
         .sheet(isPresented: $showingBatch) {
@@ -112,7 +113,7 @@ private struct ProfilesContent: View {
         VStack(alignment: .leading, spacing: 8) {
             Picker("Show", selection: $filter) {
                 ForEach(StatusFilter.allCases) { option in
-                    Text(label(for: option)).tag(option)
+                    label(for: option).tag(option)
                 }
             }
             .pickerStyle(.segmented)
@@ -137,27 +138,40 @@ private struct ProfilesContent: View {
                     Text("Checking \(workspace.detailsLoaded) of \(workspace.summaries.count) profiles…").font(.caption)
                 }
             default:
-                Text("\(workspace.summaries.count) profiles · \(workspace.groups.count) device groups")
+                Text("^[\(workspace.summaries.count) profile](inflect: true) · ^[\(workspace.groups.count) device group](inflect: true)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             if let groupsError = workspace.groupsError {
-                DisclosureGroup("Device groups couldn't be loaded") {
+                DisclosureGroup("Device groups couldn’t be loaded") {
                     APIErrorView(report: groupsError)
                 }
                 .foregroundStyle(.orange)
+            }
+            ForEach(ProfilePlatform.allCases.filter { workspace.listErrors[$0] != nil }) { platform in
+                if let error = workspace.listErrors[platform] {
+                    DisclosureGroup("\(platform.displayName) profiles couldn’t be loaded") {
+                        APIErrorView(report: error)
+                    }
+                    .foregroundStyle(.orange)
+                }
             }
         }
         .padding(10)
     }
 
-    private func label(for option: StatusFilter) -> String {
+    /// The status's SF Symbol and count, as the badges draw it, with the status read out.
+    private func label(for option: StatusFilter) -> Text {
+        let status: EligibilityStatus
         switch option {
-        case .all: "All"
-        case .ready: "✅ \(workspace.count(of: .ready))"
-        case .attention: "⚠️ \(workspace.count(of: .needsAttention))"
-        case .blocked: "⛔ \(workspace.count(of: .blocked))"
+        case .all: return Text("All")
+        case .ready: status = .ready
+        case .attention: status = .needsAttention
+        case .blocked: status = .blocked
         }
+        let count = workspace.count(of: status)
+        return Text("\(Image(systemName: status.symbol)) \(count)")
+            .accessibilityLabel("\(status.title), \(count)")
     }
 
     private var list: some View {

@@ -4,7 +4,7 @@ import JTKitTestSupport
 import Testing
 @testable import Profile2Blueprint
 
-// JTKit step 7: the Classic profile reads and the scope change use JTKit's
+// The Classic profile reads and the scope change use JTKit's
 // Classic addresses, list unwrapping and error pages, and name their privilege.
 
 private let base = URL(string: "https://eu.api.jamfcloud.com")!
@@ -14,25 +14,23 @@ private func client(policy: ClassicWritePolicy = .scopeOnly) throws -> JamfPlatf
     let recorder = RequestRecorder(session: MockURLProtocol.makeSession(), log: nil)
     let tokens = JamfPlatform.TokenProvider(tokenURL: base.appending(path: "auth/token"), method: .apiClient(clientID: "c"),
                                    secret: { "s" }, recorder: recorder)
-    return try JamfPlatform.Client(baseURL: base, scope: .environment("e77c1408-10c8-4007-b177-abc9157fbcaa"), tokens: tokens,
+    return try JamfPlatform.Client(baseURL: base, scope: .environment("0f0e0d0c-0b0a-4000-8000-00000000abcd"), tokens: tokens,
                                    recorder: recorder, permits: { RequestPolicy.isPermitted($0, classicWrites: policy) },
                                    hints: RequestPolicy.hints(for:), sleep: { _ in })
 }
 
-/// The lists exactly as Jamf Pro answered them through the gateway when asked
-/// for JSON, read on a test instance on 2026-10-26 (the mobile profile was a
-/// fake one made for the check and deleted right after). A list of one is still
-/// an array. Jamf labels these answers `text/plain`, not `application/json`.
-/// `macOSTwo` and `macOSEmpty` are made up in the same shape.
+/// The lists in the shape Jamf Pro answers through the gateway when asked for
+/// JSON, with made-up IDs and names. A list of one is still an array. Jamf
+/// labels these answers `text/plain`, not `application/json`.
 enum ClassicListAnswers {
-    static let macOSOne = #"{"os_x_configuration_profiles":[{"id":49,"name":"Default Plan - Jamf Protect Configuration"}]}"#
-    static let mobileOne = #"{"configuration_profiles":[{"id":126,"name":"P2B TEST - JSON shape check - delete me"}]}"#
+    static let macOSOne = #"{"os_x_configuration_profiles":[{"id":7,"name":"Example – Security Settings"}]}"#
+    static let mobileOne = #"{"configuration_profiles":[{"id":9,"name":"Example – Wi-Fi"}]}"#
     static let mobileEmpty = #"{"configuration_profiles":[]}"#
-    static let macOSTwo = #"{"os_x_configuration_profiles":[{"id":49,"name":"Default Plan - Jamf Protect Configuration"},{"id":3,"name":"Another"}]}"#
+    static let macOSTwo = #"{"os_x_configuration_profiles":[{"id":7,"name":"Example – Security Settings"},{"id":3,"name":"Another"}]}"#
     static let macOSEmpty = #"{"os_x_configuration_profiles":[]}"#
 }
 
-/// Jamf's answer as it arrives: JSON labelled `text/plain`.
+/// Jamf's answer as it arrives: JSON labeled `text/plain`.
 private func plainText(_ body: String) -> MockResponse {
     MockResponse(status: 200, headers: ["Content-Type": "text/plain;charset=utf-8"], body: Data(body.utf8))
 }
@@ -57,14 +55,14 @@ extension NetworkingTests {
         #expect(request.header("Accept") == "application/json")
         #expect(list.count == 1, "a list with exactly one profile is still a list")
         #expect(list.first?.platform == platform)
-        #expect(list.first?.profileID == (platform == .macOS ? 49 : 126))
-        #expect(list.first?.name == (platform == .macOS ? "Default Plan - Jamf Protect Configuration" : "P2B TEST - JSON shape check - delete me"))
+        #expect(list.first?.profileID == (platform == .macOS ? 7 : 9))
+        #expect(list.first?.name == (platform == .macOS ? "Example – Security Settings" : "Example – Wi-Fi"))
     }
 
     @Test("Lists keep every profile; empty lists read as empty")
     func classicListShapes() throws {
         let two = try ClassicProfileList.parse(Data(ClassicListAnswers.macOSTwo.utf8), platform: .macOS)
-        #expect(two.map(\.profileID) == [49, 3])
+        #expect(two.map(\.profileID) == [7, 3])
         #expect(try ClassicProfileList.parse(Data(ClassicListAnswers.macOSEmpty.utf8), platform: .macOS).isEmpty)
         #expect(try ClassicProfileList.parse(Data(ClassicListAnswers.mobileEmpty.utf8), platform: .mobile).isEmpty)
     }

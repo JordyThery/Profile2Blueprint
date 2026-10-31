@@ -1,7 +1,7 @@
 import SwiftUI
 import JTKit
 
-/// One blueprint awaiting deploy confirmation.
+/// One Blueprint awaiting deploy confirmation.
 struct DeployItem: Identifiable, Hashable {
     let blueprintID: String
     let blueprintName: String
@@ -13,7 +13,9 @@ struct DeployItem: Identifiable, Hashable {
     var unscopeClassicProfile: String? = nil
 
     var id: String { blueprintID }
-    var deviceCount: Int { groups.reduce(0) { $0 + $1.members } }
+    /// Known member counts only; see `hasUnknownDeviceCount`.
+    var deviceCount: Int { groups.knownDeviceCount }
+    var hasUnknownDeviceCount: Bool { groups.hasUnknownDeviceCount }
 }
 
 /// The single explicit confirmation before deploying. Lists every blueprint, its
@@ -29,10 +31,12 @@ struct DeployConfirmationSheet: View {
     @State private var confirmed = false
 
     private var totalDevices: Int { items.reduce(0) { $0 + $1.deviceCount } }
+    /// A group came without a member count: the total is a lower bound.
+    private var countIsPartial: Bool { items.contains(where: \.hasUnknownDeviceCount) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Label(items.count == 1 ? "Deploy blueprint?" : "Deploy \(items.count) blueprints?", systemImage: "paperplane.fill")
+            Label(items.count == 1 ? "Deploy Blueprint?" : "Deploy \(items.count) Blueprints?", systemImage: "paperplane.fill")
                 .font(.title2.weight(.semibold))
 
             Text(isDemo
@@ -53,7 +57,8 @@ struct DeployConfirmationSheet: View {
                                     Image(systemName: "person.3")
                                     Text(group.name)
                                     Spacer()
-                                    Text("^[\(group.members) device](inflect: true)").monospacedDigit()
+                                    Text(group.memberCountText).monospacedDigit()
+                                        .foregroundStyle(group.memberCount == nil ? Color.orange : Color.primary)
                                 }
                                 .font(.callout)
                             }
@@ -79,20 +84,29 @@ struct DeployConfirmationSheet: View {
             HStack {
                 Text("Total")
                 Spacer()
-                Text("\(items.contains { $0.groups.count > 1 } || items.count > 1 ? "up to " : "")^[\(totalDevices) device](inflect: true)")
-                    .monospacedDigit().fontWeight(.semibold)
+                if countIsPartial {
+                    Text("At least ^[\(totalDevices) device](inflect: true), some counts unknown")
+                        .monospacedDigit().fontWeight(.semibold).foregroundStyle(.orange)
+                } else {
+                    Text("\(items.contains { $0.groups.count > 1 } || items.count > 1 ? "up to " : "")^[\(totalDevices) device](inflect: true)")
+                        .monospacedDigit().fontWeight(.semibold)
+                }
             }
 
             Toggle(isOn: $confirmed) {
                 // Single literals only: concatenated strings skip grammar inflection.
                 if items.count == 1, let item = items.first {
-                    if item.unscopeClassicProfile != nil {
+                    if countIsPartial, item.unscopeClassicProfile != nil {
+                        Text("I confirm deploying “\(item.blueprintName)” to every device in the groups listed above and unscoping the classic profile afterwards.")
+                    } else if countIsPartial {
+                        Text("I confirm deploying “\(item.blueprintName)” to every device in the groups listed above.")
+                    } else if item.unscopeClassicProfile != nil {
                         Text("I confirm deploying “\(item.blueprintName)” to ^[\(totalDevices) device](inflect: true) and unscoping the classic profile afterwards.")
                     } else {
                         Text("I confirm deploying “\(item.blueprintName)” to ^[\(totalDevices) device](inflect: true).")
                     }
                 } else {
-                    Text("I confirm deploying all \(items.count) blueprints listed above.")
+                    Text("I confirm deploying all \(items.count) Blueprints listed above.")
                 }
             }
 

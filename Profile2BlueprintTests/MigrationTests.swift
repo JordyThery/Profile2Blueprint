@@ -45,7 +45,7 @@ struct EligibilityTests {
         #expect(report.status == .blocked)
         #expect(report.has(.blockedPayloadType))
         #expect(report.findings.first { $0.kind == .blockedPayloadType }?.detail.contains(type) == true)
-        #expect(!report.has(.unsupportedPayloadType), "a refused type is not also reported as unrecognised")
+        #expect(!report.has(.unsupportedPayloadType), "a refused type is not also reported as unrecognized")
     }
 
     @Test("Certificate payloads are Blocked rather than flagged as informational")
@@ -57,7 +57,7 @@ struct EligibilityTests {
     }
 
     @Test("A payload type outside the known registry warns but does not block")
-    func unrecognisedType() throws {
+    func unrecognizedType() throws {
         let xml = DemoFixtures.corporateFonts.replacingOccurrences(of: "com.apple.font", with: "com.example.invented")
         let report = try check(xml)
         #expect(report.status == .needsAttention, "the API is the authority; the registry may have grown")
@@ -136,7 +136,7 @@ struct EligibilityTests {
             #expect(report.has(kind), "\(kind)")
         }
         let exclusions = try #require(report.findings.first { $0.kind == .exclusions })
-        #expect(exclusions.title.contains("NOT carried over"))
+        #expect(exclusions.title.contains("aren’t carried over"))
         #expect(exclusions.detail.contains("KIOSK-01") && exclusions.detail.contains("Lab Machines"))
     }
 
@@ -148,7 +148,6 @@ struct EligibilityTests {
         // to match, so this profile can never be adopted in place.
         #expect(report.status == .blocked)
         #expect(report.findings.first { $0.kind == .payloadUUIDMismatch }?.severity == .blocker)
-        #expect(!report.identityRulesHold)
     }
 
     @Test("Self Service distribution needs attention")
@@ -358,7 +357,7 @@ struct BlueprintNamingTests {
         #expect(naming.name(for: "Restrictions") == expected)
     }
 
-    @Test("The default keeps the behaviour from before naming was configurable")
+    @Test("The default keeps the behavior from before naming was configurable")
     func defaultsUnchanged() {
         #expect(BlueprintNaming.default.name(for: "Restrictions") == "Restrictions (migrated)")
     }
@@ -532,8 +531,8 @@ struct FidelityVerifierTests {
         #expect(report.caseChanges.isEmpty)
     }
 
-    @Test("Expected server canonicalisation is tolerated")
-    func canonicalisation() throws {
+    @Test("Expected server canonicalization is tolerated")
+    func canonicalization() throws {
         let canonical = try detail(for: request) { configuration in
             configuration["payloadDisplayName"] = .string("Classic - Security Baseline")
             for index in 0..<3 {
@@ -614,7 +613,7 @@ struct FidelityVerifierTests {
 
     @Test("Key order never changes a verdict: a read-back in another order than the source gets the same rows")
     func keyOrder() throws {
-        // Unchanged, canonicalised by the server (passes, with info and casing rows),
+        // Unchanged, canonicalized by the server (passes, with info and casing rows),
         // and with a changed value and scope (fails).
         let cases: [(LosslessJSON.Object) -> LosslessJSON.Object] = [
             { $0 },
@@ -909,7 +908,7 @@ struct HistoryTests {
         let url = FileManager.default.temporaryDirectory.appending(path: "p2b-history-\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: url) }
         let store = HistoryStore(fileURL: url)
-        await store.append(record("token Bearer abc.def.ghi"))
+        try await store.append(record("token Bearer abc.def.ghi"))
         let reloaded = HistoryStore(fileURL: url)
         let messages = await reloaded.all.map(\.message)
         #expect(messages == ["token Bearer \(Redaction.placeholder)"])

@@ -92,11 +92,6 @@ nonisolated struct EligibilityReport: Hashable, Sendable {
     func has(_ kind: FindingKind) -> Bool {
         findings.contains { $0.kind == kind }
     }
-
-    /// Whether the five-rule identity checks (rules 3–5) are known to hold locally.
-    var identityRulesHold: Bool {
-        !findings.contains { [.unparseablePayload, .missingIdentifiers, .noPayloads, .recordUUIDMismatch, .payloadUUIDMismatch].contains($0.kind) }
-    }
 }
 
 /// How one classic computer group maps onto platform device groups.

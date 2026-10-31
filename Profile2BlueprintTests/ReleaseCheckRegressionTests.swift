@@ -4,7 +4,7 @@ import JTKitTestSupport
 import Testing
 @testable import Profile2Blueprint
 
-// The four findings from JTKit ROADMAP step 11 (2026-10-28), one test each.
+// Four problems the release check found, one test each, so they stay fixed.
 
 /// Contoso's "Engineering Macs".
 private let engineersGroup = DemoFixtures.platformGroups[2]

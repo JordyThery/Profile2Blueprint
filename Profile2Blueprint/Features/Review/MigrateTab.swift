@@ -78,7 +78,7 @@ struct MigrateTab: View {
                     MetadataRow(label: "Source", value: "\(session.profile.name) (#\(session.profile.id)) — left untouched")
                     MetadataRow(label: "Blueprint", value: session.blueprintName)
                     MetadataRow(label: "Payloads", value: "\(session.profile.document.payloadCount)")
-                    MetadataRow(label: "Target groups", value: session.selectedGroups.map { "\($0.name) (\($0.members))" }.joined(separator: ", "))
+                    MetadataRow(label: "Target groups", value: session.selectedGroups.map { "\($0.name) (\($0.memberCountShort))" }.joined(separator: ", "))
                     MetadataRow(label: "Devices", value: session.selectedGroups.isEmpty ? "" : "\(session.selectedGroups.count > 1 ? "up to " : "")\(session.deviceCount)")
                     GridRow {
                         Text("Eligibility").foregroundStyle(.secondary).gridColumnAlignment(.trailing)
@@ -89,7 +89,7 @@ struct MigrateTab: View {
                 switch session.effectiveReport.status {
                 case .blocked:
                     FindingsList(findings: session.effectiveReport.reasons.filter { $0.severity == .blocker })
-                    Text("This profile can't be migrated as a 1:1 legacy-profile blueprint.").foregroundStyle(.secondary)
+                    Text("This profile can’t be migrated as a 1:1 legacy-profile Blueprint.").foregroundStyle(.secondary)
                 case .needsAttention:
                     FindingsList(findings: session.effectiveReport.reasons)
                     Toggle(isOn: $session.acknowledgedWarnings) {
@@ -117,17 +117,16 @@ struct MigrateTab: View {
                     Button("Run Dry Run", systemImage: "eye") {
                         Task { await session.runDryRun() }
                     }
-                    .disabled(session.isBusy || session.effectiveReport.status == .blocked || previewProblems != nil
-                              || (session.needsAcknowledgement && !session.acknowledgedWarnings))
+                    .disabled(!session.canRunDryRun)
 
                     Button("Create Blueprint (Not Deployed)", systemImage: "plus.square.on.square") {
                         Task { await session.create() }
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(!session.canCreate)
-                    .help(session.dryRun ? "Turn off dry run to create" : "Creates the blueprint without deploying it")
+                    .help(session.dryRun ? "Turn off dry run to create" : "Creates the Blueprint without deploying it")
 
-                    if session.isBusy { ProgressView().controlSize(.small) }
+                    if session.isBusy || session.isLoadingSavedState { ProgressView().controlSize(.small) }
                 }
 
                 if let summary = session.dryRunSummary {
@@ -150,7 +149,7 @@ struct MigrateTab: View {
     private func duplicatePrompt(_ duplicates: [JamfPlatform.BlueprintOverview]) -> some View {
         GroupBox {
             VStack(alignment: .leading, spacing: 10) {
-                Label("A blueprint named “\(session.blueprintName)” already exists", systemImage: "doc.on.doc.fill")
+                Label("A Blueprint named “\(session.blueprintName)” already exists", systemImage: "doc.on.doc.fill")
                     .font(.headline)
                     .foregroundStyle(.orange)
                 ForEach(duplicates) { existing in
@@ -178,12 +177,12 @@ struct MigrateTab: View {
                 if let fidelity = session.fidelity {
                     if fidelity.passed {
                         Label(fidelity.caseChanges.isEmpty
-                              ? "Identifiers, order, count, settings and scope all match."
+                              ? FidelityReport.allMatchSentence
                               : "Matches; review ^[\(fidelity.caseChanges.count) key casing change](inflect: true).",
                               systemImage: fidelity.caseChanges.isEmpty ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
                             .foregroundStyle(fidelity.caseChanges.isEmpty ? .green : .orange)
                     } else {
-                        Label("^[\(fidelity.mismatches.count) mismatch](inflect: true). The in-place transform would not be seamless, so deploying is disabled.",
+                        Label("^[\(fidelity.mismatches.count) mismatch](inflect: true). The in-place transform wouldn’t be seamless, so deploying is turned off.",
                               systemImage: "xmark.seal.fill")
                             .foregroundStyle(.red)
                     }
@@ -193,7 +192,7 @@ struct MigrateTab: View {
                     Text("Not verified yet.").foregroundStyle(.secondary)
                 }
                 Button("Verify Again", systemImage: "arrow.triangle.2.circlepath") { Task { await session.verify() } }
-                    .disabled(session.isBusy)
+                    .disabled(session.isBusy || session.isLoadingSavedState)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(4)
@@ -211,7 +210,7 @@ struct MigrateTab: View {
                     }
                     if case .timedOut = session.outcome {
                         Text("Polling stopped after the timeout while deployment was still in progress.").foregroundStyle(.orange)
-                        Button("Check Again") { Task { await session.recheckDeployment() } }.disabled(session.isBusy)
+                        Button("Refresh Status") { Task { await session.recheckDeployment() } }.disabled(session.isBusy)
                     }
                 case let .deployed(report):
                     Label("Deployed.", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
@@ -225,7 +224,7 @@ struct MigrateTab: View {
                     }
                     Button("Refresh Status") { Task { await session.recheckDeployment() } }.disabled(session.isBusy)
                 default:
-                    Text("Deploying pushes the blueprint to every device in the target groups. On each device the classic profile is replaced in place by the DDM-managed one.")
+                    Text("Deploying pushes the Blueprint to every device in the target groups. On each device the classic profile is replaced in place by the DDM-managed one.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                     Button("Deploy…", systemImage: "paperplane") { showingDeploySheet = true }
@@ -244,7 +243,7 @@ extension MigrateTab {
         GroupBox("4 · Classic profile cleanup (optional)") {
             VStack(alignment: .leading, spacing: 10) {
                 if !session.canChangeClassicScope {
-                    Label("Classic scope changes are off for this tenant, so the classic profile stays as it is. To use this, turn on “Allow classic scope changes” in the tenant settings.",
+                    Label("Classic scope changes are off for this tenant, so the classic profile stays as it is. To use this, turn on “Allow classic scope changes” in Settings › Connections.",
                           systemImage: "lock.shield")
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -252,19 +251,31 @@ extension MigrateTab {
                     Toggle(isOn: $session.unscopeAfterDeploy) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Unscope the classic profile automatically after a clean deployment")
-                            Text("Only runs when the blueprint is deployed and the report shows 0 failed and 0 pending devices. The scope is backed up first. Payloads are never changed.")
+                            Text("Only runs when the Blueprint is deployed, the report shows 0 failed and 0 pending devices, and the Blueprint’s groups cover every target of the classic scope. Runs once: never again after a Restore. The scope is backed up first. Payloads are never changed.")
                                 .font(.caption).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                     }
-                    .disabled(isDeployingOrDeployed || session.scopeBackup != nil)
+                    // Can be turned off at any time, turned on only before deploying
+                    // (the deploy confirmation names it), and only once.
+                    .disabled(session.scopeChangedBefore || session.scopeBackup != nil
+                              || (!session.unscopeAfterDeploy && (isDeployingOrDeployed || !session.uncoveredClassicTargets.isEmpty)))
 
-                    Label("When Jamf Pro unscopes a profile it removes it from devices. On devices where the in-place transform didn't happen (no DDM, or not installed by MDM), the settings are lost. Try it with one profile and one device first.",
+                    if !session.uncoveredClassicTargets.isEmpty {
+                        Label("Automatic cleanup isn’t available: the classic profile also targets \(session.uncoveredClassicTargets.formatted(.list(type: .and))), which the Blueprint’s groups don’t cover.",
+                              systemImage: "exclamationmark.triangle")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Label("When Jamf Pro unscopes a profile it removes it from devices. On devices where the in-place transform didn’t happen (no DDM, or not installed by MDM), the settings are lost. Try it with one profile and one device first.",
                           systemImage: "exclamationmark.triangle")
                         .font(.caption)
                         .foregroundStyle(.orange)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    Label("After the transform, Jamf Pro logs a failed “Remove Configuration Profile” command for each device: the device refuses to let MDM remove a profile the blueprint now owns. That failure is expected.",
+                    Label("After the transform, Jamf Pro logs a failed “Remove Configuration Profile” command for each device: the device refuses to let MDM remove a profile the Blueprint now owns. That failure is expected.",
                           systemImage: "info.circle")
                         .font(.caption)
                         .foregroundStyle(.orange)
@@ -289,7 +300,11 @@ extension MigrateTab {
         .confirmationDialog("Unscope “\(session.profile.name)”?", isPresented: $confirmingUnscope) {
             Button("Unscope Classic Profile", role: .destructive) { Task { await session.unscopeClassic() } }
         } message: {
-            Text("Removes every scope target from classic profile #\(session.profile.id) in \(workspace.environment.displayName). Jamf Pro will then remove the classic profile from devices. The current scope is backed up first.")
+            if session.uncoveredClassicTargets.isEmpty {
+                Text("Removes every scope target from classic profile #\(session.profile.id) in \(workspace.environment.displayName). Jamf Pro will then remove the classic profile from devices. The current scope is backed up first.")
+            } else {
+                Text("Removes every scope target from classic profile #\(session.profile.id) in \(workspace.environment.displayName). The classic profile also targets \(session.uncoveredClassicTargets.formatted(.list(type: .and))), which the Blueprint’s groups (\(session.selectedGroups.map(\.name).formatted(.list(type: .and)))) don’t cover: Jamf Pro will remove the profile from those devices too, and they won’t get the Blueprint. The current scope is backed up first.")
+            }
         }
         .confirmationDialog("Restore the scope of “\(session.profile.name)”?", isPresented: $confirmingRestore) {
             Button("Restore Scope") { Task { await session.restoreClassicScope() } }
@@ -312,8 +327,15 @@ extension MigrateTab {
             EmptyView()
         case let .waiting(message):
             Label(message, systemImage: "hourglass").foregroundStyle(.orange)
+        case let .heldBack(message):
+            Label(message, systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
+                .fixedSize(horizontal: false, vertical: true)
         case let .unscoped(date):
             Label("Classic profile unscoped \(date.formatted()). Scope backup saved.", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+        case let .uncertain(date):
+            Label("A scope change started \(date.formatted()) may not have finished. Check the profile in Jamf Pro, or restore the saved scope.",
+                  systemImage: "questionmark.circle").foregroundStyle(.orange)
+                .fixedSize(horizontal: false, vertical: true)
         case let .restored(date):
             Label("Scope restored \(date.formatted()).", systemImage: "arrow.uturn.backward.circle.fill").foregroundStyle(.green)
         case let .failed(report):

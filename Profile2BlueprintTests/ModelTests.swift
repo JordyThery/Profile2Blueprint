@@ -16,8 +16,8 @@ struct TenantTests {
 
     @Test("Host override strips scheme and trailing slash and stays HTTPS")
     func hostOverride() {
-        let tenant = Tenant(hostOverride: "http://us1.api.stage.platform.jamflabs.com/")
-        #expect(tenant.host == "us1.api.stage.platform.jamflabs.com")
+        let tenant = Tenant(hostOverride: "http://staging.example.com/")
+        #expect(tenant.host == "staging.example.com")
         #expect(tenant.baseURL?.scheme == "https")
         #expect(tenant.usesHostOverride)
     }
@@ -25,9 +25,9 @@ struct TenantTests {
     @Test("Validation flags a malformed environment ID and missing client ID")
     func validation() {
         #expect(Tenant(environmentID: "nope", clientID: "").validationIssues.count == 2)
-        let valid = Tenant(environmentID: "E77C1408-10C8-4007-B177-ABC9157FBCAA", clientID: "abc")
+        let valid = Tenant(environmentID: "0F0E0D0C-0B0A-4000-8000-00000000ABCD", clientID: "abc")
         #expect(valid.validationIssues.isEmpty)
-        #expect(valid.normalizedEnvironmentID == "e77c1408-10c8-4007-b177-abc9157fbcaa")
+        #expect(valid.normalizedEnvironmentID == "0f0e0d0c-0b0a-4000-8000-00000000abcd")
     }
 }
 
@@ -76,7 +76,7 @@ struct ErrorReportTests {
         let error = JamfPlatform.APIError(.refused(method: "PUT", path: "proclassic/osxconfigurationprofiles/id/1"))
         let report = ErrorReport(JamfPlatform.APIError(error.kind, appHints: RequestPolicy.hints(for: error)))
         #expect(report.title.hasPrefix("Refused before sending: PUT"))
-        #expect(report.details == ["This app only reads, creates and deploys blueprints, and changes classic scope only when that is explicitly enabled."])
+        #expect(report.details == ["This app only reads, creates and deploys Blueprints, and changes classic scope only when that is explicitly enabled."])
     }
 
     @Test("The app's own errors show their description and nothing else")

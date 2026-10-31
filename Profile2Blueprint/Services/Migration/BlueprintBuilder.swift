@@ -19,17 +19,18 @@ nonisolated enum BlueprintBuilder {
 
     /// Tokens a description template may use, with what each one is replaced by.
     static let descriptionTokens: [(token: String, meaning: String)] = [
-        ("{name}", "the classic profile's name"),
+        ("{name}", "the classic profile’s name"),
         ("{id}", "its Jamf Pro ID"),
         ("{platform}", "“macOS” or “mobile device”"),
     ]
 
-    /// Rendered for a macOS profile this matches the pre-{platform} wording exactly.
+    /// For a macOS profile this reads exactly as `descriptionTemplateV1`, so saved
+    /// tenants and the demo keep their descriptions.
     static let defaultDescriptionTemplate =
         "Migrated from Jamf Pro classic {platform} configuration profile ID {id} (“{name}”) by Profile2Blueprint."
 
-    /// The default before the {platform} token existed. Tenants still on it are
-    /// upgraded on load; see `Tenant.init(from:)`.
+    /// The macOS-only default, upgraded to `defaultDescriptionTemplate` when a
+    /// tenant is read (`Tenant.init(from:)`).
     static let descriptionTemplateV1 =
         "Migrated from Jamf Pro classic macOS configuration profile ID {id} (“{name}”) by Profile2Blueprint."
 
@@ -81,7 +82,7 @@ nonisolated enum BlueprintBuilder {
             document = parsed
             if parsed.payloads.isEmpty { problems.append("The profile has no payloads.") }
             let blocked = parsed.payloads.compactMap(\.type).filter(EligibilityChecker.blockedPayloadTypes.contains)
-            if !blocked.isEmpty { problems.append("Unsupported payload types: \(Set(blocked).sorted().joined(separator: ", ")).") }
+            if !blocked.isEmpty { problems.append("Payload types the Blueprints API refuses: \(Set(blocked).sorted().joined(separator: ", ")).") }
             if parsed.payloadUUID == nil || parsed.payloadIdentifier == nil {
                 problems.append("The profile is missing its top-level PayloadUUID or PayloadIdentifier.")
             }

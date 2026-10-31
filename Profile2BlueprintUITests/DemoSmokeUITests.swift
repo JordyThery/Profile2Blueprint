@@ -108,7 +108,7 @@ final class DemoSmokeUITests: JTKitUITestCase {
                       "Contoso's profiles aren't listed", file: file, line: line)
     }
 
-    /// A profile's row, exposed as one checkbox labelled "macOS, <name>, #<id> · …".
+    /// A profile's row, exposed as one checkbox labeled "macOS, <name>, #<id> · …".
     private func profileRow(_ name: String) -> XCUIElement {
         app.checkBoxes.matching(NSPredicate(format: "label BEGINSWITH %@", "macOS, \(name), ")).firstMatch
     }

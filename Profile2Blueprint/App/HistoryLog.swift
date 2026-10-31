@@ -8,6 +8,9 @@ final class HistoryLog {
     private(set) var records: [MigrationRecord] = []
     private let store: HistoryStore
     private let activity: ActivityLog?
+    /// Called on the main actor when a record couldn't be saved to the file;
+    /// the app shows it in its "Couldn’t Save" alert.
+    @ObservationIgnored var onSaveFailure: ((String) -> Void)?
 
     init(store: HistoryStore, activity: ActivityLog? = nil) {
         self.store = store
@@ -49,6 +52,14 @@ final class HistoryLog {
             level: result == .failure ? .error : (result == .warning ? .warning : .info),
             category: action == .unscopeClassic || action == .restoreClassicScope ? .classicWrite : .migration
         )
-        Task { _ = await store.append(entry) }
+        Task { [store, activity] in
+            do {
+                try await store.append(entry)
+            } catch {
+                let message = "The history couldn’t be saved: \(error.localizedDescription)"
+                activity?.app(message, environment: environment.displayName, level: .error)
+                onSaveFailure?(message)
+            }
+        }
     }
 }

@@ -30,6 +30,15 @@ nonisolated enum MigrationResult: String, Codable, Hashable, Sendable {
     case success
     case warning
     case failure
+
+    /// The one word History shows for this result, everywhere.
+    var title: String {
+        switch self {
+        case .success: "Success"
+        case .warning: "Warning"
+        case .failure: "Failed"
+        }
+    }
 }
 
 /// One line of the local action log. Never contains secrets or payload contents.

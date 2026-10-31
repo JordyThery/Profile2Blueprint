@@ -97,9 +97,9 @@ struct HistoryView: View {
     @ViewBuilder
     private func resultLabel(_ result: MigrationResult) -> some View {
         switch result {
-        case .success: Label("OK", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
-        case .warning: Label("Warn", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-        case .failure: Label("Fail", systemImage: "xmark.octagon.fill").foregroundStyle(.red)
+        case .success: Label(result.title, systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+        case .warning: Label(result.title, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+        case .failure: Label(result.title, systemImage: "xmark.octagon.fill").foregroundStyle(.red)
         }
     }
 }
@@ -130,7 +130,7 @@ private struct HistoryDetailPane: View {
                 GridRow {
                     field("Tenant", record.tenantName)
                     field("Source profile", "\(record.sourceProfileName) (\(record.platform.displayName) #\(record.sourceProfileID))")
-                    field("Result", record.result.rawValue.capitalized)
+                    field("Result", record.result.title)
                 }
                 if record.blueprintName != nil || record.blueprintID != nil {
                     GridRow {
@@ -167,7 +167,7 @@ private struct HistoryDetailPane: View {
             "Action: \(record.action.title)",
             "Platform: \(record.platform.displayName)",
             "Source profile: \(record.sourceProfileName) (#\(record.sourceProfileID))",
-            "Result: \(record.result.rawValue)",
+            "Result: \(record.result.title)",
         ]
         if let name = record.blueprintName { lines.append("Blueprint: \(name)") }
         if let id = record.blueprintID { lines.append("Blueprint ID: \(id)") }
@@ -195,11 +195,6 @@ struct HistoryDocument: FileDocument {
         case .markdown: data = Data(HistoryExport.markdown(records).utf8)
         case .json: data = try HistoryExport.json(records)
         }
-    }
-
-    init(data: Data, format: Format) {
-        self.format = format
-        self.data = data
     }
 
     init(configuration: ReadConfiguration) throws {

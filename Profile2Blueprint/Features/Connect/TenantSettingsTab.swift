@@ -68,7 +68,7 @@ private struct TenantAppSections: View {
             Text("Blueprint name and description")
         } footer: {
             VStack(alignment: .leading, spacing: 4) {
-                Text("All three are optional: leave one empty to drop it. Spacing in the prefix and suffix is used exactly as typed, and you can still edit the name and description of any blueprint before creating it.")
+                Text("All three are optional: leave one empty to drop it. Spacing in the prefix and suffix is used exactly as typed, and you can still edit the name and description of any Blueprint before creating it.")
                 Text("Description tokens: " + BlueprintBuilder.descriptionTokens
                     .map { "\($0.token) is \($0.meaning)" }
                     .joined(separator: ", ") + ".")
@@ -87,18 +87,18 @@ private struct TenantAppSections: View {
             )) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Allow classic scope changes")
-                    Text("Lets the app unscope a classic profile after its blueprint is deployed, and restore it from a backup. Payloads are never changed.")
+                    Text("Lets the app unscope a classic profile after its Blueprint is deployed, and restore it from a backup. Payloads are never changed.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
             if tenant.allowClassicScopeChanges {
-                Label("Enabled. Requires the configuration-profiles:update permission. Each unscope still needs a per-profile opt-in and confirmation.",
+                Label("On. Requires the configuration-profiles:update permission. Each unscope still needs a per-profile opt-in and confirmation.",
                       systemImage: "exclamationmark.shield.fill")
                     .font(.callout)
                     .foregroundStyle(.orange)
             } else {
-                Label("Off: the app refuses every write to the Classic API.", systemImage: "lock.shield")
+                Label("Classic scope changes are off for this tenant: the app refuses every write to the Classic API.", systemImage: "lock.shield")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -114,9 +114,9 @@ private struct TenantAppSections: View {
             }
         } message: {
             Text("""
-            This is the only way the app can change anything in Jamf Pro classic. Once you save, it can replace the scope of a classic \
-            profile (after the user opts in per profile and confirms). When Jamf Pro unscopes a profile it removes it from devices, \
-            and on Macs where the in-place DDM transform didn't happen, the settings are lost. Test with one profile and one device first. \
+            This is the only way the app changes anything in Jamf Pro. Once you save, it can replace the scope of a classic \
+            profile (after you opt in per profile and confirm). When Jamf Pro unscopes a profile it removes it from devices, \
+            and on devices where the in-place DDM transform didn’t happen, the settings are lost. Test with one profile and one device first. \
             A backup of every scope is kept so it can be restored.
             """)
         }

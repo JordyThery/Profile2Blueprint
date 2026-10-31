@@ -80,7 +80,7 @@ struct ClassicParsingTests {
         #expect(scope.exclusions[0].items == [ClassicReference(id: 77, name: "KIOSK-01")])
     }
 
-    @Test("User-level profiles are recognised")
+    @Test("User-level profiles are recognized")
     func userLevel() throws {
         #expect(try parse(DemoFixtures.userDock).level == .user)
     }
@@ -148,7 +148,7 @@ struct PlistToJSONTests {
     }
 
     @Test("Serialised JSON is valid, ordered and escapes control characters")
-    func serialisation() throws {
+    func serialization() throws {
         let value = LosslessJSON.object(LosslessJSON.Object([
             "z": .string("quote \" backslash \\ newline \n tab \t bell \u{07}"),
             "a": .array([.integer(1), .real(2.5), .real(3), .bool(true), .null]),
