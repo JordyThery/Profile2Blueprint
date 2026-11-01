@@ -84,7 +84,7 @@ What this app waits for from Apple, Jamf or Microsoft, or must recheck: see WATC
 1. Bump `MARKETING_VERSION` (X.Y.Z) and `CURRENT_PROJECT_VERSION` in the project.
 2. Update the README if features changed.
 3. Archive from the app’s own project, sign with Developer ID, notarize, and zip as `Profile2Blueprint-X.Y.Z.zip`.
-4. Tag `vX.Y.Z`, create the GitHub release with notes (the in-app updater shows them) and attach the zip.
+4. Tag `vX.Y.Z`, create the GitHub release with notes (the in-app updater shows them) and attach the zip. Release notes (CHANGELOG entries and GitHub release notes) are for the end user: professional and concise, saying what changed for them, and never mentioning the release check, reviews, tests, test targets, AI tools, JTKit step numbers or how a problem was found (decided by Jordy on 2026-11-01).
 5. Website: follow ../jordythery.be/CLAUDE.md, section “When an app is released”. Every release checks this app's card on apps.html, and its own page if it has one, against the released README and CHANGELOG, and changes them on a branch with a pull request. Jordy merges, which publishes the site.
 
 Before any of this, follow the release gate in JTKit/ROADMAP.md.
