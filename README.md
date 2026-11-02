@@ -52,8 +52,8 @@ The app walks that workflow stage by stage — **fetch → validate → distill 
 - Deploy requires a per-Blueprint confirmation listing the target groups and device count, and is refused when verification failed. A group whose device count the server doesn’t give is shown as unknown.
 - The HTTP layer refuses any request that isn’t a GET, a Blueprint create, a Blueprint deploy or (only while classic scope changes are on for the tenant) a scope-only classic profile update, before it reaches the network.
 - **Classic profile cleanup is opt-in.** After a fully clean deployment (0 failed, 0 pending), the app can unscope the classic profile. This is guarded three times: a per-tenant setting that is off by default, a per-profile opt-in, and a confirmation. Turning the tenant setting off stops every scope change at once, also for migrations still waiting for their device report. The automatic cleanup runs only when the Blueprint’s groups cover every target of the classic scope (not for "all computers", individual devices, buildings, departments or a group the Blueprint doesn’t target), and at most once per profile. The original scope is backed up locally, per tenant, and **Restore Scope** puts it back; a restored profile is never unscoped again automatically. After the transform, Jamf Pro logs a *failed* “Remove Configuration Profile” command per device: the device refuses to let MDM remove a profile the Blueprint now owns, which is expected.
-- Client secrets and tokens are never written to any log. Copying a request body that holds credentials (Wi-Fi passwords, SCEP challenges) keeps it off other devices and clipboard history, and clears it after a minute.
-- Apart from the Jamf gateway, the only address the app contacts is GitHub, once a day, to ask whether a newer release exists. Turn it off in **Settings › Updates**.
+- Client secrets, tokens and request bodies are never written to any log. Copying a request body that holds credentials (Wi-Fi passwords, SCEP challenges) keeps it off other devices and clipboard history, and clears it after a minute.
+- The app contacts only the Jamf Platform API gateway of the tenant's region (`us.api.jamfcloud.com`, `eu.api.jamfcloud.com` or `apac.api.jamfcloud.com`, or the host override you set) and GitHub: once a day to ask whether a newer release exists (`api.github.com`), and to download one when you choose to. Turn the update check off in **Settings › Updates**. Demo Mode contacts no tenant.
 - Never undeploy a Blueprint in Jamf Pro after the classic profile is gone: that removes the settings from devices. (The app itself can’t undeploy anything.)
 
 ## Other features
@@ -69,14 +69,27 @@ The app walks that workflow stage by stage — **fetch → validate → distill 
 - **Reload and Reload Profile**: read the list or one profile again; open migrations that haven’t created their Blueprint yet pick up the change.
 - **Open in Jamf Pro**: the configuration profile or its Blueprint, in the Jamf Pro console.
 - **Update check**: daily and on demand, with release notes and a download.
-- **Persistent sessions**: a created Blueprint re-attaches after a relaunch and resumes at its current stage; after a deployment the device report refreshes until every device has reported in. When the Blueprint was deleted on the server, the saved reference is removed.
+- **Persistent sessions**: a created Blueprint re-attaches after a relaunch and resumes at its current stage; after a deployment the device report refreshes every 20 seconds for up to 30 minutes, then **Refresh Status** checks again. When the Blueprint was deleted on the server, the saved reference is removed.
 - **History**: every migration action, exportable as Markdown or JSON.
 - **Activity Log** (Window › Activity Log, ⇧⌘L): everything the app does: token requests, every API call (status, duration, trace ID), retries, refused writes and settings changes.
 - **Appearance**: light, dark or the system’s, in Settings › General.
 
+## Where your data is stored
+
+The app is sandboxed, with outgoing network connections only, plus read and write access to the files you choose when exporting History. Its data is in `~/Library/Containers/be.jordythery.profile2blueprint/Data/Library/Application Support/Profile2Blueprint/`:
+
+- `tenants.json`: your tenants and the one in use.
+- `history.json`: the migration history.
+- `scope-backups.json`: the original classic scopes, for **Restore Scope**.
+- `sessions.json`: migrations in progress, so they resume after a relaunch.
+
+Client secrets are in your Keychain, under the service `be.jordythery.profile2blueprint.oauth-client-secret`. A file the app can't read is kept as `<file>.unreadable-<date and time>` and never written over. Demo Mode saves nothing to these files.
+
 ## Build from source
 
-Requires Xcode with the macOS 26 SDK or later (Swift 6, strict concurrency). Open the project and run the `Profile2Blueprint` scheme; the only dependency is [JTKit](https://github.com/JordyThery/JTKit), resolved from GitHub. `⌘U` runs the unit tests.
+Requires Xcode 27 or later (Swift 6, strict concurrency). Open `Profile2Blueprint.xcodeproj` and run the `Profile2Blueprint` scheme. `⌘U` runs the unit tests.
+
+The app's only package dependency is [JTKit](https://github.com/JordyThery/JTKit), the shared package of these apps, resolved from GitHub. Resolving it also downloads Microsoft's MSAL, which JTKit uses for Intune sign-in and which this app doesn't link or ship.
 
 ```
 Profile2Blueprint/
