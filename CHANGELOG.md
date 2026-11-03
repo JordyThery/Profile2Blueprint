@@ -23,6 +23,10 @@
   while the app runs and starts empty at each launch.
 - **Settings no longer has a General tab.** The app follows the Mac’s Light or
   Dark appearance.
+- **Easier to read.** Warnings, statuses and results keep their colored symbol
+  with the text in the normal text color, the Blueprint JSON uses higher-contrast
+  colors, and the status filter above the profile list is a menu that names each
+  status with its count. VoiceOver reads which migration step you are on.
 
 ## 1.3.0 (2026-10-31)
 
