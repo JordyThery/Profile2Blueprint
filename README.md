@@ -43,7 +43,7 @@ Then in the app, open **Settings › Connections** → **Add Connection…** →
 
 1. Open **Profiles**. The app contacts the tenant only from here: at launch it opens without a page selected. Every classic profile (macOS and mobile device) is graded **Ready**, **Needs attention** or **Blocked**, with the reasons listed. Filters show one status or one platform at a time; search finds a profile by name, ID or payload type.
 2. Select a Ready profile and review the **Scope** and **Blueprint Preview** tabs. Preview shows the exact JSON that will be sent.
-3. On the **Migrate** tab, **Run Dry Run** first if you like: it validates and checks for a Blueprint with the same name, and writes nothing. Then turn off **Dry run** and click **Create Blueprint (Not Deployed)**. The app reads the Blueprint back and verifies it. Deploying is a separate, explicitly confirmed step.
+3. On the **Migrate** tab, **Run Dry Run** first if you like: it validates and checks for a Blueprint with the same name, and writes nothing. Then click **Create Blueprint (Not Deployed)**. The app reads the Blueprint back and verifies it. Deploying is a separate, explicitly confirmed step.
 
 ## How it works
 
@@ -63,7 +63,7 @@ The app walks that workflow stage by stage — **fetch → validate → distill 
 
 - Creating a Blueprint never deploys it.
 - Verification compares identifiers, payload order and count, setting values and scope against the server’s read-back, tolerating documented server canonicalization.
-- Deploy requires a per-Blueprint confirmation listing the target groups and device count, and is refused when verification failed. A group whose device count the server doesn’t give is shown as unknown. Right before deploying, the app reads the Blueprint again: if its steps or scope changed since it was verified, nothing is sent and you verify it again first.
+- Deploy requires a per-Blueprint confirmation listing the target groups and device count of the Blueprint as verified, and is refused when verification failed or when one of its groups isn’t in the group list (Verify Again first). A group whose device count the server doesn’t give is shown as unknown. Right before deploying, the app reads the Blueprint again: if its steps or scope changed since it was verified, nothing is sent and you verify it again first.
 - The HTTP layer refuses any request that isn’t a GET, a Blueprint create, a Blueprint deploy or (only while classic scope changes are on for the tenant) a scope-only classic profile update, before it reaches the network.
 - **Classic profile cleanup is opt-in.** After a fully clean deployment (0 failed, 0 pending), the app can unscope the classic profile. This is guarded three times: a per-tenant setting that is off by default, a per-profile opt-in, and a confirmation. Turning the tenant setting off stops every scope change at once, also for migrations still waiting for their device report. The automatic cleanup runs only when the Blueprint’s groups cover every target of the classic scope (each classic group must map, by its exact-name match or the platform group you picked for it on the Scope tab, to one of the Blueprint’s groups; never for “all computers”, individual devices, buildings or departments), and at most once per profile. The original scope is backed up locally, per tenant, and **Restore Scope** puts it back; a restored profile is never unscoped again automatically. After the transform, Jamf Pro logs a *failed* “Remove Configuration Profile” command per device: the device refuses to let MDM remove a profile the Blueprint now owns, which is expected.
 - Client secrets, tokens and request bodies are never written to any log. Copying a request body that holds credentials (Wi-Fi passwords, SCEP challenges) keeps it off other devices and clipboard history, and clears it after a minute.
@@ -74,17 +74,18 @@ The app walks that workflow stage by stage — **fetch → validate → distill 
 
 - **Multiple tenants**: us / eu / apac, with an optional host override, in Settings › Connections.
 - **Blueprint name and description**: a per-tenant name prefix and suffix, and a description template with `{name}` (the profile’s name), `{id}` (its Jamf Pro ID) and `{platform}` (“macOS” or “mobile device”) tokens. All three are optional and default to the original wording, so a test environment can be labeled differently from production; an empty template means no description. Both stay editable per Blueprint before creating.
-- **Dry run**: on by default. It validates, builds the request and checks for a Blueprint with the same name, and writes nothing.
+- **Dry run**: **Run Dry Run** validates, builds the request and checks for a Blueprint with the same name, and writes nothing.
 - **Duplicate names**: when a Blueprint with the same name exists, choose **Skip**, **Rename** or **Open Existing**.
 - **Scope mapping**: exact-name auto-matching against platform groups of the profile’s own platform (a mobile profile is never offered a computer group), with pickers for anything ambiguous or unmatched.
 - **Diff**: the five rules as a checklist, plus side-by-side JSON.
 - **Credentials warning**: a profile that holds credentials is marked “Contains credentials”, and its preview says to treat copies as secrets.
-- **Batch migration**: tick profiles in the list (or ⌘-click), then review them together: per-item summaries and one deploy confirmation listing every target.
+- **Batch migration**: tick profiles in the list (or ⌘-click), then **Profile › Migrate Selected…** (⇧⌘M) to review them together: per-item summaries, a dry run or create for all of them, **Stop** during a run, and one deploy confirmation listing every target.
 - **Reload and Reload Profile**: read the list or one profile again; open migrations that haven’t created their Blueprint yet pick up the change.
 - **Open in Jamf Pro**: the configuration profile or its Blueprint, in the Jamf Pro console.
 - **Update check**: daily and on demand, with release notes and a download.
 - **Persistent sessions**: a created Blueprint re-attaches after a relaunch and resumes at its current stage; after a deployment the device report refreshes every 20 seconds for up to 30 minutes, then **Refresh Status** checks again. When the Blueprint was deleted on the server, the saved reference is removed.
-- **History**: every migration action, exportable as Markdown or JSON.
+- **History**: every migration action, with the selected action’s details beside the list, exportable as Markdown or JSON (**File › Export History**, ⇧⌘E). A failed or stopped deploy says whether it may have started.
+- **Menu commands**: **Profile › Reload Profiles** (⌘R), **Reload Profile** (⇧⌘R), **Migrate Selected…** (⇧⌘M) and **Open Profile / Blueprint in Jamf Pro** (⌥⌘J, ⇧⌥⌘J).
 - **Activity Log** (Window › Activity Log, ⇧⌘L): everything the app does: token requests, every API call (status, duration, trace ID), retries, refused writes and settings changes. It keeps the last 10,000 entries while the app runs.
 - **Retry waits**: when Jamf asks the app to wait before trying a request again (at most 60 seconds), the Migrate tab and batch migration show the wait, with **Stop** to end it at once.
 

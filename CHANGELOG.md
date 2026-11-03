@@ -23,10 +23,34 @@
   while the app runs and starts empty at each launch.
 - **Settings no longer has a General tab.** The app follows the Mac’s Light or
   Dark appearance.
+- **The deploy confirmation lists the Blueprint as verified.** Its groups,
+  device count and confirmation sentence come from the verified Blueprint. A
+  group that isn’t in the group list is named, and Deploy waits until you
+  click Verify Again. When reading the groups again fails, the app keeps the
+  last list and shows the error.
+- **Unmapped classic groups keep their warning.** A profile stays “Needs
+  attention” until every classic group is mapped to a platform group, so a
+  Blueprint that reaches fewer devices always needs your acknowledgement, also
+  in batch migration.
+- **Stop says what happened.** Stopping a wait reads “You stopped waiting for
+  Jamf; nothing was sent again”, and every failed or stopped deploy leaves a
+  History line saying whether it may have started.
+- **Menu commands.** Profile › Reload Profiles (⌘R), Reload Profile (⇧⌘R),
+  Migrate Selected… (⇧⌘M), Open Profile in Jamf Pro (⌥⌘J) and Open Blueprint
+  in Jamf Pro (⇧⌥⌘J); File › Export History (⇧⌘E).
+- **Run Dry Run is one button.** The separate Dry run switch is gone; Create
+  Blueprint (Not Deployed) is the only button that writes.
+- **Batch migration** shows its deploy confirmation in the same window, has
+  Stop during a run, and offers Dry Run and Create as separate buttons.
+- **History** shows the selected action’s details beside the list.
+- A hand-picked group counts for the automatic cleanup only while it still
+  exists. The Scope tab waits while a saved migration is being read.
 - **Easier to read.** Warnings, statuses and results keep their colored symbol
-  with the text in the normal text color, the Blueprint JSON uses higher-contrast
-  colors, and the status filter above the profile list is a menu that names each
-  status with its count. VoiceOver reads which migration step you are on.
+  with the text in the normal text color, orange is used only for warnings, the
+  cleanup warnings are no longer small print, the Blueprint JSON uses
+  higher-contrast colors, and the status filter above the profile list is a
+  menu that names each status with its count. VoiceOver reads which migration
+  step you are on. The window keeps a size its content fits.
 
 ## 1.3.0 (2026-10-31)
 
