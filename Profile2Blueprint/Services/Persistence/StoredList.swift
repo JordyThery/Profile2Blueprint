@@ -49,8 +49,22 @@ nonisolated struct StoredList<Element: Codable & Sendable>: Sendable {
         }
     }
 
-    /// `Profile2Blueprint/<name>` in Application Support.
+    /// `Profile2Blueprint/<name>` in Application Support (see `AppFiles`).
     static func appSupportFile(_ name: String) -> URL {
+        AppFiles.file(name)
+    }
+}
+
+/// Where the app keeps its own files: `Profile2Blueprint/` in Application
+/// Support. Under the live-check switch (`LiveLaunch`) they go to the run's
+/// folder for them instead, so a live check never reads or writes the real
+/// tenants, history, scope backups or sessions.
+nonisolated enum AppFiles {
+    /// Worked out once: a refused switch gives a new temporary folder per call.
+    private static let liveFolder = LiveLaunch.appFilesFolder("Profile2Blueprint")
+
+    static func file(_ name: String) -> URL {
+        if let liveFolder { return liveFolder.appending(path: name) }
         let base = (try? FileManager.default.url(
             for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true
         )) ?? FileManager.default.temporaryDirectory

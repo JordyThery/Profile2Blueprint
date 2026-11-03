@@ -157,10 +157,14 @@ nonisolated struct ScopeCoverage: Sendable {
     var platform: ProfilePlatform
     var platformGroups: [JamfPlatform.DeviceGroup]
     var blueprintGroupIDs: [String]
+    /// Platform groups the user picked by hand for classic groups, by the
+    /// classic group's identity (`MigrationSession.groupPicks`).
+    var picks: [String: String] = [:]
 
     /// The classic scope's targets the Blueprint doesn't provably reach:
-    /// everything except device groups whose single exact-name platform group
-    /// is one of the Blueprint's groups. Empty means every device is covered.
+    /// everything except device groups mapped to one of the Blueprint's groups,
+    /// by their single exact-name platform group or by the user's pick for
+    /// them. Empty means every device is covered.
     /// Limitations and exclusions only make the classic scope smaller, and
     /// unscoping leaves them as they are, so they don't count here.
     func uncovered(in scope: ClassicScope) -> [String] {
@@ -176,7 +180,9 @@ nonisolated struct ScopeCoverage: Sendable {
         targets += scope.otherTargets.map { $0.displayName.lowercased() }
         let blueprintGroups = Set(blueprintGroupIDs)
         let mapping = ScopeMapper.propose(for: scope, platform: platform, platformGroups: platformGroups)
-        for entry in mapping where !(entry.autoMatch.map { blueprintGroups.contains($0.id) } ?? false) {
+        for entry in mapping {
+            let mapped = [entry.autoMatch?.id, picks[entry.id]].compactMap { $0 }
+            guard !mapped.contains(where: blueprintGroups.contains) else { continue }
             targets.append("group “\(entry.classicGroup.name)”")
         }
         return targets

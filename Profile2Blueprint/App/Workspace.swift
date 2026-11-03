@@ -19,6 +19,9 @@ nonisolated struct MigrationEnvironment: Sendable {
     /// Classic API. In demo mode its requests are answered by JTKit's demo
     /// server and the app's `DemoClassicServer`, inside the app.
     let platform: JamfPlatform.Client
+    /// The waits before a retry of this environment's requests, shown with
+    /// Stop above the migration steps.
+    let waits: RequestWaits?
     private let scopeWriter: (any ClassicScopeWriter)?
     /// The tenant's "Allow classic scope changes" switch as it is now, so a
     /// migration still running when it's turned off can't change the scope.
@@ -34,6 +37,7 @@ nonisolated struct MigrationEnvironment: Sendable {
         descriptionTemplate: String = BlueprintBuilder.defaultDescriptionTemplate,
         jamfProLinks: JamfProLinks? = nil,
         classic: any ClassicAPI, platform: JamfPlatform.Client,
+        waits: RequestWaits? = nil,
         classicScopeWriter: (any ClassicScopeWriter)? = nil,
         scopeChanges: ClassicWriteSwitch = ClassicWriteSwitch(true)
     ) {
@@ -45,6 +49,7 @@ nonisolated struct MigrationEnvironment: Sendable {
         self.jamfProLinks = jamfProLinks
         self.classic = classic
         self.platform = platform
+        self.waits = waits
         scopeWriter = classicScopeWriter
         self.scopeChanges = scopeChanges
     }

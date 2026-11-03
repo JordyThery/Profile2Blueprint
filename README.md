@@ -86,7 +86,6 @@ The app walks that workflow stage by stage — **fetch → validate → distill 
 - **Persistent sessions**: a created Blueprint re-attaches after a relaunch and resumes at its current stage; after a deployment the device report refreshes every 20 seconds for up to 30 minutes, then **Refresh Status** checks again. When the Blueprint was deleted on the server, the saved reference is removed.
 - **History**: every migration action, exportable as Markdown or JSON.
 - **Activity Log** (Window › Activity Log, ⇧⌘L): everything the app does: token requests, every API call (status, duration, trace ID), retries, refused writes and settings changes.
-- **Appearance**: light, dark or the system’s, in Settings › General.
 
 ## Where your data is stored
 

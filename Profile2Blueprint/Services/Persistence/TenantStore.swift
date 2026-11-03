@@ -36,10 +36,7 @@ final class TenantStore: ConnectionStorage {
     }
 
     static func appDefault() -> TenantStore {
-        let base = (try? FileManager.default.url(
-            for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true
-        )) ?? FileManager.default.temporaryDirectory
-        return TenantStore(fileURL: base.appending(path: "Profile2Blueprint/tenants.json"))
+        TenantStore(fileURL: AppFiles.file("tenants.json"))
     }
 
     var backupURL: URL { fileURL.appendingPathExtension("backup") }

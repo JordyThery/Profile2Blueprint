@@ -13,13 +13,17 @@ nonisolated struct PersistedMigration: Codable, Hashable, Sendable {
     var unscopeAfterDeploy: Bool
     /// The description sent on create; nil in records saved before it was kept.
     var blueprintDescription: String?
+    /// Platform groups picked by hand for classic groups without a single
+    /// exact-name match, by the classic group's identity. Empty in records saved
+    /// before picks were kept.
+    var groupPicks: [String: String] = [:]
     var updatedAt = Date()
 
     var key: ProfileKey { ProfileKey(platform: platform, id: profileID) }
 
     private enum CodingKeys: String, CodingKey {
         case environmentKey, platform, profileID, blueprintID, blueprintName, selectedGroupIDs, unscopeAfterDeploy,
-             blueprintDescription, updatedAt
+             blueprintDescription, groupPicks, updatedAt
     }
 
     /// Records saved before mobile support decode as macOS.
@@ -33,13 +37,14 @@ nonisolated struct PersistedMigration: Codable, Hashable, Sendable {
         selectedGroupIDs = try container.decode([String].self, forKey: .selectedGroupIDs)
         unscopeAfterDeploy = try container.decode(Bool.self, forKey: .unscopeAfterDeploy)
         blueprintDescription = try container.decodeIfPresent(String.self, forKey: .blueprintDescription)
+        groupPicks = try container.decodeIfPresent([String: String].self, forKey: .groupPicks) ?? [:]
         updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
     }
 
     init(
         environmentKey: String, platform: ProfilePlatform, profileID: Int, blueprintID: String,
         blueprintName: String, selectedGroupIDs: [String], unscopeAfterDeploy: Bool,
-        blueprintDescription: String? = nil, updatedAt: Date = Date()
+        blueprintDescription: String? = nil, groupPicks: [String: String] = [:], updatedAt: Date = Date()
     ) {
         self.environmentKey = environmentKey
         self.platform = platform
@@ -49,6 +54,7 @@ nonisolated struct PersistedMigration: Codable, Hashable, Sendable {
         self.selectedGroupIDs = selectedGroupIDs
         self.unscopeAfterDeploy = unscopeAfterDeploy
         self.blueprintDescription = blueprintDescription
+        self.groupPicks = groupPicks
         self.updatedAt = updatedAt
     }
 }

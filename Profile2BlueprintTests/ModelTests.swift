@@ -91,10 +91,10 @@ struct ErrorReportTests {
 @Suite("Retry rules")
 struct RetryRuleTests {
 
-    @Test("Retry backoff doubles and is capped (JTKit's shared rules)")
+    @Test("Retry backoff doubles and is capped at 60 s (JTKit’s shared rules)")
     func backoff() {
         let rules = RetryRules.standard
         #expect((1...3).map { rules.backoff(afterAttempt: $0, random: 0) } == [1, 2, 4])
-        #expect(rules.backoff(afterAttempt: 9, random: 1) == 120)
+        #expect(rules.backoff(afterAttempt: 9, random: 1) == 60)
     }
 }

@@ -59,6 +59,11 @@ final class MigrationSession: Identifiable {
     var blueprintDescription: String
     /// Selected platform group IDs, in scope order.
     var selectedGroupIDs: [String]
+    /// Platform groups picked by hand on the Scope tab, by classic group
+    /// (`ScopeMappingEntry.id`). With them a classic group without a single
+    /// exact-name match counts as covered for the automatic cleanup when its
+    /// pick is one of the Blueprint's groups.
+    private(set) var groupPicks: [String: String] = [:]
     /// Required to continue when eligibility is "needs attention".
     var acknowledgedWarnings = false
     /// Dry run is the default; creating requires switching it off.
@@ -221,7 +226,7 @@ final class MigrationSession: Identifiable {
     /// What the Blueprint targets: its read-back scope once it exists.
     var scopeCoverage: ScopeCoverage {
         ScopeCoverage(platform: platform, platformGroups: platformGroups,
-                      blueprintGroupIDs: readBack?.scopeDeviceGroups ?? selectedGroupIDs)
+                      blueprintGroupIDs: readBack?.scopeDeviceGroups ?? selectedGroupIDs, picks: groupPicks)
     }
 
     /// Classic scope targets the Blueprint's groups don't cover; unscoping
@@ -233,9 +238,32 @@ final class MigrationSession: Identifiable {
     func toggleGroup(_ id: String) {
         if let index = selectedGroupIDs.firstIndex(of: id) {
             selectedGroupIDs.remove(at: index)
+            groupPicks = groupPicks.filter { $0.value != id }
         } else {
             selectedGroupIDs.append(id)
         }
+    }
+
+    /// The platform group a classic group maps to now: the user's pick, else
+    /// its single exact-name match, while it's selected.
+    func mappedGroup(for entry: ScopeMappingEntry) -> JamfPlatform.DeviceGroup? {
+        let id = groupPicks[entry.id] ?? entry.autoMatch?.id
+        guard let id, selectedGroupIDs.contains(id) else { return nil }
+        return platformGroups.first { $0.id == id }
+    }
+
+    /// Maps a classic group to a platform group by hand (nil: none). The
+    /// previous group leaves the selection unless another classic group maps to it.
+    func pick(_ groupID: String?, for entry: ScopeMappingEntry) {
+        let previous = mappedGroup(for: entry)?.id
+        groupPicks[entry.id] = nil
+        if let previous, previous != groupID,
+           !report.scopeMapping.contains(where: { $0.id != entry.id && mappedGroup(for: $0)?.id == previous }) {
+            selectedGroupIDs.removeAll { $0 == previous }
+        }
+        guard let groupID else { return }
+        if groupID != entry.autoMatch?.id { groupPicks[entry.id] = groupID }
+        if !selectedGroupIDs.contains(groupID) { selectedGroupIDs.append(groupID) }
     }
 
     /// The profile was fetched again (Reload or Reload Profile). Ignored once
@@ -340,8 +368,15 @@ final class MigrationSession: Identifiable {
             history.record(.deploy, environment: environment, profile: profile, blueprintID: confirmation.blueprintID,
                                      blueprintName: confirmation.blueprintName, result: .success,
                                      message: "Confirmed by user for \(confirmation.groupNames.joined(separator: ", ")) (\(devices)).")
-            let result = try await pipeline.deploy(confirmation: confirmation) { [weak self] progress in
-                await MainActor.run { self?.deployment = progress }
+            let result: DeploymentOutcome
+            do {
+                result = try await pipeline.deploy(confirmation: confirmation) { [weak self] progress in
+                    await MainActor.run { self?.deployment = progress }
+                }
+            } catch let notSent as DeployNotSentError {
+                history.record(.deploymentResult, environment: environment, profile: profile, blueprintID: confirmation.blueprintID,
+                               blueprintName: confirmation.blueprintName, result: .failure, message: notSent.message)
+                throw notSent
             }
             await finish(result)
         }
@@ -473,7 +508,8 @@ final class MigrationSession: Identifiable {
             blueprintName: createdName ?? blueprintName,
             selectedGroupIDs: selectedGroupIDs,
             unscopeAfterDeploy: unscopeAfterDeploy,
-            blueprintDescription: blueprintDescription
+            blueprintDescription: blueprintDescription,
+            groupPicks: groupPicks
         )
         Task { [sessionStates] in
             do {
@@ -490,6 +526,7 @@ final class MigrationSession: Identifiable {
         blueprintName = record.blueprintName
         if let description = record.blueprintDescription { blueprintDescription = description }
         selectedGroupIDs = record.selectedGroupIDs
+        groupPicks = record.groupPicks.filter { record.selectedGroupIDs.contains($0.value) }
         unscopeAfterDeploy = record.unscopeAfterDeploy
         if effectiveReport.status == .needsAttention {
             acknowledgedWarnings = true // accepted when the blueprint was created

@@ -85,17 +85,13 @@ struct ScopeMappingView: View {
         let candidates = entry.exactMatches.isEmpty
             ? (entry.suggestions.isEmpty ? platformGroups : entry.suggestions)
             : entry.exactMatches
-        let selected = candidates.first { session.selectedGroupIDs.contains($0.id) }
+        let selected = session.mappedGroup(for: entry)
 
         return GridRow(alignment: .firstTextBaseline) {
             Text(entry.classicGroup.name)
             Picker("Platform group for \(entry.classicGroup.name)", selection: Binding<String?>(
                 get: { selected?.id },
-                set: { newID in
-                    // Replace whichever candidate was chosen for this classic group.
-                    if let selected { session.toggleGroup(selected.id) }
-                    if let newID, !session.selectedGroupIDs.contains(newID) { session.toggleGroup(newID) }
-                }
+                set: { session.pick($0, for: entry) }
             )) {
                 Text("None").tag(String?.none)
                 ForEach(candidates) { group in

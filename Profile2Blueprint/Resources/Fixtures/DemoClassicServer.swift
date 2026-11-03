@@ -103,15 +103,17 @@ nonisolated extension MigrationEnvironment {
         server: DemoJamfPlatformServer = DemoJamfPlatformServer(),
         classicServer: DemoClassicServer = DemoClassicServer(),
         session: URLSession? = nil,
+        waits: RequestWaits? = nil,
         classicScopeChanges: Bool = true
     ) -> MigrationEnvironment {
-        let client = demoClient(log: log, server: server, classicServer: classicServer, session: session)
+        let client = demoClient(log: log, server: server, classicServer: classicServer, session: session, waits: waits)
         return MigrationEnvironment(
             displayName: demoDisplayName,
             isDemo: true,
             environmentID: nil,
             classic: LiveClassicAPI(client: client),
             platform: client,
+            waits: waits,
             classicScopeWriter: classicScopeChanges ? LiveClassicScopeWriter(client: client) : nil
         )
     }
@@ -123,18 +125,20 @@ nonisolated extension MigrationEnvironment {
         log: ActivityLog? = nil,
         server: DemoJamfPlatformServer = DemoJamfPlatformServer(),
         classicServer: DemoClassicServer = DemoClassicServer(),
-        session: URLSession? = nil
+        session: URLSession? = nil,
+        waits: RequestWaits? = nil
     ) -> JamfPlatform.Client {
         server.add(groups: DemoFixtures.addedPlatformGroups)
         server.route("proclassic", to: classicServer)
         let connection = Connection.demoJamfPlatform
         let session = session ?? DemoNetwork(servers: [DemoSamples.platformHost: server]).session
         let recorder = RequestRecorder(session: session, log: log,
-                                       service: ConnectionService.jamfPlatform.displayName, connection: connection.name)
+                                       service: ConnectionService.jamfPlatform.displayName, connection: connection.name,
+                                       waits: waits)
         do {
             return try JamfPlatform.Client(
                 connection: connection,
-                secret: { DemoSecretStore().secret(for: connection.id.uuidString) ?? "" },
+                secret: { try DemoSecretStore().readSecret(for: connection.id.uuidString) ?? "" },
                 recorder: recorder,
                 permits: { RequestPolicy.isPermitted($0, classicWrites: .scopeOnly) },
                 hints: RequestPolicy.hints(for:)

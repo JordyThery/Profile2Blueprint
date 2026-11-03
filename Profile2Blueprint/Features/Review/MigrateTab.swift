@@ -16,6 +16,7 @@ struct MigrateTab: View {
             VStack(alignment: .leading, spacing: 16) {
                 StepIndicator(state: session.state, hasBlueprint: session.blueprintID != nil, fidelity: session.fidelity,
                               cleanupDone: session.scopeBackup != nil)
+                RetryWaitBanner(waits: environment.waits)
                 environmentBanner
                 review
                 if let duplicates = session.duplicates {

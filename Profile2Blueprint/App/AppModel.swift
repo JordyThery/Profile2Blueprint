@@ -51,6 +51,7 @@ final class AppModel {
     /// Demo mode as the workspace was last built for, to notice a switch.
     @ObservationIgnored private var workspaceIsDemo: Bool
     static let demoModeKey = "demoMode"
+    static let activityCapacity = 10_000
 
     /// - Parameters:
     ///   - demo: the app passes its saved demo mode (`forLaunch()`).
@@ -85,8 +86,10 @@ final class AppModel {
         self.secrets = recording
         self.session = session
         // JTKit's in-memory log (Window › Activity Log). The app doesn't read
-        // or change activity.json, which may still be on disk.
-        let activityLog = ActivityLog()
+        // or change activity.json, which may still be on disk. Loading a large
+        // tenant sends a request per profile, so it keeps 10,000 entries (as
+        // the app's own log did), not JTKit's standard 1,000.
+        let activityLog = ActivityLog(capacity: Self.activityCapacity)
         self.activity = activityLog
         self.history = HistoryLog(store: history, activity: activityLog)
         demoHistory = HistoryLog(store: demoFiles.history, activity: activityLog)
@@ -168,13 +171,15 @@ final class AppModel {
         if isDemoMode {
             // JTKit's demo connection and network, never a saved tenant or the Keychain.
             let source = demo.jamfPlatform()
-            environment = .demo(log: activity, server: demo.jamfPlatformServer, session: source.session)
+            environment = .demo(log: activity, server: demo.jamfPlatformServer, session: source.session,
+                                waits: RequestWaits())
         } else {
             guard let tenant = currentTenant else {
                 throw APIError.invalidConfiguration("Choose a current tenant, or turn on \(DemoMode.title).")
             }
             let scopeChanges = scopeSwitch(for: tenant)
-            let client = try makeClient(for: tenant, scopeChanges: scopeChanges)
+            let waits = RequestWaits()
+            let client = try makeClient(for: tenant, scopeChanges: scopeChanges, waits: waits)
             environment = MigrationEnvironment(
                 displayName: tenant.displayName,
                 isDemo: false,
@@ -184,6 +189,7 @@ final class AppModel {
                 jamfProLinks: tenant.jamfProLinks,
                 classic: LiveClassicAPI(client: client),
                 platform: client,
+                waits: waits,
                 classicScopeWriter: LiveClassicScopeWriter(client: client),
                 scopeChanges: scopeChanges
             )
@@ -333,9 +339,9 @@ final class AppModel {
     /// requests. `secretOverride` lets the Connect screen test unsaved
     /// credentials without writing them to the Keychain. `scopeChanges` is
     /// the switch the allow-list reads at every request; by default a fixed
-    /// one from `tenant`.
+    /// one from `tenant`. `waits` shows the waits before a retry (with Stop).
     func makeClient(for tenant: Tenant, secretOverride: String? = nil,
-                    scopeChanges: ClassicWriteSwitch? = nil) throws -> JamfPlatform.Client {
+                    scopeChanges: ClassicWriteSwitch? = nil, waits: RequestWaits? = nil) throws -> JamfPlatform.Client {
         if let issue = tenant.validationIssues.first {
             throw APIError.invalidConfiguration(issue)
         }
@@ -344,7 +350,7 @@ final class AppModel {
         }
         let recorder = RequestRecorder(session: session, log: activity,
                                        service: ConnectionService.jamfPlatform.displayName,
-                                       connection: tenant.displayName)
+                                       connection: tenant.displayName, waits: waits)
         let tokens: JamfPlatform.TokenProvider
         do {
             tokens = try JamfPlatform.TokenProvider(connection: tenant.connection, secret: secret(for: tenant, override: secretOverride),
@@ -364,14 +370,15 @@ final class AppModel {
     }
 
     /// The tenant's client secret, read when signing in: a typed one first,
-    /// else the one in the Keychain.
+    /// else the one in the Keychain. A Keychain that refuses or is locked
+    /// throws its own `SecretStoreError`, never "no secret".
     private func secret(for tenant: Tenant, override: String?) -> @Sendable () throws -> String {
         let secrets = self.secrets
         let account = tenant.id.uuidString
         let override = override.flatMap { $0.isEmpty ? nil : $0 }
         return {
             if let override { return override }
-            guard let stored = secrets.secret(for: account), !stored.isEmpty else {
+            guard let stored = try secrets.readSecret(for: account), !stored.isEmpty else {
                 throw APIError.missingSecret
             }
             return stored

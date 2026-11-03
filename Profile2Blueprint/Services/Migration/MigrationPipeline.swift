@@ -38,6 +38,15 @@ nonisolated struct PipelineError: Error, LocalizedError, Sendable {
     var errorDescription: String? { message }
 }
 
+/// The deploy stopped before its request was sent (JTKit's
+/// `DeploymentNotStarted`): nothing was sent, so nothing started.
+nonisolated struct DeployNotSentError: Error, LocalizedError, Sendable {
+    var message: String
+    /// The Blueprint changed since it was verified: verify it again first.
+    var blueprintChanged: Bool
+    var errorDescription: String? { message }
+}
+
 /// A same-named Blueprint already exists. Carries the matches so callers can offer
 /// rename / skip / open-existing instead of a plain failure.
 nonisolated struct DuplicateNameError: Error, LocalizedError, Sendable {
@@ -206,16 +215,27 @@ actor MigrationPipeline {
     }
 
     /// 8. Deploy, only with a confirmation for this exact Blueprint, then poll.
+    /// Right before the deploy request the Blueprint is read again and must
+    /// still have the steps and scope that were verified and confirmed;
+    /// otherwise nothing is sent (`DeployNotSentError`).
     func deploy(
         confirmation: DeployConfirmation,
         onProgress: @Sendable (JamfPlatform.DeploymentStatus) async -> Void = { _ in }
     ) async throws -> DeploymentOutcome {
         let blueprintID = try checkDeployable(confirmation: confirmation)
+        guard let verified = readBack else { throw PipelineError(message: "Verify the Blueprint before deploying.") }
         do {
             state = .deploying(nil)
-            previousDeploymentStart = try await blueprints.startDeployment(id: blueprintID)
+            previousDeploymentStart = try await blueprints.startDeployment(id: blueprintID) { latest in
+                guard verified.isUnchangedInStepsAndScope(in: latest) else { throw BlueprintChangedError() }
+            }
             Log.app.info("Deploy accepted for Blueprint \(blueprintID, privacy: .public)")
             return try await monitor(id: blueprintID, onProgress: onProgress)
+        } catch let notStarted as JamfPlatform.Blueprints.DeploymentNotStarted {
+            let error = Self.notSent(notStarted)
+            // A changed Blueprint is verified again first; otherwise deploying can simply be tried again.
+            state = error.blueprintChanged ? .failed(stage: "deploy", ErrorReport(error)) : .verified(passed: true)
+            throw error
         } catch {
             state = .failed(stage: "deploy", ErrorReport(error))
             throw error
@@ -236,6 +256,23 @@ actor MigrationPipeline {
             throw PipelineError(message: "Verification found mismatches. Deploying was refused.")
         }
         return blueprintID
+    }
+
+    private struct BlueprintChangedError: Error {}
+
+    /// What the user sees when the deploy stopped before its request.
+    static func notSent(_ notStarted: JamfPlatform.Blueprints.DeploymentNotStarted) -> DeployNotSentError {
+        if notStarted.underlying is BlueprintChangedError {
+            return DeployNotSentError(
+                message: "The Blueprint was changed on the server after it was verified (its steps or scope differ). Nothing was sent. Click Verify Again, then deploy.",
+                blueprintChanged: true)
+        }
+        if notStarted.underlying is CancellationError {
+            return DeployNotSentError(message: "You stopped waiting. Nothing was sent; the Blueprint wasn’t deployed.", blueprintChanged: false)
+        }
+        return DeployNotSentError(
+            message: "The Blueprint couldn’t be read before deploying: \(notStarted.underlying.localizedDescription) Nothing was sent; the Blueprint wasn’t deployed.",
+            blueprintChanged: false)
     }
 
     /// Before a Blueprint is created: where validating and building may run again.

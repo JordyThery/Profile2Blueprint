@@ -68,6 +68,8 @@ struct BatchMigrationView: View {
 
             Toggle("Dry run (write nothing)", isOn: $dryRun).disabled(running)
 
+            RetryWaitBanner(waits: workspace.environment.waits)
+
             HStack {
                 if let progressText { Text(progressText).font(.callout) }
                 if running { ProgressView().controlSize(.small) }

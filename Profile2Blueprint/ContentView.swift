@@ -10,7 +10,9 @@ enum SidebarItem: Hashable {
 struct ContentView: View {
     @Environment(AppModel.self) private var model
     @Environment(UpdateChecker.self) private var updates
-    @State private var selection: SidebarItem? = .profiles
+    /// Set when the window first appears (`chooseFirstPage`).
+    @State private var selection: SidebarItem?
+    @State private var choseFirstPage = false
 
     var body: some View {
         @Bindable var updates = updates
@@ -32,13 +34,20 @@ struct ContentView: View {
             case .history:
                 HistoryView()
             case nil:
-                ContentUnavailableView(
-                    "Choose a Section",
-                    systemImage: "sidebar.left",
-                    description: Text("Select Profiles or History in the sidebar.")
-                )
+                ContentUnavailableView {
+                    Label("Choose a Section", systemImage: "sidebar.left")
+                } description: {
+                    if let tenant = model.currentTenant, !model.isDemoMode {
+                        Text("Profiles loads the classic profiles from “\(tenant.displayName)”. History shows earlier migrations.")
+                    } else {
+                        Text("Select Profiles or History in the sidebar.")
+                    }
+                } actions: {
+                    Button("Open Profiles") { selection = .profiles }
+                }
             }
         }
+        .onAppear(perform: chooseFirstPage)
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 TenantPicker()
@@ -58,6 +67,15 @@ struct ContentView: View {
         } message: {
             Text(model.persistenceError ?? "")
         }
+    }
+
+    /// The tenant is contacted only once the user opens Profiles: with a
+    /// tenant in use the window opens on no page. Demo mode and the No
+    /// Tenant page contact nothing, so they open on Profiles.
+    private func chooseFirstPage() {
+        guard !choseFirstPage else { return }
+        choseFirstPage = true
+        if model.isDemoMode || model.currentTenant == nil { selection = .profiles }
     }
 }
 

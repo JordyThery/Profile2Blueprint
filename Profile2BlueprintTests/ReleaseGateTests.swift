@@ -647,3 +647,135 @@ struct BatchTests {
         if case .deployed = first.state { Issue.record("only the confirmed Blueprint deploys") }
     }
 }
+
+@Suite("Hand-picked scope mappings and the deploy check", .serialized)
+@MainActor
+struct HandPickedMappingTests {
+    private let financeProfile = ProfileKey(platform: .macOS, id: 103) // scoped to Finance Macs, no platform group of that name
+
+    @Test("A platform group picked by hand covers its classic group, as an exact-name match does")
+    func handPickCovers() async throws {
+        let server = DemoClassicServer()
+        let env = environment(classicServer: server)
+        let session = try #require(Workspace.previewDemo(environment: env).session(for: financeProfile))
+        await session.waitUntilReady()
+        let entry = try #require(session.report.scopeMapping.first)
+        #expect(session.uncoveredClassicTargets == ["group “Finance Macs”"])
+        session.pick(DemoFixtures.engineersPlatformGroupID, for: entry)
+        #expect(session.selectedGroupIDs == [DemoFixtures.engineersPlatformGroupID])
+        #expect(session.mappedGroup(for: entry)?.id == DemoFixtures.engineersPlatformGroupID)
+        #expect(session.uncoveredClassicTargets.isEmpty)
+        session.unscopeAfterDeploy = true
+        #expect(session.autoUnscopeArmed)
+        // The service accepts the pick for the fresh scope too.
+        _ = try await ClassicScopeService.unscope(key: financeProfile, blueprintID: nil, environment: env,
+                                                  backups: ScopeBackupStore(fileURL: temporaryFile("b.json")),
+                                                  requiring: session.scopeCoverage)
+        #expect(server.scopeWrites.count == 1)
+    }
+
+    @Test("Removing the picked group, or picking None, uncovers the classic group again")
+    func unpickUncovers() async throws {
+        let session = try #require(Workspace.previewDemo(environment: environment()).session(for: financeProfile))
+        await session.waitUntilReady()
+        let entry = try #require(session.report.scopeMapping.first)
+        session.pick(DemoFixtures.engineersPlatformGroupID, for: entry)
+        session.toggleGroup(DemoFixtures.engineersPlatformGroupID)
+        #expect(session.groupPicks.isEmpty && !session.uncoveredClassicTargets.isEmpty)
+        session.pick(DemoFixtures.engineersPlatformGroupID, for: entry)
+        session.pick(nil, for: entry)
+        #expect(session.selectedGroupIDs.isEmpty && session.groupPicks.isEmpty)
+        // A group selected in the list, without a pick for this classic group, doesn't cover it.
+        session.toggleGroup(DemoFixtures.engineersPlatformGroupID)
+        #expect(session.uncoveredClassicTargets == ["group “Finance Macs”"])
+    }
+
+    @Test("Picks are saved with the migration and come back after a relaunch")
+    func picksPersist() throws {
+        let record = PersistedMigration(environmentKey: "e", platform: .macOS, profileID: 103, blueprintID: "b",
+                                        blueprintName: "n", selectedGroupIDs: ["g"], unscopeAfterDeploy: true,
+                                        groupPicks: ["11": "g"])
+        let decoded = try JSONDecoder().decode(PersistedMigration.self, from: JSONEncoder().encode(record))
+        #expect(decoded.groupPicks == ["11": "g"])
+        let older = #"{"environmentKey":"e","profileID":1,"blueprintID":"b","blueprintName":"n","selectedGroupIDs":[],"unscopeAfterDeploy":false}"#
+        #expect(try JSONDecoder().decode(PersistedMigration.self, from: Data(older.utf8)).groupPicks.isEmpty)
+    }
+
+    @Test("A Blueprint changed on the server after verifying isn't deployed, and nothing is sent")
+    func changedBlueprintNotDeployed() async throws {
+        let server = DemoJamfPlatformServer()
+        let pipeline = MigrationPipeline(classic: demoClassicAPI(), blueprints: JamfPlatform.Blueprints(client: server.client(log: nil)))
+        await pipeline.load(try await demoClassicAPI().profile(key: loginItems))
+        _ = try await pipeline.validate(platformGroups: DemoFixtures.platformGroups)
+        _ = try await pipeline.build(name: "x", description: nil, deviceGroupIDs: [DemoFixtures.engineersPlatformGroupID],
+                                     acknowledgedWarnings: false)
+        let id = try await pipeline.create()
+        _ = try await pipeline.verify()
+        var changed = try #require(server.blueprint(id: id))
+        changed["scope"] = .object(LosslessJSON.Object(["deviceGroups": .array([.string(DemoFixtures.fieldiPhonesPlatformGroupID)])]))
+        server.add([changed])
+        let deploy = DeployConfirmation(blueprintID: id, blueprintName: "x", groupNames: [], deviceCount: 0, confirmedAt: Date())
+        do {
+            _ = try await pipeline.deploy(confirmation: deploy)
+            Issue.record("deployed a changed Blueprint")
+        } catch let error as DeployNotSentError {
+            #expect(error.blueprintChanged)
+            #expect(error.message.contains("Nothing was sent"))
+        }
+        #expect(server.deployCount == 0)
+        // Verifying again finds the difference; a confirmation can't skip it.
+        await #expect(throws: PipelineError.self) { try await pipeline.checkDeployable(confirmation: deploy) }
+    }
+
+    @Test("An unchanged Blueprint deploys after the check")
+    func unchangedBlueprintDeploys() async throws {
+        let server = DemoJamfPlatformServer()
+        let pipeline = MigrationPipeline(classic: demoClassicAPI(), blueprints: JamfPlatform.Blueprints(client: server.client(log: nil)))
+        await pipeline.load(try await demoClassicAPI().profile(key: loginItems))
+        _ = try await pipeline.validate(platformGroups: DemoFixtures.platformGroups)
+        _ = try await pipeline.build(name: "x", description: nil, deviceGroupIDs: [DemoFixtures.engineersPlatformGroupID],
+                                     acknowledgedWarnings: false)
+        let id = try await pipeline.create()
+        _ = try await pipeline.verify()
+        let deploy = DeployConfirmation(blueprintID: id, blueprintName: "x", groupNames: [], deviceCount: 0, confirmedAt: Date())
+        _ = try await pipeline.deploy(confirmation: deploy)
+        #expect(server.deployCount == 1)
+    }
+}
+
+@Suite("Moving to JTKit 1.4.0")
+@MainActor
+struct JTKitMoveTests {
+    @Test("A Keychain that can't be read is reported as such at sign-in, not as “no secret”")
+    func lockedKeychain() async throws {
+        let model = AppModel(store: TenantStore(fileURL: temporaryFile("t.json")), secrets: LockedSecretStore(),
+                             session: DemoNetwork(servers: [:]).session,
+                             history: HistoryStore(fileURL: temporaryFile("h.json")),
+                             scopeBackups: ScopeBackupStore(fileURL: temporaryFile("s.json")),
+                             sessionStates: SessionStateStore(fileURL: temporaryFile("m.json")), demoMode: false)
+        let tenant = Tenant(name: "Example", region: .eu, environmentID: DemoSamples.platformEnvironmentID, clientID: "client")
+        let client = try model.makeClient(for: tenant)
+        do {
+            try await client.signIn()
+            Issue.record("signed in without a secret")
+        } catch {
+            #expect(!(error is APIError))
+            #expect(error.localizedDescription.contains("Keychain"))
+        }
+    }
+
+    @Test("The activity log keeps more than JTKit's standard 1,000 entries")
+    func activityCapacity() {
+        #expect(AppModel.activityCapacity > ActivityLog.standardCapacity)
+        let model = AppModel(store: TenantStore(fileURL: temporaryFile("t.json")), secrets: InMemorySecretStore(),
+                             history: HistoryStore(fileURL: temporaryFile("h.json")), demoMode: false)
+        #expect(model.activity.capacity == AppModel.activityCapacity)
+    }
+}
+
+/// A Keychain that refuses every read (locked, or the user denied access).
+private struct LockedSecretStore: SecretStore {
+    func secret(for account: String) -> String? { nil }
+    func setSecret(_ secret: String?, for account: String) -> Bool { false }
+    func readSecret(for account: String) throws -> String? { throw SecretStoreError(status: -25308) }
+}

@@ -18,8 +18,8 @@ import SwiftUI
             AppInfoCommands(appName: "Profile2Blueprint") { model.updates.checkManually() }
             TenantCommands(model: model)
         }
-        // General (Appearance), Connections (the tenants) and Updates. Every tab
-        // has a name, so "Edit Connections…" can open Connections.
+        // Connections (the tenants) and Updates; the app has no general settings
+        // of its own. Every tab has a name, so "Edit Connections…" can open Connections.
         SettingsWindow(updates: model.updates, opensTabsByName: true) {
             TenantSettingsTab(model: model)
         }
