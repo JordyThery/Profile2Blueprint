@@ -81,9 +81,14 @@ struct ContentView: View {
 
 #if DEBUG
 #Preview {
+    // Temporary files and secrets in memory: a preview never reaches the real ones.
+    let folder = FileManager.default.temporaryDirectory.appending(path: "p2b-preview-\(UUID().uuidString)")
     let model = AppModel(
-        store: TenantStore(fileURL: FileManager.default.temporaryDirectory.appending(path: "preview-tenants.json")),
-        secrets: KeychainSecretStore(service: "be.jordythery.profile2blueprint.preview")
+        store: TenantStore(fileURL: folder.appending(path: "tenants.json")),
+        secrets: SandboxSecretStore(),
+        history: HistoryStore(fileURL: folder.appending(path: "history.json")),
+        scopeBackups: ScopeBackupStore(fileURL: folder.appending(path: "scope-backups.json")),
+        sessionStates: SessionStateStore(fileURL: folder.appending(path: "sessions.json"))
     )
     ContentView()
         .environment(model)

@@ -147,8 +147,8 @@ private struct ProfilesContent: View {
                 DisclosureGroup {
                     APIErrorView(report: groupsError)
                 } label: {
-                    Label("Device groups couldn’t be loaded", systemImage: "exclamationmark.triangle.fill")
-                        .labelStyle(.tintedIcon(.orange))
+                    WarningLabel("Device groups couldn’t be loaded")
+                        
                 }
             }
             ForEach(ProfilePlatform.allCases.filter { workspace.listErrors[$0] != nil }) { platform in
@@ -156,8 +156,8 @@ private struct ProfilesContent: View {
                     DisclosureGroup {
                         APIErrorView(report: error)
                     } label: {
-                        Label("\(platform.displayName) profiles couldn’t be loaded", systemImage: "exclamationmark.triangle.fill")
-                            .labelStyle(.tintedIcon(.orange))
+                        WarningLabel("\(platform.displayName) profiles couldn’t be loaded")
+                            
                     }
                 }
             }

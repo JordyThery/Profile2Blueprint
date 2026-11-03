@@ -23,7 +23,7 @@ nonisolated struct StoredList<Element: Codable & Sendable>: Sendable {
         } catch {
             let name = fileURL.lastPathComponent
             Log.app.error("Could not read \(name, privacy: .public): \(error.localizedDescription, privacy: .public)")
-            let copy = keepUnreadableCopy(of: fileURL)
+            let copy = FileCopies.keepUnreadableCopy(of: fileURL)
             let problem = "“\(name)” couldn’t be read, so the app doesn’t save to it until it’s fixed."
                 + (copy.map { " A copy is at \($0)." } ?? "")
             return ([], StoredList(fileURL: fileURL, problem: problem))
@@ -34,19 +34,6 @@ nonisolated struct StoredList<Element: Codable & Sendable>: Sendable {
     func write(_ records: [Element]) throws {
         if let problem { throw StoredListError(message: problem) }
         try JSONFile.save(records, to: fileURL)
-    }
-
-    private static func keepUnreadableCopy(of fileURL: URL) -> String? {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd'T'HHmmss"
-        let copy = fileURL.appendingPathExtension("unreadable-\(formatter.string(from: .now))")
-        do {
-            try FileManager.default.copyItem(at: fileURL, to: copy)
-            return copy.path
-        } catch {
-            return nil
-        }
     }
 
     /// `Profile2Blueprint/<name>` in Application Support (see `AppFiles`).

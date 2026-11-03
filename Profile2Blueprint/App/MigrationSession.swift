@@ -180,13 +180,31 @@ final class MigrationSession: Identifiable {
     /// Some selected group came without a member count.
     var deviceCountIsPartial: Bool { selectedGroups.hasUnknownDeviceCount }
 
-    /// Eligibility with the pick-a-group findings resolved by the current selection.
-    /// Warnings about information loss (exclusions, limitations, …) remain.
+    /// Eligibility with the pick-a-group findings as the current mapping leaves
+    /// them: they go only once every classic group maps to a selected platform
+    /// group (exact match or the user's pick). A classic group left unmapped
+    /// keeps a warning, so a Blueprint that reaches fewer devices than the
+    /// classic profile always needs acknowledging. Warnings about information
+    /// loss (exclusions, limitations, …) remain.
     var effectiveReport: EligibilityReport {
         guard !selectedGroupIDs.isEmpty else { return report }
         var resolved = report
         resolved.findings.removeAll {
             $0.kind == .noMappedGroup || $0.kind == .unmatchedGroups || $0.kind == .ambiguousGroups
+        }
+        let unmapped = report.scopeMapping.filter { mappedGroup(for: $0) == nil }
+        let ambiguous = unmapped.filter(\.isAmbiguous)
+        let missing = unmapped.filter { !$0.isAmbiguous }
+        if !missing.isEmpty {
+            resolved.findings.append(EligibilityFinding(
+                kind: .unmatchedGroups, severity: .warning, title: "Some groups aren’t mapped",
+                detail: "No platform group is chosen for \(missing.map { "“\($0.classicGroup.name)”" }.formatted(.list(type: .and))). "
+                    + "The Blueprint won’t reach their devices. Pick a platform group on the Scope tab, or acknowledge to leave them out."))
+        }
+        if !ambiguous.isEmpty {
+            resolved.findings.append(EligibilityFinding(
+                kind: .ambiguousGroups, severity: .warning, title: "Ambiguous group names",
+                detail: "Several platform groups are named \(ambiguous.map { "“\($0.classicGroup.name)”" }.formatted(.list(type: .and))). Choose the right one on the Scope tab."))
         }
         return resolved
     }
@@ -204,11 +222,60 @@ final class MigrationSession: Identifiable {
             && (!needsAcknowledgement || acknowledgedWarnings) && (try? preview.get()) != nil
     }
 
+    // MARK: Deploy targets
+
+    /// The groups a deploy goes to: the verified Blueprint's scope, which the
+    /// deploy check enforces, with names and counts from the group list. Never
+    /// the draft selection, which can differ from what the server holds.
+    var deployGroups: [JamfPlatform.DeviceGroup] { deployTargets.groups }
+
+    /// IDs in the verified scope that the group list doesn't have (the list
+    /// failed to load, or the group is gone): Deploy waits for Verify Again.
+    var unresolvedDeployGroupIDs: [String] { deployTargets.unresolved }
+
+    private var deployTargets: (groups: [JamfPlatform.DeviceGroup], unresolved: [String]) {
+        Self.resolve(readBack?.scopeDeviceGroups ?? [], in: platformGroups, platform: platform)
+    }
+
+    /// The groups for these IDs from the list (this platform's, case-insensitive),
+    /// and the IDs the list doesn't have.
+    nonisolated static func resolve(
+        _ ids: [String], in list: [JamfPlatform.DeviceGroup], platform: ProfilePlatform
+    ) -> (groups: [JamfPlatform.DeviceGroup], unresolved: [String]) {
+        let candidates = list.filter { $0.deviceType == platform.deviceGroupType }
+        var groups: [JamfPlatform.DeviceGroup] = []
+        var unresolved: [String] = []
+        for id in ids {
+            if let group = candidates.first(where: { ScopeCoverage.sameID($0.id, id) }) {
+                groups.append(group)
+            } else {
+                unresolved.append(id)
+            }
+        }
+        return (groups, unresolved)
+    }
+
+    /// What the deploy confirmation lists for this migration.
+    var deployItem: DeployItem? {
+        guard let blueprintID else { return nil }
+        return DeployItem(
+            blueprintID: blueprintID,
+            blueprintName: createdName ?? blueprintName,
+            sourceName: profile.name,
+            groups: deployGroups,
+            unresolvedGroupIDs: unresolvedDeployGroupIDs,
+            warnings: fidelity?.caseChanges.count ?? 0,
+            unscopeClassicProfile: autoUnscopeArmed ? "“\(profile.name)” (#\(profile.id))" : nil
+        )
+    }
+
+    /// Deploy is offered only for a verified, passing Blueprint (as the
+    /// pipeline checks it): not while deploying, after a deployment, or after
+    /// a deploy that may have started (verify again first).
     var canDeploy: Bool {
-        guard !isBusy, !isLoadingSavedState, blueprintID != nil, let fidelity else { return false }
-        if case .deployed = state { return false }
-        if case .deploying = state { return false }
-        return fidelity.passed
+        guard !isBusy, !isLoadingSavedState, blueprintID != nil, fidelity?.passed == true else { return false }
+        guard !deployGroups.isEmpty, unresolvedDeployGroupIDs.isEmpty else { return false }
+        return state == .verified(passed: true)
     }
 
     /// Classic scope changes are on for this tenant (explicit opt-in in its
@@ -359,6 +426,10 @@ final class MigrationSession: Identifiable {
     /// Deploys after the confirmation sheet, then polls until done or timed out.
     func deploy(_ confirmation: DeployConfirmation) async {
         await waitUntilReady()
+        guard unresolvedDeployGroupIDs.isEmpty, !deployGroups.isEmpty else {
+            lastError = ErrorReport(PipelineError(message: Self.unresolvedMessage))
+            return
+        }
         stopReportMonitor()
         await perform { [self] in
             // Recorded only once the pipeline accepts this confirmation; a
@@ -373,10 +444,16 @@ final class MigrationSession: Identifiable {
                 result = try await pipeline.deploy(confirmation: confirmation) { [weak self] progress in
                     await MainActor.run { self?.deployment = progress }
                 }
-            } catch let notSent as DeployNotSentError {
+            } catch {
+                // Every failed or stopped deploy says in the history whether it may have started.
+                let message = switch error {
+                case let notSent as DeployNotSentError: notSent.message
+                case let failed as DeployFailedError: failed.message
+                default: "Deploy failed: \(error.localizedDescription) The deployment may or may not have started."
+                }
                 history.record(.deploymentResult, environment: environment, profile: profile, blueprintID: confirmation.blueprintID,
-                               blueprintName: confirmation.blueprintName, result: .failure, message: notSent.message)
-                throw notSent
+                               blueprintName: confirmation.blueprintName, result: .failure, message: message)
+                throw error
             }
             await finish(result)
         }
@@ -417,9 +494,9 @@ final class MigrationSession: Identifiable {
                 history.record(.restoreClassicScope, environment: environment, profile: profile, blueprintID: blueprintID,
                                blueprintName: createdName, result: .success, message: "Restored the classic profile’s scope from the backup taken \(backup.createdAt.formatted()).")
             } catch {
-                unscopeStatus = .failed(ErrorReport(error))
+                unscopeStatus = .failed(ErrorReport(StoppedWaiting.userFacing(error)))
                 history.record(.restoreClassicScope, environment: environment, profile: profile, blueprintID: blueprintID,
-                               blueprintName: createdName, result: .failure, message: error.localizedDescription)
+                               blueprintName: createdName, result: .failure, message: StoppedWaiting.userFacing(error).localizedDescription)
                 throw error
             }
         }
@@ -444,9 +521,9 @@ final class MigrationSession: Identifiable {
                 scopeBackup = backup
                 scopeChangedBefore = true
             }
-            unscopeStatus = .failed(ErrorReport(error))
+            unscopeStatus = .failed(ErrorReport(StoppedWaiting.userFacing(error)))
             history.record(.unscopeClassic, environment: environment, profile: profile, blueprintID: blueprintID, blueprintName: createdName,
-                           result: .failure, message: error.localizedDescription)
+                           result: .failure, message: StoppedWaiting.userFacing(error).localizedDescription)
             throw error
         }
     }
@@ -658,10 +735,15 @@ final class MigrationSession: Identifiable {
         return request
     }
 
+    static let unresolvedMessage = "Some of the Blueprint’s groups aren’t in the group list, so the deploy can’t say where it goes. Nothing was sent. Click Verify Again."
+
     private func verifyStage() async throws {
         let result = try await pipeline.verify()
         fidelity = result
         readBack = await pipeline.readBack
+        // A group the list doesn't have: read the groups again (a failed
+        // reload keeps the last good list).
+        if !unresolvedDeployGroupIDs.isEmpty { await workspace?.reloadGroups() }
         state = await pipeline.state
         // An already-deployed Blueprint (restored session, or adopted duplicate) resumes
         // at the deployed stage, with the report refreshing until it is clean.
@@ -692,7 +774,7 @@ final class MigrationSession: Identifiable {
         do {
             try await work()
         } catch {
-            lastError = ErrorReport(error)
+            lastError = ErrorReport(StoppedWaiting.userFacing(error))
             state = await pipeline.state
         }
         isBusy = false

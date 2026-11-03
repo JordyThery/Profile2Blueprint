@@ -33,24 +33,24 @@ struct SandboxWorkspaceFilesTests {
         let backups = await workspace.scopeBackups.fileURL, sessions = await workspace.sessionStates.fileURL
         #expect(backups.standardizedFileURL.path.hasPrefix(folder), "\(backups.path)")
         #expect(sessions.standardizedFileURL.path.hasPrefix(folder), "\(sessions.path)")
-        #expect(backups != (await ScopeBackupStore.appDefault().fileURL))
-        #expect(sessions != (await SessionStateStore.appDefault().fileURL))
+        #expect(backups != ScopeBackupStore.appDefaultURL)
+        #expect(sessions != SessionStateStore.appDefaultURL)
     }
 
+    /// Compares locations only: the real files are never opened (a damaged
+    /// one would get an unreadable copy next to it).
     @Test("Outside the sandbox a tenant workspace still uses the real files")
-    func normalRunUsesTheRealFiles() async throws {
+    func normalRunUsesTheRealFiles() throws {
         let folder = FileManager.default.temporaryDirectory.appending(path: "p2b-findings-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: folder) }
         let model = AppModel(store: TenantStore(fileURL: folder.appending(path: "tenants.json")),
                              secrets: InMemorySecretStore(),
                              history: HistoryStore(fileURL: folder.appending(path: "history.json")),
                              demoMode: false)
-        let tenant = Tenant(name: "Tenant", region: .eu, environmentID: UUID().uuidString, clientID: "client")
-        try model.connections.save(tenant, secrets: [.main: "secret"])
-        model.makeCurrent(tenant.id)
-        let workspace = try model.activeWorkspace()
-        #expect(await workspace.scopeBackups.fileURL == ScopeBackupStore.appDefault().fileURL)
-        #expect(await workspace.sessionStates.fileURL == SessionStateStore.appDefault().fileURL)
+        let real = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: false)
+            .appending(path: "Profile2Blueprint")
+        #expect(model.tenantFileURLs.scopeBackups == real.appending(path: "scope-backups.json"))
+        #expect(model.tenantFileURLs.sessions == real.appending(path: "sessions.json"))
     }
 }
 

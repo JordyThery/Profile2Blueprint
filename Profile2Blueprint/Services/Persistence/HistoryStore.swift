@@ -40,6 +40,8 @@ actor HistoryStore {
 
 /// Markdown and JSON renderings of the history log.
 nonisolated enum HistoryExport {
+    enum Format { case markdown, json }
+
     static func json(_ records: [MigrationRecord]) throws -> Data {
         try JSONFile.encode(records)
     }

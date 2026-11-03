@@ -117,6 +117,14 @@ nonisolated struct Tenant: Codable, Hashable, Identifiable, Sendable {
         self.hostOverride = hostOverride
     }
 
+    /// A tenant for a connection made elsewhere (the release check's, under
+    /// the live-check switch), with the app's own settings at their defaults:
+    /// classic scope changes off.
+    init(connection: Connection) {
+        self.init(id: connection.id)
+        self.connection = connection
+    }
+
     private enum CodingKeys: String, CodingKey {
         case id, name, region, environmentID, clientID, hostOverride, allowClassicScopeChanges, naming, descriptionTemplate, jamfProURL
     }

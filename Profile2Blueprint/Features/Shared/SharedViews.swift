@@ -12,38 +12,27 @@ extension EligibilityStatus {
     }
 }
 
-/// Ready / Needs attention / Blocked, each with its SF Symbol.
+/// Ready / Needs attention / Blocked: JTKit's `StatusBadge` in the status's
+/// color, or (compact, in the list) the status's SF Symbol.
 struct EligibilityBadge: View {
     let status: EligibilityStatus?
     var compact = false
 
     var body: some View {
         if let status {
-            Label(status.title, systemImage: status.symbol)
-                .labelStyle(BadgeLabelStyle(compact: compact))
-                .foregroundStyle(status.color)
-                .accessibilityLabel("Eligibility: \(status.title)")
+            Group {
+                if compact {
+                    Image(systemName: status.symbol).foregroundStyle(status.color)
+                } else {
+                    StatusBadge(status.title, style: .colored(status.color))
+                }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Eligibility: \(status.title)")
         } else {
             ProgressView()
                 .controlSize(.mini)
                 .accessibilityLabel("Checking eligibility")
-        }
-    }
-
-    private struct BadgeLabelStyle: LabelStyle {
-        let compact: Bool
-        func makeBody(configuration: Configuration) -> some View {
-            if compact {
-                configuration.icon
-            } else {
-                HStack(spacing: 4) {
-                    configuration.icon
-                    configuration.title.font(.caption.weight(.semibold)).foregroundStyle(Color.primary)
-                }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(.quaternary.opacity(0.6), in: Capsule())
-            }
         }
     }
 }

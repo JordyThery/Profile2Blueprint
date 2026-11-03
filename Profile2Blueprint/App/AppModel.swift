@@ -32,6 +32,10 @@ final class AppModel {
 
     @ObservationIgnored private let store: TenantStore
     @ObservationIgnored private let secrets: RecordingSecretStore
+    /// Where sign-in reads client secrets: the Keychain, or under the
+    /// live-check switch (`LiveLaunch`) the run's own secrets, as the
+    /// connection store does, so the real Keychain is never reached.
+    @ObservationIgnored private let signInSecrets: any SecretStore
     @ObservationIgnored private let demoFiles: DemoFiles
     /// Where tenant workspaces keep scope backups and sessions, passed in or
     /// the real files in Application Support (opened on first use). One store
@@ -84,6 +88,7 @@ final class AppModel {
         demoSessionStates = demoFiles.sessionStates
         let recording = RecordingSecretStore(secrets)
         self.secrets = recording
+        signInSecrets = LiveLaunch.isSwitched ? LiveLaunch.secrets(for: .main) : recording
         self.session = session
         // JTKit's in-memory log (Window › Activity Log). The app doesn't read
         // or change activity.json, which may still be on disk. Loading a large
@@ -100,7 +105,9 @@ final class AppModel {
         let connections = ConnectionStore<Tenant>(
             storage: store,
             secrets: [.main: SecretLocation(store: recording)],
-            log: { activityLog.app($0, level: .warning) }
+            log: { activityLog.app($0, level: .warning) },
+            // Under the live-check switch: the run's connections, in memory.
+            liveRecord: Tenant.init(connection:)
         )
         self.connections = connections
         currentTenantID = store.currentTenantID.flatMap { id in
@@ -206,6 +213,12 @@ final class AppModel {
         workspace = created
         reportStoreProblems(scopeBackups: created.scopeBackups, sessionStates: created.sessionStates)
         return created
+    }
+
+    /// Where tenant workspaces keep scope backups and sessions, without opening the files.
+    var tenantFileURLs: (scopeBackups: URL, sessions: URL) {
+        ((givenScopeBackups ?? openedScopeBackups)?.fileURL ?? ScopeBackupStore.appDefaultURL,
+         (givenSessionStates ?? openedSessionStates)?.fileURL ?? SessionStateStore.appDefaultURL)
     }
 
     private var tenantScopeBackups: ScopeBackupStore {
@@ -345,24 +358,14 @@ final class AppModel {
         if let issue = tenant.validationIssues.first {
             throw APIError.invalidConfiguration(issue)
         }
-        guard let baseURL = tenant.baseURL else {
-            throw APIError.invalidConfiguration("Invalid host.")
-        }
         let recorder = RequestRecorder(session: session, log: activity,
                                        service: ConnectionService.jamfPlatform.displayName,
                                        connection: tenant.displayName, waits: waits)
-        let tokens: JamfPlatform.TokenProvider
-        do {
-            tokens = try JamfPlatform.TokenProvider(connection: tenant.connection, secret: secret(for: tenant, override: secretOverride),
-                                           recorder: recorder)
-        } catch let error as HTTPError {
-            throw JamfPlatform.APIError(error)
-        }
         let scopeChanges = scopeChanges ?? ClassicWriteSwitch(tenant.allowClassicScopeChanges)
+        // JTKit's client for the saved connection, as in demo mode.
         return try JamfPlatform.Client(
-            baseURL: baseURL,
-            scope: .environment(tenant.normalizedEnvironmentID),
-            tokens: tokens,
+            connection: tenant.connection,
+            secret: secret(for: tenant, override: secretOverride),
             recorder: recorder,
             permits: { RequestPolicy.isPermitted($0, classicWrites: scopeChanges.policy) },
             hints: RequestPolicy.hints(for:)
@@ -373,7 +376,7 @@ final class AppModel {
     /// else the one in the Keychain. A Keychain that refuses or is locked
     /// throws its own `SecretStoreError`, never "no secret".
     private func secret(for tenant: Tenant, override: String?) -> @Sendable () throws -> String {
-        let secrets = self.secrets
+        let secrets = signInSecrets
         let account = tenant.id.uuidString
         let override = override.flatMap { $0.isEmpty ? nil : $0 }
         return {
@@ -400,23 +403,19 @@ final class AppModel {
     /// with the values in the editor, saved or not.
     func testConnection(_ tenant: Tenant, secretOverride: String? = nil) async throws -> String {
         activity.app("Testing connection to “\(tenant.displayName)”.", environment: tenant.displayName)
-        let client: JamfPlatform.Client
         do {
-            client = try makeClient(for: tenant, secretOverride: secretOverride)
-            try await client.signIn()
+            let client = try makeClient(for: tenant, secretOverride: secretOverride)
+            // JTKit's Test Connection: sign-in, the read checks, then the app's summary.
+            return try await client.testConnection(checks: Self.readChecks) {
+                let groups = try await client.deviceGroups()
+                let computers = groups.count(where: { $0.deviceType == .computer })
+                let mobile = groups.count(where: { $0.deviceType == .mobile })
+                return "\(groups.count) device group\(groups.count == 1 ? "" : "s") (\(computers) computer, \(mobile) mobile)"
+            }
         } catch is CancellationError {
             throw CancellationError()
-        } catch {
-            throw ConnectionTestError(report: ErrorReport(error))
-        }
-        if let problem = JamfPlatform.PermissionProblem(await client.checkPermissions(Self.readChecks)) { throw problem }
-        do {
-            let groups = try await client.deviceGroups()
-            let computers = groups.count(where: { $0.deviceType == .computer })
-            let mobile = groups.count(where: { $0.deviceType == .mobile })
-            return "Connected · \(groups.count) device group\(groups.count == 1 ? "" : "s") (\(computers) computer, \(mobile) mobile)"
-        } catch is CancellationError {
-            throw CancellationError()
+        } catch let problem as JamfPlatform.PermissionProblem {
+            throw problem
         } catch {
             throw ConnectionTestError(report: ErrorReport(error))
         }

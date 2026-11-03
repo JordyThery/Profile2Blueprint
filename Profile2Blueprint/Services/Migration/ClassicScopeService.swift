@@ -102,8 +102,11 @@ actor ScopeBackupStore {
         (backups, list) = StoredList.open(fileURL)
     }
 
+    /// The real file, `scope-backups.json` in the app's folder (`AppFiles`).
+    nonisolated static var appDefaultURL: URL { AppFiles.file("scope-backups.json") }
+
     static func appDefault() -> ScopeBackupStore {
-        ScopeBackupStore(fileURL: StoredList<ScopeBackup>.appSupportFile("scope-backups.json"))
+        ScopeBackupStore(fileURL: appDefaultURL)
     }
 
     /// Every backup, for the release check and tests.
@@ -178,15 +181,23 @@ nonisolated struct ScopeCoverage: Sendable {
         targets += scope.buildings.map { "building “\($0.name)”" }
         targets += scope.departments.map { "department “\($0.name)”" }
         targets += scope.otherTargets.map { $0.displayName.lowercased() }
-        let blueprintGroups = Set(blueprintGroupIDs)
+        let blueprintGroups = Set(blueprintGroupIDs.map(Self.normalized))
         let mapping = ScopeMapper.propose(for: scope, platform: platform, platformGroups: platformGroups)
+        // A pick counts only while its group is still in the list, for this platform.
+        let existing = Set(platformGroups.filter { $0.deviceType == platform.deviceGroupType }.map { Self.normalized($0.id) })
         for entry in mapping {
-            let mapped = [entry.autoMatch?.id, picks[entry.id]].compactMap { $0 }
+            let picked = picks[entry.id].map(Self.normalized).flatMap { existing.contains($0) ? $0 : nil }
+            let mapped = [entry.autoMatch.map { Self.normalized($0.id) }, picked].compactMap { $0 }
             guard !mapped.contains(where: blueprintGroups.contains) else { continue }
             targets.append("group “\(entry.classicGroup.name)”")
         }
         return targets
     }
+
+    /// Group IDs compared as the fidelity check compares them: case doesn't count.
+    static func normalized(_ id: String) -> String { id.lowercased() }
+
+    static func sameID(_ a: String, _ b: String) -> Bool { normalized(a) == normalized(b) }
 }
 
 nonisolated struct ScopeChangeError: Error, LocalizedError, Sendable {

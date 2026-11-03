@@ -47,6 +47,29 @@ nonisolated struct DeployNotSentError: Error, LocalizedError, Sendable {
     var errorDescription: String? { message }
 }
 
+/// The deploy request itself failed or was stopped. `mayHaveStarted` is false
+/// only when Jamf certainly didn't start it (stopped during a wait, refused
+/// before sending, or a 4xx answer).
+nonisolated struct DeployFailedError: Error, LocalizedError, Sendable {
+    var message: String
+    var mayHaveStarted: Bool
+    var errorDescription: String? { message }
+}
+
+/// What the user sees when they press Stop on a wait before a retry.
+nonisolated enum StoppedWaiting {
+    static let message = "You stopped waiting for Jamf; nothing was sent again."
+
+    static func matches(_ error: any Error) -> Bool {
+        error is CancellationError || (error as? URLError)?.code == .cancelled
+    }
+
+    /// The error as the user should read it: Stop as a plain sentence.
+    static func userFacing(_ error: any Error) -> any Error {
+        matches(error) ? PipelineError(message: message) : error
+    }
+}
+
 /// A same-named Blueprint already exists. Carries the matches so callers can offer
 /// rename / skip / open-existing instead of a plain failure.
 nonisolated struct DuplicateNameError: Error, LocalizedError, Sendable {
@@ -224,21 +247,31 @@ actor MigrationPipeline {
     ) async throws -> DeploymentOutcome {
         let blueprintID = try checkDeployable(confirmation: confirmation)
         guard let verified = readBack else { throw PipelineError(message: "Verify the Blueprint before deploying.") }
+        state = .deploying(nil)
         do {
-            state = .deploying(nil)
             previousDeploymentStart = try await blueprints.startDeployment(id: blueprintID) { latest in
                 guard verified.isUnchangedInStepsAndScope(in: latest) else { throw BlueprintChangedError() }
             }
-            Log.app.info("Deploy accepted for Blueprint \(blueprintID, privacy: .public)")
-            return try await monitor(id: blueprintID, onProgress: onProgress)
         } catch let notStarted as JamfPlatform.Blueprints.DeploymentNotStarted {
             let error = Self.notSent(notStarted)
             // A changed Blueprint is verified again first; otherwise deploying can simply be tried again.
             state = error.blueprintChanged ? .failed(stage: "deploy", ErrorReport(error)) : .verified(passed: true)
             throw error
         } catch {
-            state = .failed(stage: "deploy", ErrorReport(error))
-            throw error
+            let failure = Self.deployRequestFailed(error)
+            // Certainly not started: deploying can be tried again as it is.
+            state = failure.mayHaveStarted ? .failed(stage: "deploy", ErrorReport(failure)) : .verified(passed: true)
+            throw failure
+        }
+        Log.app.info("Deploy accepted for Blueprint \(blueprintID, privacy: .public)")
+        do {
+            return try await monitor(id: blueprintID, onProgress: onProgress)
+        } catch {
+            let failure = DeployFailedError(
+                message: "Jamf accepted the deploy, but following it failed: \(StoppedWaiting.userFacing(error).localizedDescription) The deployment has started; click Verify Again to see where it stands.",
+                mayHaveStarted: true)
+            state = .failed(stage: "deploy", ErrorReport(failure))
+            throw failure
         }
     }
 
@@ -260,6 +293,30 @@ actor MigrationPipeline {
 
     private struct BlueprintChangedError: Error {}
 
+    /// The deploy request's own error, saying whether the deployment may have started.
+    static func deployRequestFailed(_ error: any Error) -> DeployFailedError {
+        if StoppedWaiting.matches(error) {
+            return DeployFailedError(message: StoppedWaiting.message + " The Blueprint wasn’t deployed.", mayHaveStarted: false)
+        }
+        if let error = error as? JamfPlatform.APIError, wasNotWritten(error) {
+            return DeployFailedError(message: "Jamf refused the deploy: \(error.localizedDescription) The deployment didn’t start.",
+                                     mayHaveStarted: false)
+        }
+        return DeployFailedError(
+            message: "The deploy request failed: \(error.localizedDescription) The deployment may or may not have started; click Verify Again to see the Blueprint’s state.",
+            mayHaveStarted: true)
+    }
+
+    /// Errors after which the request certainly changed nothing: refused
+    /// before sending, or refused by Jamf with a 4xx answer.
+    static func wasNotWritten(_ error: JamfPlatform.APIError) -> Bool {
+        switch error.kind {
+        case .refused, .invalidEnvironmentID, .invalidIdentifier, .signIn: true
+        case let .status(status, _, _, _, _): (400..<500).contains(status)
+        default: false
+        }
+    }
+
     /// What the user sees when the deploy stopped before its request.
     static func notSent(_ notStarted: JamfPlatform.Blueprints.DeploymentNotStarted) -> DeployNotSentError {
         if notStarted.underlying is BlueprintChangedError {
@@ -267,8 +324,8 @@ actor MigrationPipeline {
                 message: "The Blueprint was changed on the server after it was verified (its steps or scope differ). Nothing was sent. Click Verify Again, then deploy.",
                 blueprintChanged: true)
         }
-        if notStarted.underlying is CancellationError {
-            return DeployNotSentError(message: "You stopped waiting. Nothing was sent; the Blueprint wasn’t deployed.", blueprintChanged: false)
+        if StoppedWaiting.matches(notStarted.underlying) {
+            return DeployNotSentError(message: StoppedWaiting.message + " The Blueprint wasn’t deployed.", blueprintChanged: false)
         }
         return DeployNotSentError(
             message: "The Blueprint couldn’t be read before deploying: \(notStarted.underlying.localizedDescription) Nothing was sent; the Blueprint wasn’t deployed.",

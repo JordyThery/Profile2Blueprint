@@ -13,7 +13,7 @@ struct BlueprintPreviewTab: View {
                     .lineLimit(1...3)
                 LabeledContent("Target groups") {
                     if session.selectedGroups.isEmpty {
-                        Label("None selected (see Scope)", systemImage: "exclamationmark.triangle.fill").labelStyle(.tintedIcon(.orange))
+                        WarningLabel("None selected (see Scope)")
                     } else {
                         Text(session.selectedGroups.map(\.name).joined(separator: ", "))
                     }

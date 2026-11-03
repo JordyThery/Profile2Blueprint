@@ -6,7 +6,11 @@ struct DeployItem: Identifiable, Hashable {
     let blueprintID: String
     let blueprintName: String
     let sourceName: String
+    /// The verified Blueprint's groups, names from the group list.
     let groups: [JamfPlatform.DeviceGroup]
+    /// Group IDs in the verified scope the group list doesn't have: Deploy is
+    /// refused until Verify Again finds them.
+    var unresolvedGroupIDs: [String] = []
     /// Fidelity case-change warnings to surface next to the item.
     let warnings: Int
     /// When set, the classic profile (this label) is unscoped after a clean deploy.
@@ -16,6 +20,7 @@ struct DeployItem: Identifiable, Hashable {
     /// Known member counts only; see `hasUnknownDeviceCount`.
     var deviceCount: Int { groups.knownDeviceCount }
     var hasUnknownDeviceCount: Bool { groups.hasUnknownDeviceCount }
+    var canBeConfirmed: Bool { !groups.isEmpty && unresolvedGroupIDs.isEmpty }
 }
 
 /// The single explicit confirmation before deploying. Lists every blueprint, its
@@ -62,6 +67,11 @@ struct DeployConfirmationSheet: View {
                                 }
                                 .font(.callout)
                             }
+                            ForEach(item.unresolvedGroupIDs, id: \.self) { id in
+                                WarningLabel("Group \(id) isn’t in the group list. Click Verify Again before deploying.")
+                                    .font(.callout)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
                             if let classic = item.unscopeClassicProfile {
                                 Label("Afterwards, classic profile \(classic) will be unscoped, but only if every device succeeds. Its scope is backed up first and can be restored.",
                                       systemImage: "scissors")
@@ -69,8 +79,8 @@ struct DeployConfirmationSheet: View {
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                             if item.warnings > 0 {
-                                Label("^[\(item.warnings) key casing change](inflect: true) found during verification", systemImage: "exclamationmark.triangle")
-                                    .font(.caption).labelStyle(.tintedIcon(.orange))
+                                WarningLabel(Text("^[\(item.warnings) key casing change](inflect: true) found during verification"))
+                                    .font(.caption)
                             }
                         }
                         .padding(10)
@@ -122,7 +132,7 @@ struct DeployConfirmationSheet: View {
                     })
                     dismiss()
                 }
-                .disabled(!confirmed || items.isEmpty)
+                .disabled(!confirmed || items.isEmpty || !items.allSatisfy(\.canBeConfirmed))
             }
         }
         .padding(24)

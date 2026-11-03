@@ -163,7 +163,8 @@ final class Workspace {
 
         switch await groupResult {
         case let .success(groups): self.groups = groups
-        case let .failure(error): groupsError = ErrorReport(error); groups = []
+        // A failed read keeps the last good list, with the error shown beside it.
+        case let .failure(error): groupsError = ErrorReport(error)
         }
         // One platform's list failing (e.g. no permission for mobile device
         // profiles) still shows the other's profiles, with the error beside them.
@@ -205,6 +206,17 @@ final class Workspace {
                 detailsLoaded += 1
                 enqueue()
             }
+        }
+    }
+
+    /// Reads the device groups again; a failure keeps the last good list.
+    func reloadGroups() async {
+        switch await Result({ try await environment.platform.deviceGroups() }) {
+        case let .success(groups):
+            self.groups = groups
+            groupsError = nil
+        case let .failure(error):
+            groupsError = ErrorReport(error)
         }
     }
 

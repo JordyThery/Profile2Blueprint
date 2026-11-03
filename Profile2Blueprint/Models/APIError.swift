@@ -32,6 +32,12 @@ nonisolated struct ErrorReport: Hashable, Sendable {
     var traceID: String?
 
     init(_ error: any Error) {
+        // Stop on a wait before a retry: a plain sentence, not the cancellation's own text.
+        if StoppedWaiting.matches(error) {
+            title = StoppedWaiting.message
+            details = []
+            return
+        }
         let platformError = (error as? JamfPlatform.APIError) ?? (error as? HTTPError).map(JamfPlatform.APIError.init)
         if let platformError {
             let lines = platformError.message().components(separatedBy: "\n").filter { !$0.isEmpty }

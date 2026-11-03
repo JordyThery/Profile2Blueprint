@@ -54,7 +54,7 @@ struct BatchMigrationView: View {
                     .width(min: 110, ideal: 130)
                 TableColumn("Target") { session in
                     if session.selectedGroups.isEmpty {
-                        Label("None", systemImage: "exclamationmark.triangle.fill").labelStyle(.tintedIcon(.orange))
+                        WarningLabel("None")
                     } else {
                         Text(session.selectedGroups.map(\.name).joined(separator: ", "))
                     }
@@ -93,13 +93,7 @@ struct BatchMigrationView: View {
         .frame(minWidth: 860, minHeight: 520)
         .sheet(isPresented: $showingDeploy) {
             DeployConfirmationSheet(
-                items: deployable.map { session in
-                    DeployItem(blueprintID: session.blueprintID ?? "", blueprintName: session.createdName ?? session.blueprintName,
-                               sourceName: session.profile.name, groups: session.selectedGroups,
-                               warnings: session.fidelity?.caseChanges.count ?? 0,
-                               unscopeClassicProfile: session.autoUnscopeArmed
-                                   ? "“\(session.profile.name)” (#\(session.profile.id))" : nil)
-                },
+                items: deployable.compactMap(\.deployItem),
                 environmentName: workspace.environment.displayName,
                 isDemo: workspace.environment.isDemo
             ) { confirmations in
@@ -146,7 +140,7 @@ struct BatchMigrationView: View {
         } else if let error = session.lastError {
             Label(error.title, systemImage: "xmark.octagon.fill").labelStyle(.tintedIcon(.red)).lineLimit(2).help(error.title)
         } else if session.duplicates != nil {
-            Label("Name exists. Resolve it in the profile’s Migrate tab.", systemImage: "exclamationmark.triangle.fill").labelStyle(.tintedIcon(.orange))
+            WarningLabel("Name exists. Resolve it in the profile’s Migrate tab.")
         } else if case let .deployed(report) = session.state {
             Label("Deployed" + (report.map { " · \($0.succeeded)/\($0.total) ok" } ?? ""), systemImage: "checkmark.circle.fill").labelStyle(.tintedIcon(.green))
         } else if case .deploying = session.state {
@@ -160,7 +154,7 @@ struct BatchMigrationView: View {
         } else if !included(session) {
             Text("Skipped: needs attention").foregroundStyle(.secondary)
         } else if session.selectedGroupIDs.isEmpty {
-            Label("Skipped: no target group", systemImage: "exclamationmark.triangle.fill").labelStyle(.tintedIcon(.orange))
+            WarningLabel("Skipped: no target group")
         } else if session.dryRunSummary != nil {
             Text("Dry run OK").foregroundStyle(.secondary)
         } else {

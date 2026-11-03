@@ -3,7 +3,7 @@ import JTKit
 
 /// The app's own entries in JTKit's activity log, beside the requests JTKit
 /// records itself: settings changes, migration steps, update checks.
-nonisolated enum ActivityCategory: String, Sendable, CaseIterable {
+nonisolated enum ActivityCategory: String, Sendable {
     case auth = "Auth"
     case migration = "Migration"
     case classicWrite = "Classic write"

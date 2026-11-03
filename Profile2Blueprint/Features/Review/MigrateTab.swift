@@ -34,17 +34,9 @@ struct MigrateTab: View {
             .padding()
         }
         .sheet(isPresented: $showingDeploySheet) {
-            if let blueprintID = session.blueprintID {
+            if let item = session.deployItem {
                 DeployConfirmationSheet(
-                    items: [DeployItem(
-                        blueprintID: blueprintID,
-                        blueprintName: session.createdName ?? session.blueprintName,
-                        sourceName: session.profile.name,
-                        groups: session.selectedGroups,
-                        warnings: session.fidelity?.caseChanges.count ?? 0,
-                        unscopeClassicProfile: session.autoUnscopeArmed
-                            ? "“\(session.profile.name)” (#\(session.profile.id))" : nil
-                    )],
+                    items: [item],
                     environmentName: environment.displayName,
                     isDemo: environment.isDemo
                 ) { confirmations in
@@ -229,6 +221,10 @@ struct MigrateTab: View {
                     Text("Deploying pushes the Blueprint to every device in the target groups. On each device the classic profile is replaced in place by the DDM-managed one.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
+                    if !session.unresolvedDeployGroupIDs.isEmpty {
+                        WarningLabel("The Blueprint targets \(session.unresolvedDeployGroupIDs.count == 1 ? "a group" : "groups") the group list doesn’t have (\(session.unresolvedDeployGroupIDs.joined(separator: ", "))). Click Verify Again before deploying.")
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                     Button("Deploy…", systemImage: "paperplane") { showingDeploySheet = true }
                         .disabled(!session.canDeploy)
                         .help(session.fidelity?.passed == false ? "Verification must pass first" : "Review targets and confirm")
@@ -264,17 +260,13 @@ extension MigrateTab {
                               || (!session.unscopeAfterDeploy && (isDeployingOrDeployed || !session.uncoveredClassicTargets.isEmpty)))
 
                     if !session.uncoveredClassicTargets.isEmpty {
-                        Label("Automatic cleanup isn’t available: the classic profile also targets \(session.uncoveredClassicTargets.formatted(.list(type: .and))), which the Blueprint’s groups don’t cover.",
-                              systemImage: "exclamationmark.triangle")
+                        WarningLabel("Automatic cleanup isn’t available: the classic profile also targets \(session.uncoveredClassicTargets.formatted(.list(type: .and))), which the Blueprint’s groups don’t cover.")
                             .font(.caption)
-                            .labelStyle(.tintedIcon(.orange))
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
-                    Label("When Jamf Pro unscopes a profile it removes it from devices. On devices where the in-place transform didn’t happen (no DDM, or not installed by MDM), the settings are lost. Try it with one profile and one device first.",
-                          systemImage: "exclamationmark.triangle")
+                    WarningLabel("When Jamf Pro unscopes a profile it removes it from devices. On devices where the in-place transform didn’t happen (no DDM, or not installed by MDM), the settings are lost. Try it with one profile and one device first.")
                         .font(.caption)
-                        .labelStyle(.tintedIcon(.orange))
                         .fixedSize(horizontal: false, vertical: true)
 
                     Label("After the transform, Jamf Pro logs a failed “Remove Configuration Profile” command for each device: the device refuses to let MDM remove a profile the Blueprint now owns. That failure is expected.",
@@ -330,7 +322,7 @@ extension MigrateTab {
         case let .waiting(message):
             Label(message, systemImage: "hourglass").foregroundStyle(.secondary)
         case let .heldBack(message):
-            Label(message, systemImage: "exclamationmark.triangle").labelStyle(.tintedIcon(.orange))
+            WarningLabel(message)
                 .fixedSize(horizontal: false, vertical: true)
         case let .unscoped(date):
             Label("Classic profile unscoped \(date.formatted()). Scope backup saved.", systemImage: "checkmark.circle.fill").labelStyle(.tintedIcon(.green))

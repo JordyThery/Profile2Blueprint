@@ -8,14 +8,22 @@ struct ScopeMappingView: View {
     @State private var groupSearch = ""
 
     private var report: EligibilityReport { session.report }
-    private var locked: Bool { session.blueprintID != nil }
+    /// Read-only once the Blueprint exists, and while a saved migration is
+    /// being re-attached (it brings its own groups and picks).
+    private var locked: Bool { session.blueprintID != nil || session.isLoadingSavedState }
     private var platform: ProfilePlatform { session.platform }
     private var platformGroups: [JamfPlatform.DeviceGroup] { workspace.groups(for: platform) }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                if locked {
+                if session.isLoadingSavedState {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text("Reading the saved migration for this profile…")
+                    }
+                    .foregroundStyle(.secondary)
+                } else if locked {
                     Label("The Blueprint has been created. Scope can no longer be changed here.", systemImage: "lock")
                         .foregroundStyle(.secondary)
                 }
@@ -111,7 +119,7 @@ struct ScopeMappingView: View {
         if entry.autoMatch != nil {
             Label("Exact", systemImage: "checkmark.circle.fill").labelStyle(.tintedIcon(.green))
         } else if entry.isAmbiguous {
-            Label("\(entry.exactMatches.count) groups share this name", systemImage: "exclamationmark.triangle.fill").labelStyle(.tintedIcon(.orange))
+            WarningLabel("\(entry.exactMatches.count) groups share this name")
         } else if !entry.suggestions.isEmpty {
             Label("Similar name only", systemImage: "questionmark.circle").labelStyle(.tintedIcon(.orange))
         } else {
@@ -137,8 +145,8 @@ struct ScopeMappingView: View {
         GroupBox("Blueprint scope") {
             VStack(alignment: .leading, spacing: 6) {
                 if session.selectedGroups.isEmpty {
-                    Label("No platform group selected. A Blueprint needs at least one.", systemImage: "exclamationmark.triangle.fill")
-                        .labelStyle(.tintedIcon(.orange))
+                    WarningLabel("No platform group selected. A Blueprint needs at least one.")
+                        
                 } else {
                     ForEach(session.selectedGroups) { group in
                         HStack {

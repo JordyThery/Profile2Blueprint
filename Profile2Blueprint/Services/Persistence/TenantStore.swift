@@ -76,16 +76,7 @@ final class TenantStore: ConnectionStorage {
     }
 
     func keepUnreadableCopy() -> String? {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd'T'HHmmss"
-        let copy = fileURL.appendingPathExtension("unreadable-\(formatter.string(from: .now))")
-        do {
-            try FileManager.default.copyItem(at: fileURL, to: copy)
-            return copy.path
-        } catch {
-            return nil
-        }
+        FileCopies.keepUnreadableCopy(of: fileURL)
     }
 
     // MARK: Current tenant

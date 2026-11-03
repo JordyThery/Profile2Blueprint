@@ -143,11 +143,17 @@ struct EffectiveEligibilityTests {
         #expect(session.selectedGroupIDs.isEmpty)
         #expect(session.effectiveReport.status == .needsAttention)
 
+        // Ticking a group isn't a mapping: Finance Macs would still be left out.
         session.toggleGroup(DemoFixtures.engineersPlatformGroupID)
+        #expect(session.effectiveReport.status == .needsAttention)
+        #expect(session.effectiveReport.has(.unmatchedGroups))
+        // Mapping the classic group resolves it.
+        let entry = try #require(session.report.scopeMapping.first)
+        session.pick(DemoFixtures.engineersPlatformGroupID, for: entry)
         #expect(session.effectiveReport.status == .ready)
         #expect(!session.needsAcknowledgement)
         session.dryRun = false
-        #expect(session.canCreate, "selection replaces the acknowledgement for pick-a-group warnings")
+        #expect(session.canCreate, "mapping every classic group replaces the acknowledgement for pick-a-group warnings")
         #expect(session.report.status == .needsAttention, "base report unchanged")
     }
 
@@ -169,7 +175,8 @@ struct EffectiveEligibilityTests {
     func createWithoutAcknowledgement() async throws {
         let workspace = Workspace.previewDemo()
         let session = try #require(workspace.session(for: ProfileKey(platform: .macOS, id: 103)))
-        session.toggleGroup(DemoFixtures.engineersPlatformGroupID)
+        await session.waitUntilReady()
+        session.pick(DemoFixtures.engineersPlatformGroupID, for: try #require(session.report.scopeMapping.first))
         session.dryRun = false
         await session.create()
         #expect(session.lastError == nil)

@@ -75,8 +75,11 @@ actor SessionStateStore {
         (records, list) = StoredList.open(fileURL)
     }
 
+    /// The real file, `sessions.json` in the app's folder (`AppFiles`).
+    nonisolated static var appDefaultURL: URL { AppFiles.file("sessions.json") }
+
     static func appDefault() -> SessionStateStore {
-        SessionStateStore(fileURL: StoredList<PersistedMigration>.appSupportFile("sessions.json"))
+        SessionStateStore(fileURL: appDefaultURL)
     }
 
     /// Why sessions aren't saved, when the file couldn't be read.

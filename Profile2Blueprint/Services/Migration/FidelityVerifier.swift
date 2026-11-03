@@ -127,8 +127,8 @@ nonisolated enum FidelityVerifier {
 
     private static func scopeRow(_ expected: [String], _ detail: JamfPlatform.BlueprintDetail) -> FidelityRow {
         let actual = detail.scopeDeviceGroups
-        let normalizedExpected = Set(expected.map { $0.lowercased() })
-        let normalizedActual = Set(actual.map { $0.lowercased() })
+        let normalizedExpected = Set(expected.map(ScopeCoverage.normalized))
+        let normalizedActual = Set(actual.map(ScopeCoverage.normalized))
         return FidelityRow(
             field: "Scope device groups",
             classic: expected.joined(separator: ", "),

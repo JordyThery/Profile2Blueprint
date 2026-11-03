@@ -23,10 +23,12 @@ nonisolated enum RequestPolicy {
         case "GET":
             return true
         case "POST":
-            let parts = path.split(separator: "/").map(String.init)
-            // blueprints/v1/blueprints  or  blueprints/v1/blueprints/{id}/deploy
-            guard parts.count >= 3, parts[0] == "blueprints", parts[2] == "blueprints" else { return false }
-            return parts.count == 3 || (parts.count == 5 && parts[4] == "deploy")
+            // Exactly JTKit's create path, or its deploy path for one Blueprint ID.
+            let create = String(JamfPlatform.Blueprints.path.dropFirst())
+            if path == create { return true }
+            guard path.hasPrefix(create + "/"), path.hasSuffix("/deploy") else { return false }
+            let id = path.dropFirst(create.count + 1).dropLast("/deploy".count)
+            return !id.isEmpty && !id.contains("/")
         case "PUT":
             guard classicWrites == .scopeOnly,
                   path.wholeMatch(of: /proclassic\/(?:osxconfigurationprofiles|mobiledeviceconfigurationprofiles)\/id\/\d+/) != nil,

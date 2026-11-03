@@ -6,13 +6,15 @@ import Foundation
 /// `scope-backups.json` or `sessions.json`, and are gone after a restart.
 nonisolated struct DemoFiles: Sendable {
     let folder: URL
+    /// One store per file, opened once, so no two copies overwrite each other.
+    let history: HistoryStore
+    let scopeBackups: ScopeBackupStore
+    let sessionStates: SessionStateStore
 
-    init(folder: URL = FileManager.default.temporaryDirectory
-        .appending(path: "Profile2Blueprint-demo-\(UUID().uuidString)", directoryHint: .isDirectory)) {
+    init(folder: URL) {
         self.folder = folder
+        history = HistoryStore(fileURL: folder.appending(path: "history.json"))
+        scopeBackups = ScopeBackupStore(fileURL: folder.appending(path: "scope-backups.json"))
+        sessionStates = SessionStateStore(fileURL: folder.appending(path: "sessions.json"))
     }
-
-    var history: HistoryStore { HistoryStore(fileURL: folder.appending(path: "history.json")) }
-    var scopeBackups: ScopeBackupStore { ScopeBackupStore(fileURL: folder.appending(path: "scope-backups.json")) }
-    var sessionStates: SessionStateStore { SessionStateStore(fileURL: folder.appending(path: "sessions.json")) }
 }
