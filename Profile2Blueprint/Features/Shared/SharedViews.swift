@@ -38,7 +38,7 @@ struct EligibilityBadge: View {
             } else {
                 HStack(spacing: 4) {
                     configuration.icon
-                    configuration.title.font(.caption.weight(.semibold)).foregroundStyle(.primary)
+                    configuration.title.font(.caption.weight(.semibold)).foregroundStyle(Color.primary)
                 }
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)

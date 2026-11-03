@@ -111,13 +111,13 @@ private struct ProfilesContent: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Picker("Show", selection: $filter) {
+            Picker("Status", selection: $filter) {
                 ForEach(StatusFilter.allCases) { option in
                     label(for: option).tag(option)
                 }
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
+            .pickerStyle(.menu)
+            .fixedSize()
             .help("Show all profiles, or only those that are Ready, Need attention or are Blocked")
 
             Picker("Platform", selection: $platformFilter) {
@@ -165,7 +165,8 @@ private struct ProfilesContent: View {
         .padding(10)
     }
 
-    /// The status's SF Symbol and count, as the badges draw it, with the status read out.
+    /// The status in words with its count. A menu, because the segmented
+    /// control draws no symbols and the words don't fit the list's width.
     private func label(for option: StatusFilter) -> Text {
         let status: EligibilityStatus
         switch option {
@@ -174,9 +175,7 @@ private struct ProfilesContent: View {
         case .attention: status = .needsAttention
         case .blocked: status = .blocked
         }
-        let count = workspace.count(of: status)
-        return Text("\(Image(systemName: status.symbol)) \(count)")
-            .accessibilityLabel("\(status.title), \(count)")
+        return Text("\(status.title) (\(workspace.count(of: status)))")
     }
 
     private var list: some View {
