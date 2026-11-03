@@ -1,6 +1,18 @@
+<p align="center">
+  <img src="docs/icon.png" width="128" alt="Profile2Blueprint app icon">
+</p>
+
 # Profile2Blueprint
 
+*Move Jamf Pro classic configuration profiles to Blueprints, safely.*
+
+[![Latest release](https://img.shields.io/github/v/release/JordyThery/Profile2Blueprint?label=release)](https://github.com/JordyThery/Profile2Blueprint/releases/latest)
+![macOS 14+](https://img.shields.io/badge/macOS-14%2B-blue)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
 A native macOS app that migrates **Jamf Pro classic configuration profiles** (macOS and mobile device) into **Jamf Platform Blueprints**, using the Apple-supported in-place Classic → DDM transform. It turns a manual, API-driven workflow into a safe, reviewable one.
+
+![The Migrate tab in Demo Mode for the sample profile “Contoso – Security Baseline”: review and create, then the verification table comparing the classic profile and the Blueprint field by field](docs/screenshot-migrate.jpg)
 
 > **Status:** verified end to end against live Jamf tenants — create, server-side verify, deploy, the in-place transform on a Mac and on an iPhone, and classic scope cleanup with restore. Try every migration on a test device before using it fleet-wide.
 
@@ -44,6 +56,8 @@ Apple allows a classic (imperative) MDM profile to be transformed in place into 
 5. Each payload’s `PayloadType`, `PayloadIdentifier` and `PayloadUUID` match, in the same order.
 
 The app walks that workflow stage by stage — **fetch → validate → distill (plist → JSON) → map scope → build → create → verify → deploy** — with an explicit confirmation gate before anything irreversible. Rules 1–2 cannot be checked through the API; the app says so and leaves them to you.
+
+![The Diff tab: the five-rule check against the built body and against the server read-back, above the classic payload and the Blueprint configuration as JSON side by side](docs/screenshot-diff.jpg)
 
 ## Safety model
 
