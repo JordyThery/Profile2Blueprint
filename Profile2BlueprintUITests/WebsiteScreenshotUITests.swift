@@ -30,7 +30,7 @@ final class WebsiteScreenshotUITests: JTKitUITestCase {
         zoom(main)
 
         openSidebar("Profiles")
-        let row = app.checkBoxes.matching(NSPredicate(format: "label BEGINSWITH %@", "macOS, \(securityBaseline), ")).firstMatch
+        let row = app.checkBoxes.matching(NSPredicate(format: "label CONTAINS %@", "macOS, \(securityBaseline), #")).firstMatch
         tap(row, timeout: 20)
 
         // The scope screen asks which "Design Macs" is meant: pick the first.
