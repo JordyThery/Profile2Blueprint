@@ -24,7 +24,9 @@ struct BatchMigrationView: View {
             HStack {
                 Text("Batch Migration").font(.title2.weight(.semibold))
                 Spacer()
-                Text(workspace.environment.displayName).foregroundStyle(workspace.environment.isDemo ? Color.secondary : Color.orange)
+                Label(workspace.environment.displayName,
+                      systemImage: workspace.environment.isDemo ? "testtube.2" : "bolt.horizontal.circle.fill")
+                    .labelStyle(.tintedIcon(workspace.environment.isDemo ? Color.secondary : Color.orange))
             }
             Text("Each profile is created as its own Blueprint (not deployed) and verified. Items that need attention are skipped unless you include them, and blocked items are always skipped. Group choices come from each profile’s Scope tab.")
                 .font(.callout)
@@ -39,7 +41,7 @@ struct BatchMigrationView: View {
                     ))
                     .labelsHidden()
                     .disabled(session.effectiveReport.status != .needsAttention || session.blueprintID != nil || running)
-                    .help(session.effectiveReport.status == .needsAttention ? "Including acknowledges this item’s warnings" : "")
+                    .help(session.effectiveReport.status == .needsAttention ? Text("Including acknowledges this item’s warnings") : Text(verbatim: ""))
                 }
                 .width(50)
                 TableColumn("Profile") { session in
@@ -51,8 +53,11 @@ struct BatchMigrationView: View {
                 TableColumn("Eligibility") { session in EligibilityBadge(status: session.effectiveReport.status) }
                     .width(min: 110, ideal: 130)
                 TableColumn("Target") { session in
-                    Text(session.selectedGroups.isEmpty ? "None" : session.selectedGroups.map(\.name).joined(separator: ", "))
-                        .foregroundStyle(session.selectedGroups.isEmpty ? .orange : .primary)
+                    if session.selectedGroups.isEmpty {
+                        Label("None", systemImage: "exclamationmark.triangle.fill").labelStyle(.tintedIcon(.orange))
+                    } else {
+                        Text(session.selectedGroups.map(\.name).joined(separator: ", "))
+                    }
                 }
                 TableColumn("Devices") { session in Text("\(session.deviceCount)").monospacedDigit() }
                     .width(60)
@@ -63,7 +68,7 @@ struct BatchMigrationView: View {
 
             if notLoaded > 0 {
                 Label("^[\(notLoaded) selected profile](inflect: true) still loading or failed to load — not included.", systemImage: "hourglass")
-                    .foregroundStyle(.orange)
+                    .labelStyle(.tintedIcon(.orange))
             }
 
             Toggle("Dry run (write nothing)", isOn: $dryRun).disabled(running)
@@ -139,22 +144,23 @@ struct BatchMigrationView: View {
         if session.isBusy {
             HStack { ProgressView().controlSize(.mini); Text("Working…") }
         } else if let error = session.lastError {
-            Text(error.title).foregroundStyle(.red).lineLimit(2).help(error.title)
+            Label(error.title, systemImage: "xmark.octagon.fill").labelStyle(.tintedIcon(.red)).lineLimit(2).help(error.title)
         } else if session.duplicates != nil {
-            Text("Name exists. Resolve it in the profile’s Migrate tab.").foregroundStyle(.orange)
+            Label("Name exists. Resolve it in the profile’s Migrate tab.", systemImage: "exclamationmark.triangle.fill").labelStyle(.tintedIcon(.orange))
         } else if case let .deployed(report) = session.state {
-            Text("Deployed" + (report.map { " · \($0.succeeded)/\($0.total) ok" } ?? "")).foregroundStyle(.green)
+            Label("Deployed" + (report.map { " · \($0.succeeded)/\($0.total) ok" } ?? ""), systemImage: "checkmark.circle.fill").labelStyle(.tintedIcon(.green))
         } else if case .deploying = session.state {
             Text(session.deployment?.displayText ?? "Deploying…")
         } else if let fidelity = session.fidelity {
-            Text(fidelity.passed ? "Created · verified" : "Created · ^[\(fidelity.mismatches.count) mismatch](inflect: true)")
-                .foregroundStyle(fidelity.passed ? .green : .red)
+            Label(fidelity.passed ? "Created · verified" : "Created · ^[\(fidelity.mismatches.count) mismatch](inflect: true)",
+                  systemImage: fidelity.passed ? "checkmark.circle.fill" : "xmark.octagon.fill")
+                .labelStyle(.tintedIcon(fidelity.passed ? .green : .red))
         } else if session.effectiveReport.status == .blocked {
-            Text(session.effectiveReport.reasons.first?.title ?? "Blocked").foregroundStyle(.red)
+            Label(session.effectiveReport.reasons.first?.title ?? "Blocked", systemImage: "xmark.octagon.fill").labelStyle(.tintedIcon(.red))
         } else if !included(session) {
             Text("Skipped: needs attention").foregroundStyle(.secondary)
         } else if session.selectedGroupIDs.isEmpty {
-            Text("Skipped: no target group").foregroundStyle(.orange)
+            Label("Skipped: no target group", systemImage: "exclamationmark.triangle.fill").labelStyle(.tintedIcon(.orange))
         } else if session.dryRunSummary != nil {
             Text("Dry run OK").foregroundStyle(.secondary)
         } else {

@@ -109,13 +109,13 @@ struct ScopeMappingView: View {
     @ViewBuilder
     private func matchLabel(_ entry: ScopeMappingEntry) -> some View {
         if entry.autoMatch != nil {
-            Label("Exact", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+            Label("Exact", systemImage: "checkmark.circle.fill").labelStyle(.tintedIcon(.green))
         } else if entry.isAmbiguous {
-            Label("\(entry.exactMatches.count) groups share this name", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+            Label("\(entry.exactMatches.count) groups share this name", systemImage: "exclamationmark.triangle.fill").labelStyle(.tintedIcon(.orange))
         } else if !entry.suggestions.isEmpty {
-            Label("Similar name only", systemImage: "questionmark.circle").foregroundStyle(.orange)
+            Label("Similar name only", systemImage: "questionmark.circle").labelStyle(.tintedIcon(.orange))
         } else {
-            Label("No match", systemImage: "xmark.circle").foregroundStyle(.orange)
+            Label("No match", systemImage: "xmark.circle").labelStyle(.tintedIcon(.orange))
         }
     }
 
@@ -138,7 +138,7 @@ struct ScopeMappingView: View {
             VStack(alignment: .leading, spacing: 6) {
                 if session.selectedGroups.isEmpty {
                     Label("No platform group selected. A Blueprint needs at least one.", systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
+                        .labelStyle(.tintedIcon(.orange))
                 } else {
                     ForEach(session.selectedGroups) { group in
                         HStack {

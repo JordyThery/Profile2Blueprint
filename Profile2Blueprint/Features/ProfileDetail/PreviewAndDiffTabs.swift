@@ -12,8 +12,11 @@ struct BlueprintPreviewTab: View {
                 TextField("Description", text: $session.blueprintDescription, axis: .vertical)
                     .lineLimit(1...3)
                 LabeledContent("Target groups") {
-                    Text(session.selectedGroups.isEmpty ? "None selected (see Scope)" : session.selectedGroups.map(\.name).joined(separator: ", "))
-                        .foregroundStyle(session.selectedGroups.isEmpty ? .orange : .primary)
+                    if session.selectedGroups.isEmpty {
+                        Label("None selected (see Scope)", systemImage: "exclamationmark.triangle.fill").labelStyle(.tintedIcon(.orange))
+                    } else {
+                        Text(session.selectedGroups.map(\.name).joined(separator: ", "))
+                    }
                 }
             }
             .formStyle(.grouped)
@@ -27,13 +30,13 @@ struct BlueprintPreviewTab: View {
                 if session.report.has(.sensitiveContent) {
                     Label("This body contains credentials from the profile. Treat copies of it as secrets.", systemImage: "key.fill")
                         .font(.callout)
-                        .foregroundStyle(.orange)
+                        .labelStyle(.tintedIcon(.orange))
                 }
             case let .failure(error):
                 VStack(alignment: .leading, spacing: 6) {
                     Text("The request can’t be built yet:").font(.headline)
                     ForEach(error.problems, id: \.self) { problem in
-                        Label(problem, systemImage: "exclamationmark.circle").foregroundStyle(.orange)
+                        Label(problem, systemImage: "exclamationmark.circle").labelStyle(.tintedIcon(.orange))
                     }
                 }
                 Spacer()
@@ -50,7 +53,7 @@ struct DiffTab: View {
     var body: some View {
         switch session.profile.document {
         case let .failure(error):
-            Label(error.message, systemImage: "xmark.octagon").foregroundStyle(.red).padding()
+            Label(error.message, systemImage: "xmark.octagon").labelStyle(.tintedIcon(.red)).padding()
         case let .success(document):
             let configuration = BlueprintBuilder.configuration(for: document, fallbackName: session.profile.name)
             VSplitView {

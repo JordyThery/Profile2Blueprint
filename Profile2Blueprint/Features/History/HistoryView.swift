@@ -97,9 +97,9 @@ struct HistoryView: View {
     @ViewBuilder
     private func resultLabel(_ result: MigrationResult) -> some View {
         switch result {
-        case .success: Label(result.title, systemImage: "checkmark.circle.fill").foregroundStyle(.green)
-        case .warning: Label(result.title, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-        case .failure: Label(result.title, systemImage: "xmark.octagon.fill").foregroundStyle(.red)
+        case .success: Label(result.title, systemImage: "checkmark.circle.fill").labelStyle(.tintedIcon(.green))
+        case .warning: Label(result.title, systemImage: "exclamationmark.triangle.fill").labelStyle(.tintedIcon(.orange))
+        case .failure: Label(result.title, systemImage: "xmark.octagon.fill").labelStyle(.tintedIcon(.red))
         }
     }
 }

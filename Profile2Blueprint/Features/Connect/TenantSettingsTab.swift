@@ -96,7 +96,7 @@ private struct TenantAppSections: View {
                 Label("On. Requires the configuration-profiles:update permission. Each unscope still needs a per-profile opt-in and confirmation.",
                       systemImage: "exclamationmark.shield.fill")
                     .font(.callout)
-                    .foregroundStyle(.orange)
+                    .labelStyle(.tintedIcon(.orange))
             } else {
                 Label("Classic scope changes are off for this tenant: the app refuses every write to the Classic API.", systemImage: "lock.shield")
                     .font(.callout)

@@ -61,12 +61,13 @@ struct MigrateTab: View {
     private var environmentBanner: some View {
         HStack(spacing: 8) {
             Image(systemName: environment.isDemo ? "testtube.2" : "bolt.horizontal.circle.fill")
+                .foregroundStyle(environment.isDemo ? Color.secondary : Color.orange)
+                .accessibilityHidden(true)
             Text(environment.isDemo
                  ? "\(DemoMode.title): nothing is sent to Jamf."
                  : "Live tenant “\(environment.displayName)”: create and deploy change this environment.")
         }
         .font(.callout)
-        .foregroundStyle(environment.isDemo ? Color.secondary : Color.orange)
         .padding(8)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background((environment.isDemo ? Color.secondary : Color.orange).opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
@@ -102,11 +103,11 @@ struct MigrateTab: View {
                     Label(session.report.status == .ready
                           ? "All automated checks pass."
                           : "All automated checks pass with the selected groups.",
-                          systemImage: "checkmark.circle").foregroundStyle(.green)
+                          systemImage: "checkmark.circle").labelStyle(.tintedIcon(.green))
                 }
 
                 if let problems = previewProblems {
-                    ForEach(problems, id: \.self) { Label($0, systemImage: "exclamationmark.circle").foregroundStyle(.orange) }
+                    ForEach(problems, id: \.self) { Label($0, systemImage: "exclamationmark.circle").labelStyle(.tintedIcon(.orange)) }
                 }
 
                 Divider()
@@ -152,7 +153,7 @@ struct MigrateTab: View {
             VStack(alignment: .leading, spacing: 10) {
                 Label("A Blueprint named “\(session.blueprintName)” already exists", systemImage: "doc.on.doc.fill")
                     .font(.headline)
-                    .foregroundStyle(.orange)
+                    .labelStyle(.tintedIcon(.orange))
                 ForEach(duplicates) { existing in
                     HStack {
                         Text(existing.id).font(.callout.monospaced()).textSelection(.enabled)
@@ -181,11 +182,11 @@ struct MigrateTab: View {
                               ? FidelityReport.allMatchSentence
                               : "Matches; review ^[\(fidelity.caseChanges.count) key casing change](inflect: true).",
                               systemImage: fidelity.caseChanges.isEmpty ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
-                            .foregroundStyle(fidelity.caseChanges.isEmpty ? .green : .orange)
+                            .labelStyle(.tintedIcon(fidelity.caseChanges.isEmpty ? .green : .orange))
                     } else {
                         Label("^[\(fidelity.mismatches.count) mismatch](inflect: true). The in-place transform wouldn’t be seamless, so deploying is turned off.",
                               systemImage: "xmark.seal.fill")
-                            .foregroundStyle(.red)
+                            .labelStyle(.tintedIcon(.red))
                     }
                     FidelityTable(rows: fidelity.rows)
                         .frame(minHeight: 220, idealHeight: 320)
@@ -210,11 +211,11 @@ struct MigrateTab: View {
                         Text(deployment?.displayText ?? "Deployment requested…")
                     }
                     if case .timedOut = session.outcome {
-                        Text("Polling stopped after the timeout while deployment was still in progress.").foregroundStyle(.orange)
+                        Label("Polling stopped after the timeout while deployment was still in progress.", systemImage: "clock.badge.exclamationmark").labelStyle(.tintedIcon(.orange))
                         Button("Refresh Status") { Task { await session.recheckDeployment() } }.disabled(session.isBusy)
                     }
                 case let .deployed(report):
-                    Label("Deployed.", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                    Label("Deployed.", systemImage: "checkmark.circle.fill").labelStyle(.tintedIcon(.green))
                     if let report {
                         DeviceReportView(report: report)
                     }
@@ -266,20 +267,20 @@ extension MigrateTab {
                         Label("Automatic cleanup isn’t available: the classic profile also targets \(session.uncoveredClassicTargets.formatted(.list(type: .and))), which the Blueprint’s groups don’t cover.",
                               systemImage: "exclamationmark.triangle")
                             .font(.caption)
-                            .foregroundStyle(.orange)
+                            .labelStyle(.tintedIcon(.orange))
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
                     Label("When Jamf Pro unscopes a profile it removes it from devices. On devices where the in-place transform didn’t happen (no DDM, or not installed by MDM), the settings are lost. Try it with one profile and one device first.",
                           systemImage: "exclamationmark.triangle")
                         .font(.caption)
-                        .foregroundStyle(.orange)
+                        .labelStyle(.tintedIcon(.orange))
                         .fixedSize(horizontal: false, vertical: true)
 
                     Label("After the transform, Jamf Pro logs a failed “Remove Configuration Profile” command for each device: the device refuses to let MDM remove a profile the Blueprint now owns. That failure is expected.",
                           systemImage: "info.circle")
                         .font(.caption)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
 
                     unscopeStatusView
@@ -327,18 +328,18 @@ extension MigrateTab {
         case .notRequested:
             EmptyView()
         case let .waiting(message):
-            Label(message, systemImage: "hourglass").foregroundStyle(.orange)
+            Label(message, systemImage: "hourglass").foregroundStyle(.secondary)
         case let .heldBack(message):
-            Label(message, systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
+            Label(message, systemImage: "exclamationmark.triangle").labelStyle(.tintedIcon(.orange))
                 .fixedSize(horizontal: false, vertical: true)
         case let .unscoped(date):
-            Label("Classic profile unscoped \(date.formatted()). Scope backup saved.", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+            Label("Classic profile unscoped \(date.formatted()). Scope backup saved.", systemImage: "checkmark.circle.fill").labelStyle(.tintedIcon(.green))
         case let .uncertain(date):
             Label("A scope change started \(date.formatted()) may not have finished. Check the profile in Jamf Pro, or restore the saved scope.",
-                  systemImage: "questionmark.circle").foregroundStyle(.orange)
+                  systemImage: "questionmark.circle").labelStyle(.tintedIcon(.orange))
                 .fixedSize(horizontal: false, vertical: true)
         case let .restored(date):
-            Label("Scope restored \(date.formatted()).", systemImage: "arrow.uturn.backward.circle.fill").foregroundStyle(.green)
+            Label("Scope restored \(date.formatted()).", systemImage: "arrow.uturn.backward.circle.fill").labelStyle(.tintedIcon(.green))
         case let .failed(report):
             APIErrorView(report: report)
         }
@@ -359,8 +360,9 @@ struct DeviceReportView: View {
 
     private func stat(_ label: String, _ value: Int, _ color: Color) -> some View {
         VStack(alignment: .leading) {
-            Text("\(value)").font(.title2.monospacedDigit().weight(.semibold)).foregroundStyle(color)
-            Text(label).font(.caption).foregroundStyle(.secondary)
+            Text("\(value)").font(.title2.monospacedDigit().weight(.semibold))
+            Label(label, systemImage: "circle.fill").font(.caption).foregroundStyle(.secondary)
+                .labelStyle(.tintedIcon(color))
         }
     }
 }
@@ -371,10 +373,10 @@ struct FidelityTable: View {
 
     var body: some View {
         Table(rows) {
-            TableColumn("") { row in statusIcon(row.status) }
-                .width(22)
+            TableColumn("Status") { row in statusIcon(row.status) }
+                .width(52)
             TableColumn("Field") { row in
-                Text(row.field).help(row.note ?? "")
+                Text(row.field).help(row.note.map { Text($0) } ?? Text(verbatim: ""))
             }
             .width(min: 140, ideal: 200)
             TableColumn("Classic") { row in
@@ -425,11 +427,22 @@ private struct StepIndicator: View {
             }
             if case let .failed(stage, _) = state {
                 Spacer()
-                Label("\(stage.capitalized) failed", systemImage: "exclamationmark.octagon").foregroundStyle(.red)
+                Label("\(stage.capitalized) failed", systemImage: "exclamationmark.octagon").labelStyle(.tintedIcon(.red))
             }
         }
         .font(.callout)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityText)
+    }
+
+    /// What VoiceOver reads: where the migration stands, not just the step names.
+    private var accessibilityText: String {
+        let titles = ["Review & create", "Verify", "Deploy", "Cleanup"]
+        var text = current > titles.count
+            ? "All 4 steps done"
+            : "Step \(current) of 4, \(titles[current - 1])"
+        if case let .failed(stage, _) = state { text += ". \(stage.capitalized) failed" }
+        return text
     }
 }
 

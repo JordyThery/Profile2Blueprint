@@ -170,7 +170,7 @@ struct SourceTab: View {
                 case let .success(document):
                     PlistOutline(nodes: PlistNode.nodes(for: document.root))
                 case let .failure(error):
-                    Label(error.message, systemImage: "xmark.octagon").foregroundStyle(.red).padding()
+                    Label(error.message, systemImage: "xmark.octagon").labelStyle(.tintedIcon(.red)).padding()
                 }
             }
             .frame(minHeight: 160)

@@ -118,6 +118,7 @@ private struct ProfilesContent: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
+            .help("Show all profiles, or only those that are Ready, Need attention or are Blocked")
 
             Picker("Platform", selection: $platformFilter) {
                 ForEach(PlatformFilter.allCases) { option in
@@ -143,17 +144,21 @@ private struct ProfilesContent: View {
                     .foregroundStyle(.secondary)
             }
             if let groupsError = workspace.groupsError {
-                DisclosureGroup("Device groups couldn’t be loaded") {
+                DisclosureGroup {
                     APIErrorView(report: groupsError)
+                } label: {
+                    Label("Device groups couldn’t be loaded", systemImage: "exclamationmark.triangle.fill")
+                        .labelStyle(.tintedIcon(.orange))
                 }
-                .foregroundStyle(.orange)
             }
             ForEach(ProfilePlatform.allCases.filter { workspace.listErrors[$0] != nil }) { platform in
                 if let error = workspace.listErrors[platform] {
-                    DisclosureGroup("\(platform.displayName) profiles couldn’t be loaded") {
+                    DisclosureGroup {
                         APIErrorView(report: error)
+                    } label: {
+                        Label("\(platform.displayName) profiles couldn’t be loaded", systemImage: "exclamationmark.triangle.fill")
+                            .labelStyle(.tintedIcon(.orange))
                     }
-                    .foregroundStyle(.orange)
                 }
             }
         }
@@ -257,7 +262,7 @@ private struct ProfileRow: View {
                 if let reasons = report?.reasons, let reason = reasons.first {
                     Text(reason.title + (reasons.count > 1 ? " +\(reasons.count - 1) more" : ""))
                         .font(.caption)
-                        .foregroundStyle(reason.severity.color)
+                        .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
             }

@@ -9,7 +9,7 @@ struct APIErrorView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Label(report.title, systemImage: "xmark.octagon.fill")
-                .foregroundStyle(.red)
+                .labelStyle(.tintedIcon(.red))
 
             if let details = report.detailText {
                 Text(details)

@@ -42,7 +42,7 @@ struct DeployConfirmationSheet: View {
             Text(isDemo
                  ? "\(DemoMode.title). This simulates a deployment."
                  : "Tenant: \(environmentName). Devices in these groups will receive the DDM profile. Where the classic profile is installed, it is replaced in place.")
-                .foregroundStyle(isDemo ? Color.secondary : Color.orange)
+                .foregroundStyle(isDemo ? Color.secondary : Color.primary)
                 .fixedSize(horizontal: false, vertical: true)
 
             ScrollView {
@@ -54,7 +54,7 @@ struct DeployConfirmationSheet: View {
                             Text(item.blueprintID).font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
                             ForEach(item.groups) { group in
                                 HStack {
-                                    Image(systemName: "person.3")
+                                    Image(systemName: "person.3").accessibilityHidden(true)
                                     Text(group.name)
                                     Spacer()
                                     Text(group.memberCountText).monospacedDigit()
@@ -65,12 +65,12 @@ struct DeployConfirmationSheet: View {
                             if let classic = item.unscopeClassicProfile {
                                 Label("Afterwards, classic profile \(classic) will be unscoped, but only if every device succeeds. Its scope is backed up first and can be restored.",
                                       systemImage: "scissors")
-                                    .font(.caption).foregroundStyle(.orange)
+                                    .font(.caption).labelStyle(.tintedIcon(.orange))
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                             if item.warnings > 0 {
                                 Label("^[\(item.warnings) key casing change](inflect: true) found during verification", systemImage: "exclamationmark.triangle")
-                                    .font(.caption).foregroundStyle(.orange)
+                                    .font(.caption).labelStyle(.tintedIcon(.orange))
                             }
                         }
                         .padding(10)
@@ -86,7 +86,7 @@ struct DeployConfirmationSheet: View {
                 Spacer()
                 if countIsPartial {
                     Text("At least ^[\(totalDevices) device](inflect: true), some counts unknown")
-                        .monospacedDigit().fontWeight(.semibold).foregroundStyle(.orange)
+                        .monospacedDigit().fontWeight(.semibold)
                 } else {
                     Text("\(items.contains { $0.groups.count > 1 } || items.count > 1 ? "up to " : "")^[\(totalDevices) device](inflect: true)")
                         .monospacedDigit().fontWeight(.semibold)

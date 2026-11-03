@@ -38,7 +38,7 @@ struct EligibilityBadge: View {
             } else {
                 HStack(spacing: 4) {
                     configuration.icon
-                    configuration.title.font(.caption.weight(.semibold))
+                    configuration.title.font(.caption.weight(.semibold)).foregroundStyle(.primary)
                 }
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)
@@ -231,15 +231,15 @@ enum JSONHighlighter {
                 var look = end + 1
                 while look < scalars.count, scalars[look] == " " { look += 1 }
                 let isKey = look < scalars.count && scalars[look] == ":"
-                append(token, isKey ? .blue : .red)
+                append(token, isKey ? JSONColors.key : JSONColors.string)
                 index = end + 1
             } else if CharacterSet(charactersIn: "-0123456789").contains(scalar) {
                 var end = index
                 while end < scalars.count, CharacterSet(charactersIn: "-+.eE0123456789").contains(scalars[end]) { end += 1 }
-                append(String(String.UnicodeScalarView(scalars[index..<end])), .purple)
+                append(String(String.UnicodeScalarView(scalars[index..<end])), JSONColors.number)
                 index = end
             } else if let word = ["true", "false", "null"].first(where: { matches($0, scalars, at: index) }) {
-                append(word, .orange)
+                append(word, JSONColors.literal)
                 index += word.unicodeScalars.count
             } else {
                 var end = index
@@ -275,5 +275,41 @@ struct MetadataRow: View {
                 .textSelection(.enabled)
                 .gridColumnAlignment(.leading)
         }
+    }
+}
+
+/// A label whose symbol carries the status color while its words stay in the
+/// readable text color: system orange, green and red text is below 4.5:1 in
+/// Light mode, the symbol keeps the meaning.
+struct TintedIconLabelStyle: LabelStyle {
+    let tint: Color
+
+    func makeBody(configuration: Configuration) -> some View {
+        Label {
+            configuration.title
+        } icon: {
+            configuration.icon.foregroundStyle(tint)
+        }
+    }
+}
+
+extension LabelStyle where Self == TintedIconLabelStyle {
+    /// The symbol in `tint`, the text as it is.
+    static func tintedIcon(_ tint: Color) -> TintedIconLabelStyle { TintedIconLabelStyle(tint: tint) }
+}
+
+/// JSON syntax colors at 4.5:1 or more on the text background, in Light and Dark mode.
+enum JSONColors {
+    static let key = adaptive(light: 0x0F68A0, dark: 0x6BB8EB)
+    static let string = adaptive(light: 0xC41A16, dark: 0xFC6A5D)
+    static let number = adaptive(light: 0x1C00CF, dark: 0xD0BF69)
+    static let literal = adaptive(light: 0x9B2393, dark: 0xFC5FA3)
+
+    private static func adaptive(light: UInt32, dark: UInt32) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let hex = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light
+            return NSColor(srgbRed: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255,
+                           blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
+        })
     }
 }
