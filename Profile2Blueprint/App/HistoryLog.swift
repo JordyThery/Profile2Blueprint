@@ -47,7 +47,7 @@ final class HistoryLog {
         )
         records.append(entry)
         activity?.app(
-            "\(action.title) — \(profile.name) (#\(profile.id))\(blueprintID.map { " → blueprint \($0)" } ?? ""): \(message)",
+            "\(action.title) — \(profile.name) (#\(profile.id))\(blueprintID.map { " → Blueprint \($0)" } ?? ""): \(message)",
             environment: environment.displayName,
             level: result == .failure ? .error : (result == .warning ? .warning : .info),
             category: action == .unscopeClassic || action == .restoreClassicScope ? .classicWrite : .migration

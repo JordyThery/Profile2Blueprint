@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.4.0 (2026-11-03)
+
+- **Nothing is sent to your tenant at launch.** The window opens without a page
+  selected; the app signs in and reads profiles only once you open Profiles.
+- **Hand-picked scope mappings count for the automatic classic cleanup.** A
+  classic group mapped by hand on the Scope tab (where no single group has the
+  same name) is covered when the picked platform group is one of the
+  Blueprint’s groups, the same rule as for exact-name matches.
+- **A Blueprint changed after verification isn’t deployed.** Right before
+  deploying, the app reads the Blueprint again. If its steps or scope changed
+  since it was verified, nothing is sent and the app asks you to verify again.
+- **Waits before a retry are shown.** When Jamf asks the app to wait before
+  trying again (at most 60 seconds), the Migrate tab and batch migration show
+  the wait, with Stop to end it.
+- **A locked Keychain is named as such.** When the Keychain refuses to read a
+  client secret, the app says so instead of reporting that no secret is stored.
+- **Test Connection checks every permission the app reads with:** device groups,
+  Blueprints and classic profiles. An integration missing one now fails the
+  test, with the missing permission named, instead of failing later.
+- **The Activity Log keeps the last 10,000 entries** (was 1,000). It is kept
+  while the app runs and starts empty at each launch.
+- **Settings no longer has a General tab.** The app follows the Mac’s Light or
+  Dark appearance.
+
 ## 1.3.0 (2026-10-31)
 
 ### Classic profile cleanup is safer

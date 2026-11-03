@@ -5,7 +5,7 @@ import JTKitTestSupport
 import Testing
 @testable import Profile2Blueprint
 
-// Live checks (JTKit ROADMAP step 11), run only by Scripts/release-check.sh,
+// Live checks, run only by Scripts/release-check.sh,
 // which switches them on (JTKIT_LIVE=1) and passes the credentials it read
 // from the login Keychain. ⌘U skips them. The tenant is named by role only:
 // jamf-test-a over the Jamf Platform API. Every request goes through
