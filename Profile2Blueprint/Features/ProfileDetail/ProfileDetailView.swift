@@ -14,6 +14,7 @@ struct ProfileDetailView: View {
     let workspace: Workspace
     let profileKey: ProfileKey
     @State private var tab: DetailTab = .source
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         if let profile = workspace.profiles[profileKey], let report = workspace.reports[profileKey],
@@ -32,6 +33,7 @@ struct ProfileDetailView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
+            .focusedSceneValue(\.profile, actions(blueprintID: session.blueprintID))
         } else if let error = workspace.profileErrors[profileKey] {
             VStack(alignment: .leading, spacing: 12) {
                 APIErrorView(report: error)
@@ -43,6 +45,17 @@ struct ProfileDetailView: View {
             ProgressView("Loading profile…")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+    }
+
+    /// The Profile menu's commands for this profile.
+    private func actions(blueprintID: String?) -> ProfileActions {
+        let links = workspace.environment.jamfProLinks
+        let key = profileKey
+        return ProfileActions(
+            reload: { Task { await workspace.reloadProfile(key: key) } },
+            openProfile: links.map { links in { openURL(links.classicProfile(platform: key.platform, id: key.id)) } },
+            openBlueprint: links.flatMap { links in blueprintID.map { id in { openURL(links.blueprint(id: id)) } } }
+        )
     }
 
     private func header(profile: ClassicProfile, report: EligibilityReport, blueprintID: String?) -> some View {
@@ -63,7 +76,7 @@ struct ProfileDetailView: View {
                     Task { await workspace.reloadProfile(key: profileKey) }
                 }
                 .labelStyle(.iconOnly)
-                .help("Re-read this profile from Jamf Pro (read-only)")
+                .help("Re-read this profile from Jamf Pro (read-only) ⇧⌘R")
             }
             Picker("View", selection: $tab) {
                 ForEach(DetailTab.allCases) { Text($0.rawValue).tag($0) }

@@ -98,7 +98,6 @@ private func environment(
 private func created(_ key: ProfileKey, in workspace: Workspace, unscopeAfterDeploy: Bool = false) async throws -> MigrationSession {
     let session = try #require(workspace.session(for: key))
     await session.waitUntilReady()
-    session.dryRun = false
     session.acknowledgedWarnings = true
     session.unscopeAfterDeploy = unscopeAfterDeploy
     await session.create()
@@ -316,7 +315,6 @@ struct ScopeCoverageTests {
         await session.waitUntilReady()
         session.toggleGroup(DemoFixtures.engineersPlatformGroupID)
         session.acknowledgedWarnings = true
-        session.dryRun = false
         session.unscopeAfterDeploy = true
         #expect(session.uncoveredClassicTargets.contains("all computers"))
         #expect(!session.autoUnscopeArmed, "the deploy sheet doesn't promise cleanup")
@@ -450,7 +448,6 @@ struct StoreTests {
         let session = try #require(first.session(for: loginItems))
         await session.waitUntilReady()
         session.blueprintDescription = "Edited by hand"
-        session.dryRun = false
         await session.create()
         try #require(session.blueprintID != nil)
         for _ in 0..<200 where await sessions.record(environmentKey: env.displayName, key: loginItems) == nil {
@@ -481,7 +478,6 @@ struct StageTests {
     func createWaitsForSavedState() async throws {
         let workspace = Workspace.previewDemo()
         let session = try #require(workspace.session(for: loginItems))
-        session.dryRun = false
         await session.create() // straight away, while the saved state is still being read
         #expect(session.blueprintID != nil)
     }

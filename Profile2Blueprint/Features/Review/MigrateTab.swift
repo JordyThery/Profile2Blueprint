@@ -53,7 +53,7 @@ struct MigrateTab: View {
     private var environmentBanner: some View {
         HStack(spacing: 8) {
             Image(systemName: environment.isDemo ? "testtube.2" : "bolt.horizontal.circle.fill")
-                .foregroundStyle(environment.isDemo ? Color.secondary : Color.orange)
+                .foregroundStyle(environment.isDemo ? Color.secondary : Color.accentColor)
                 .accessibilityHidden(true)
             Text(environment.isDemo
                  ? "\(DemoMode.title): nothing is sent to Jamf."
@@ -62,7 +62,8 @@ struct MigrateTab: View {
         .font(.callout)
         .padding(8)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background((environment.isDemo ? Color.secondary : Color.orange).opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
+        .background(environment.isDemo ? AnyShapeStyle(.quaternary.opacity(0.5)) : AnyShapeStyle(Color.accentColor.opacity(0.1)),
+                    in: RoundedRectangle(cornerRadius: 6))
     }
 
     private var review: some View {
@@ -104,21 +105,19 @@ struct MigrateTab: View {
 
                 Divider()
 
-                Toggle("Dry run (validate and check for duplicates; write nothing)", isOn: $session.dryRun)
-                    .disabled(session.blueprintID != nil)
-
                 HStack {
                     Button("Run Dry Run", systemImage: "eye") {
                         Task { await session.runDryRun() }
                     }
                     .disabled(!session.canRunDryRun)
+                    .help("Validate, build the request and check for a Blueprint with the same name. Writes nothing.")
 
                     Button("Create Blueprint (Not Deployed)", systemImage: "plus.square.on.square") {
                         Task { await session.create() }
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(!session.canCreate)
-                    .help(session.dryRun ? "Turn off dry run to create" : "Creates the Blueprint without deploying it")
+                    .help("Creates the Blueprint without deploying it")
 
                     if session.isBusy || session.isLoadingSavedState { ProgressView().controlSize(.small) }
                 }
@@ -250,7 +249,7 @@ extension MigrateTab {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Unscope the classic profile automatically after a clean deployment")
                             Text("Only runs when the Blueprint is deployed, the report shows 0 failed and 0 pending devices, and the Blueprint’s groups cover every target of the classic scope. Runs once: never again after a Restore. The scope is backed up first. Payloads are never changed.")
-                                .font(.caption).foregroundStyle(.secondary)
+                                .font(.callout).foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }
@@ -261,17 +260,17 @@ extension MigrateTab {
 
                     if !session.uncoveredClassicTargets.isEmpty {
                         WarningLabel("Automatic cleanup isn’t available: the classic profile also targets \(session.uncoveredClassicTargets.formatted(.list(type: .and))), which the Blueprint’s groups don’t cover.")
-                            .font(.caption)
+                            .font(.callout)
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
                     WarningLabel("When Jamf Pro unscopes a profile it removes it from devices. On devices where the in-place transform didn’t happen (no DDM, or not installed by MDM), the settings are lost. Try it with one profile and one device first.")
-                        .font(.caption)
+                        .font(.callout)
                         .fixedSize(horizontal: false, vertical: true)
 
                     Label("After the transform, Jamf Pro logs a failed “Remove Configuration Profile” command for each device: the device refuses to let MDM remove a profile the Blueprint now owns. That failure is expected.",
                           systemImage: "info.circle")
-                        .font(.caption)
+                        .font(.callout)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
 
@@ -345,7 +344,7 @@ struct DeviceReportView: View {
         HStack(spacing: 18) {
             stat("Succeeded", report.succeeded, .green)
             stat("Failed", report.failed, .red)
-            stat("Pending", report.pending, .orange)
+            stat("Pending", report.pending, .blue)
         }
         .accessibilityElement(children: .combine)
     }

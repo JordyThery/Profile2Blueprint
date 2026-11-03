@@ -427,7 +427,6 @@ struct LiveMigrationTests {
         session.acknowledgedWarnings = true
         await session.runDryRun()
         try #require(session.lastError == nil, "Dry run: \(session.lastError.map { String(describing: $0) } ?? "")")
-        session.dryRun = false
         session.unscopeAfterDeploy = true
         await session.create()
         let blueprintID = try #require(session.blueprintID, "Create: \(session.lastError.map { String(describing: $0) } ?? "no Blueprint")")

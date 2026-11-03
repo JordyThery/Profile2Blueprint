@@ -276,7 +276,6 @@ struct SessionCleanupTests {
         let originalScope = try #require(workspace.profiles[ProfileKey(platform: .macOS, id: 101)]).scope
         await session.waitUntilReady()
 
-        session.dryRun = false
         session.unscopeAfterDeploy = true
         await session.create()
         let blueprintID = try #require(session.blueprintID)
@@ -300,7 +299,6 @@ struct SessionCleanupTests {
     func noOptIn() async throws {
         let workspace = Workspace.previewDemo()
         let session = try #require(workspace.session(for: ProfileKey(platform: .macOS, id: 101)))
-        session.dryRun = false
         await session.create()
         let blueprintID = try #require(session.blueprintID)
         await session.deploy(DeployConfirmation(blueprintID: blueprintID, blueprintName: "n", groupNames: ["Engineering Macs"], deviceCount: 12, confirmedAt: Date()))

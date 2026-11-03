@@ -8,9 +8,11 @@ struct BatchMigrationView: View {
     let profileKeys: [ProfileKey]
 
     @Environment(\.dismiss) private var dismiss
-    @State private var dryRun = true
     @State private var running = false
-    @State private var showingDeploy = false
+    /// The deploy confirmation, shown in place of the list (not as a second sheet).
+    @State private var confirmingDeploy = false
+    /// Stop was pressed: the run ends after the current item.
+    @State private var stopRequested = false
     @State private var progressText: String?
 
     private var sessions: [MigrationSession] {
@@ -20,13 +22,34 @@ struct BatchMigrationView: View {
     private var notLoaded: Int { profileKeys.count - sessions.count }
 
     var body: some View {
+        Group {
+            if confirmingDeploy {
+                DeployConfirmationView(
+                    items: deployable.compactMap(\.deployItem),
+                    environmentName: workspace.environment.displayName,
+                    isDemo: workspace.environment.isDemo,
+                    onCancel: { confirmingDeploy = false },
+                    onConfirm: { confirmations in
+                        confirmingDeploy = false
+                        Task { await deploy(confirmations) }
+                    }
+                )
+            } else {
+                list
+            }
+        }
+        .padding(20)
+        .frame(minWidth: 860, minHeight: 520)
+    }
+
+    private var list: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Text("Batch Migration").font(.title2.weight(.semibold))
                 Spacer()
                 Label(workspace.environment.displayName,
                       systemImage: workspace.environment.isDemo ? "testtube.2" : "bolt.horizontal.circle.fill")
-                    .labelStyle(.tintedIcon(workspace.environment.isDemo ? Color.secondary : Color.orange))
+                    .labelStyle(.tintedIcon(workspace.environment.isDemo ? Color.secondary : Color.accentColor))
             }
             Text("Each profile is created as its own Blueprint (not deployed) and verified. Items that need attention are skipped unless you include them, and blocked items are always skipped. Group choices come from each profile’s Scope tab.")
                 .font(.callout)
@@ -71,33 +94,31 @@ struct BatchMigrationView: View {
                     .labelStyle(.tintedIcon(.orange))
             }
 
-            Toggle("Dry run (write nothing)", isOn: $dryRun).disabled(running)
-
             RetryWaitBanner(waits: workspace.environment.waits)
 
             HStack {
                 if let progressText { Text(progressText).font(.callout) }
                 if running { ProgressView().controlSize(.small) }
                 Spacer()
-                Button("Close") { dismiss() }.keyboardShortcut(.cancelAction).disabled(running)
-                Button(dryRun ? "Dry Run \(eligible.count)" : "Create \(eligible.count) (Not Deployed)") {
-                    Task { await run() }
+                if running {
+                    // Ends the run after the current item, and any wait before a retry now.
+                    Button("Stop") {
+                        stopRequested = true
+                        workspace.environment.waits?.cancelAll()
+                    }
+                    .disabled(stopRequested)
+                    .help("Stop after the current item; nothing more is created or deployed")
+                } else {
+                    Button("Close") { dismiss() }.keyboardShortcut(.cancelAction)
                 }
-                .disabled(running || eligible.isEmpty)
-                Button("Deploy \(deployable.count) Verified…") { showingDeploy = true }
+                Button("Dry Run \(eligible.count)") { Task { await run(dryRun: true) } }
+                    .disabled(running || eligible.isEmpty)
+                    .help("Validate each item and check for a Blueprint with the same name. Writes nothing.")
+                Button("Create \(eligible.count) (Not Deployed)") { Task { await run(dryRun: false) } }
+                    .disabled(running || eligible.isEmpty)
+                Button("Deploy \(deployable.count) Verified…") { confirmingDeploy = true }
                     .buttonStyle(.borderedProminent)
                     .disabled(running || deployable.isEmpty)
-            }
-        }
-        .padding(20)
-        .frame(minWidth: 860, minHeight: 520)
-        .sheet(isPresented: $showingDeploy) {
-            DeployConfirmationSheet(
-                items: deployable.compactMap(\.deployItem),
-                environmentName: workspace.environment.displayName,
-                isDemo: workspace.environment.isDemo
-            ) { confirmations in
-                Task { await deploy(confirmations) }
             }
         }
     }
@@ -121,16 +142,18 @@ struct BatchMigrationView: View {
         sessions.filter(\.canDeploy)
     }
 
-    private func run() async {
+    private func run(dryRun: Bool) async {
         running = true
+        stopRequested = false
         defer { running = false; progressText = nil }
-        await BatchMigration.run(eligible, dryRun: dryRun) { progressText = $0 }
+        await BatchMigration.run(eligible, dryRun: dryRun, shouldStop: { stopRequested }) { progressText = $0 }
     }
 
     private func deploy(_ confirmations: [DeployConfirmation]) async {
         running = true
+        stopRequested = false
         defer { running = false; progressText = nil }
-        await BatchMigration.deploy(confirmations, sessions: sessions) { progressText = $0 }
+        await BatchMigration.deploy(confirmations, sessions: sessions, shouldStop: { stopRequested }) { progressText = $0 }
     }
 
     @ViewBuilder
@@ -166,13 +189,15 @@ struct BatchMigrationView: View {
 /// The batch's two loops. One item's failure, refusal or name clash is left
 /// on that item (its status column) and never stops the others.
 enum BatchMigration {
-    static func run(_ sessions: [MigrationSession], dryRun: Bool, progress: (String) -> Void = { _ in }) async {
+    /// - Parameter shouldStop: asked before each item; true ends the run there.
+    static func run(_ sessions: [MigrationSession], dryRun: Bool, shouldStop: () -> Bool = { false },
+                    progress: (String) -> Void = { _ in }) async {
         for (index, session) in sessions.enumerated() {
+            if shouldStop() { return }
             progress("\(dryRun ? "Checking" : "Creating") \(index + 1) of \(sessions.count): \(session.profile.name)")
             if dryRun {
                 await session.runDryRun()
             } else {
-                session.dryRun = false
                 await session.create()
             }
         }
@@ -180,8 +205,9 @@ enum BatchMigration {
 
     /// Each confirmation goes to the session that created its Blueprint, and only there.
     static func deploy(_ confirmations: [DeployConfirmation], sessions: [MigrationSession],
-                       progress: (String) -> Void = { _ in }) async {
+                       shouldStop: () -> Bool = { false }, progress: (String) -> Void = { _ in }) async {
         for (index, confirmation) in confirmations.enumerated() {
+            if shouldStop() { return }
             guard let session = sessions.first(where: { $0.blueprintID == confirmation.blueprintID }) else { continue }
             progress("Deploying \(index + 1) of \(confirmations.count): \(confirmation.blueprintName)")
             await session.deploy(confirmation)

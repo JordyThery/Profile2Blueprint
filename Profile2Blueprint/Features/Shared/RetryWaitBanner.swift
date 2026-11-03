@@ -19,7 +19,7 @@ struct RetryWaitBanner: View {
                     .help("Stop waiting: the request isn’t sent again")
             }
             .padding(8)
-            .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
+            .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 6))
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("retryWait")
             .onAppear {

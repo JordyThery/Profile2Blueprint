@@ -84,7 +84,6 @@ private struct Rig {
     func verified(_ key: ProfileKey = loginItems) async throws -> MigrationSession {
         let session = try #require(workspace.session(for: key))
         await session.waitUntilReady()
-        session.dryRun = false
         await session.create()
         try #require(session.lastError == nil, "\(String(describing: session.lastError))")
         try #require(session.fidelity?.passed == true)
@@ -217,7 +216,6 @@ struct PickRelaunchTests {
         let entry = try #require(session.report.scopeMapping.first)
         session.pick(DemoFixtures.engineersPlatformGroupID, for: entry)
         session.unscopeAfterDeploy = true
-        session.dryRun = false
         await session.create()
         try #require(session.blueprintID != nil)
         try await Task.sleep(for: .milliseconds(50)) // the record is saved in the background
@@ -282,7 +280,6 @@ struct StopAndFailureTests {
         let rig = Rig()
         let session = try #require(rig.workspace.session(for: loginItems))
         await session.waitUntilReady()
-        session.dryRun = false
         rig.once.arm(OnceServer.wait, when: OnceServer.isCreate)
         let stopper = rig.stopFirstWait()
         await session.create()

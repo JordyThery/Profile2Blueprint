@@ -59,7 +59,6 @@ struct SessionRestoreTests {
         // First launch: create, don't deploy.
         let first = Workspace.previewDemo(environment: environment, sessionStates: states)
         let session1 = try #require(first.session(for: ProfileKey(platform: .macOS, id: 101)))
-        session1.dryRun = false
         await session1.create()
         let blueprintID = try #require(session1.blueprintID)
         #expect(session1.fidelity?.passed == true)
@@ -92,7 +91,6 @@ struct SessionRestoreTests {
 
         let first = Workspace.previewDemo(environment: environment, sessionStates: states)
         let session1 = try #require(first.session(for: ProfileKey(platform: .macOS, id: 101)))
-        session1.dryRun = false
         await session1.create()
         let blueprintID = try #require(session1.blueprintID)
         await session1.deploy(DeployConfirmation(blueprintID: blueprintID, blueprintName: "n",
@@ -125,7 +123,7 @@ struct SessionRestoreTests {
         #expect(session.blueprintID == nil)
         #expect(session.lastError?.title.contains("no longer exists") == true)
         #expect(await states.record(environmentKey: MigrationEnvironment.demoDisplayName, key: ProfileKey(platform: .macOS, id: 101)) == nil, "record removed")
-        #expect(session.canCreate == false || session.dryRun, "back to the normal create flow")
+        #expect(session.canCreate, "back to the normal create flow")
     }
 }
 
@@ -152,7 +150,6 @@ struct EffectiveEligibilityTests {
         session.pick(DemoFixtures.engineersPlatformGroupID, for: entry)
         #expect(session.effectiveReport.status == .ready)
         #expect(!session.needsAcknowledgement)
-        session.dryRun = false
         #expect(session.canCreate, "mapping every classic group replaces the acknowledgement for pick-a-group warnings")
         #expect(session.report.status == .needsAttention, "base report unchanged")
     }
@@ -177,7 +174,6 @@ struct EffectiveEligibilityTests {
         let session = try #require(workspace.session(for: ProfileKey(platform: .macOS, id: 103)))
         await session.waitUntilReady()
         session.pick(DemoFixtures.engineersPlatformGroupID, for: try #require(session.report.scopeMapping.first))
-        session.dryRun = false
         await session.create()
         #expect(session.lastError == nil)
         #expect(session.blueprintID != nil)

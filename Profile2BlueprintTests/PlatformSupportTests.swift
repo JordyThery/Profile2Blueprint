@@ -100,7 +100,6 @@ struct MobileProfileTests {
         let session = try #require(workspace.session(for: mobileKey))
         await session.waitUntilReady()
         #expect(session.blueprintDescription.contains("classic mobile device configuration profile ID 201"))
-        session.dryRun = false
         await session.create()
         #expect(session.lastError == nil)
         #expect(session.blueprintID != nil)

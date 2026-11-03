@@ -32,6 +32,7 @@ struct HistoryView: View {
                 ContentUnavailableView("No Actions Yet", systemImage: "clock.arrow.circlepath",
                                        description: Text("Dry runs, creates, verifications, deployments and classic cleanup are recorded here."))
             } else {
+                HSplitView {
                 Table(records, selection: $selection, sortOrder: $sortOrder) {
                     TableColumn("Time", value: \.timestamp) { record in
                         Text(record.timestamp.formatted(date: .abbreviated, time: .standard)).monospacedDigit()
@@ -41,7 +42,7 @@ struct HistoryView: View {
                         .width(min: 90, ideal: 120)
                     TableColumn("Action") { record in Text(record.action.title) }
                         .width(min: 110, ideal: 140)
-                    TableColumn("Source profile") { record in
+                    TableColumn("Source Profile") { record in
                         Text("\(record.sourceProfileName) (#\(record.sourceProfileID))")
                     }
                     TableColumn("Blueprint") { record in
@@ -55,13 +56,22 @@ struct HistoryView: View {
                         Text(record.message).lineLimit(1).truncationMode(.tail)
                     }
                 }
-                .safeAreaInset(edge: .bottom, spacing: 0) {
+                .frame(minWidth: 520, maxWidth: .infinity, maxHeight: .infinity)
+
+                // The selected record beside the list, not at the window's bottom edge.
+                Group {
                     if let record = selection.flatMap({ id in model.currentHistory.records.first { $0.id == id } }) {
                         HistoryDetailPane(record: record)
+                    } else {
+                        ContentUnavailableView("No Action Selected", systemImage: "sidebar.right",
+                                               description: Text("Select an action to see all its details."))
                     }
+                }
+                .frame(minWidth: 260, idealWidth: 320, maxWidth: 480, maxHeight: .infinity)
                 }
             }
         }
+        .focusedSceneValue(\.history, HistoryActions(export: model.currentHistory.records.isEmpty ? nil : { export($0) }))
         .searchable(text: $search, prompt: "Filter history")
         .navigationTitle("History")
         .toolbar {
@@ -118,54 +128,48 @@ private struct HistoryDetailPane: View {
     let record: MigrationRecord
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(record.action.title).font(.headline)
-                Text(record.timestamp.formatted(date: .abbreviated, time: .standard))
-                    .foregroundStyle(.secondary)
-                Spacer()
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(record.action.title).font(.headline)
+                    Text(record.timestamp.formatted(date: .abbreviated, time: .standard))
+                        .foregroundStyle(.secondary)
+                }
+
+                Text(record.message)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    field("Tenant", record.tenantName)
+                    field("Source Profile", "\(record.sourceProfileName) (\(record.platform.displayName) #\(record.sourceProfileID))")
+                    field("Result", record.result.title)
+                    if let name = record.blueprintName {
+                        field("Blueprint", name)
+                    }
+                    if let id = record.blueprintID {
+                        field("Blueprint ID", id, monospaced: true)
+                    }
+                }
+
                 Button("Copy Details", systemImage: "doc.on.doc") {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(clipboardText, forType: .string)
                 }
                 .help("Copy every field of this record")
             }
-
-            Text(record.message)
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 3) {
-                GridRow {
-                    field("Tenant", record.tenantName)
-                    field("Source profile", "\(record.sourceProfileName) (\(record.platform.displayName) #\(record.sourceProfileID))")
-                    field("Result", record.result.title)
-                }
-                if record.blueprintName != nil || record.blueprintID != nil {
-                    GridRow {
-                        if let name = record.blueprintName {
-                            field("Blueprint", name)
-                        }
-                        if let id = record.blueprintID {
-                            field("Blueprint ID", id, monospaced: true)
-                        }
-                    }
-                }
-            }
-            .font(.callout)
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.bar)
-        .overlay(alignment: .top) { Divider() }
     }
 
     private func field(_ label: String, _ value: String, monospaced: Bool = false) -> some View {
-        HStack(spacing: 6) {
-            Text(label).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 1) {
+            Text(label).font(.caption).foregroundStyle(.secondary)
             Text(value)
-                .font(monospaced ? .callout.monospaced() : .callout)
+                .font(monospaced ? .body.monospaced() : .body)
                 .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -199,6 +203,6 @@ private struct HistoryDetailPane: View {
         result: .success,
         message: "Removed all scope targets from the classic profile (payloads untouched). Scope backup saved; restore is available."
     ))
-    .frame(width: 900)
+    .frame(width: 320, height: 420)
 }
 #endif

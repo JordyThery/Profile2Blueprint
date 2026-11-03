@@ -9,7 +9,8 @@ import SwiftUI
             ContentView()
                 .environment(model)
                 .environment(model.updates)
-                .frame(minWidth: 820, minHeight: 520)
+                // The sidebar (200), the profile list (320) and the detail (480) all fit.
+                .frame(minWidth: 1040, minHeight: 600)
                 // A sandbox run (UI tests) makes no update check.
                 .task { if !model.demo.isSandbox { await model.updates.checkAutomatically() } }
         }
@@ -17,6 +18,7 @@ import SwiftUI
         .commands {
             AppInfoCommands(appName: "Profile2Blueprint") { model.updates.checkManually() }
             TenantCommands(model: model)
+            AppCommands()
         }
         // Connections (the tenants) and Updates; the app has no general settings
         // of its own. Every tab has a name, so "Edit Connections…" can open Connections.

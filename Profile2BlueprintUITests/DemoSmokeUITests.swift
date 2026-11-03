@@ -75,9 +75,6 @@ final class DemoSmokeUITests: JTKitUITestCase {
         tap(app.radioButtons["Migrate"].firstMatch, timeout: 10)
         let acknowledge = app.checkBoxes.matching(NSPredicate(format: "label BEGINSWITH 'I understand' OR title BEGINSWITH 'I understand'")).firstMatch
         if acknowledge.waitForExistence(timeout: 3), (acknowledge.value as? Int) != 1 { acknowledge.click() }
-        let dryRun = app.checkBoxes.matching(NSPredicate(format: "label BEGINSWITH 'Dry run' OR title BEGINSWITH 'Dry run'")).firstMatch
-        XCTAssertTrue(dryRun.waitForExistence(timeout: 10), "No dry-run switch")
-        if (dryRun.value as? Int) == 1 { dryRun.click() }
         tap(app.buttons["Create Blueprint (Not Deployed)"].firstMatch, timeout: 10)
         XCTAssertTrue(anyContaining("Identifiers, order, count, settings and scope all match").waitForExistence(timeout: 30),
                       "The Blueprint wasn't created and verified")

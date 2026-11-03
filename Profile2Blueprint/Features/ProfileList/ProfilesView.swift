@@ -96,8 +96,7 @@ private struct ProfilesContent: View {
         .toolbar {
             ToolbarItemGroup {
                 Button("Reload", systemImage: "arrow.clockwise") { workspace.reload() }
-                    .keyboardShortcut("r")
-                    .help("Reload profiles and device groups (read-only)")
+                    .help("Reload profiles and device groups (read-only) ⌘R")
                 Button("Migrate Selected…", systemImage: "square.stack.3d.up") { showingBatch = true }
                     .disabled(selection.count < 2)
                     .help("Migrate the selected profiles together, with a summary per profile")
@@ -106,6 +105,10 @@ private struct ProfilesContent: View {
         .sheet(isPresented: $showingBatch) {
             BatchMigrationView(workspace: workspace, profileKeys: selection.sorted())
         }
+        .focusedSceneValue(\.profileList, ProfileListActions(
+            reload: { workspace.reload() },
+            migrateSelected: selection.count < 2 ? nil : { showingBatch = true }
+        ))
         .onAppear { workspace.loadIfNeeded() }
     }
 
@@ -274,7 +277,7 @@ private struct ProfileRow: View {
         var parts = ["#\(summary.profileID)"]
         if let profile {
             let types = profile.document.payloadTypes
-            parts.append("\(types.count) payload\(types.count == 1 ? "" : "s")")
+            parts.append(String(AttributedString(localized: "^[\(types.count) payload](inflect: true)").characters))
             if let first = types.first {
                 parts.append(types.count > 1 ? "\(first) +\(types.count - 1)" : first)
             }

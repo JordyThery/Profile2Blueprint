@@ -23,9 +23,7 @@ struct DeployItem: Identifiable, Hashable {
     var canBeConfirmed: Bool { !groups.isEmpty && unresolvedGroupIDs.isEmpty }
 }
 
-/// The single explicit confirmation before deploying. Lists every blueprint, its
-/// target groups and device counts; nothing deploys until the box is ticked and
-/// Deploy is pressed.
+/// The deploy confirmation as a sheet of its own (one profile's Migrate tab).
 struct DeployConfirmationSheet: View {
     let items: [DeployItem]
     let environmentName: String
@@ -33,6 +31,27 @@ struct DeployConfirmationSheet: View {
     let onConfirm: ([DeployConfirmation]) -> Void
 
     @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        DeployConfirmationView(items: items, environmentName: environmentName, isDemo: isDemo,
+                               onCancel: { dismiss() },
+                               onConfirm: { onConfirm($0); dismiss() })
+            .padding(24)
+            .frame(width: 520)
+    }
+}
+
+/// The single explicit confirmation before deploying. Lists every Blueprint, its
+/// target groups and device counts; nothing deploys until the box is ticked and
+/// Deploy is pressed. A view, so batch migration shows it in its own sheet
+/// instead of a second sheet on top.
+struct DeployConfirmationView: View {
+    let items: [DeployItem]
+    let environmentName: String
+    let isDemo: Bool
+    let onCancel: () -> Void
+    let onConfirm: ([DeployConfirmation]) -> Void
+
     @State private var confirmed = false
 
     private var totalDevices: Int { items.reduce(0) { $0 + $1.deviceCount } }
@@ -63,7 +82,7 @@ struct DeployConfirmationSheet: View {
                                     Text(group.name)
                                     Spacer()
                                     Text(group.memberCountText).monospacedDigit()
-                                        .foregroundStyle(group.memberCount == nil ? Color.orange : Color.primary)
+                                        .foregroundStyle(group.memberCount == nil ? Color.secondary : Color.primary)
                                 }
                                 .font(.callout)
                             }
@@ -75,12 +94,12 @@ struct DeployConfirmationSheet: View {
                             if let classic = item.unscopeClassicProfile {
                                 Label("Afterwards, classic profile \(classic) will be unscoped, but only if every device succeeds. Its scope is backed up first and can be restored.",
                                       systemImage: "scissors")
-                                    .font(.caption).labelStyle(.tintedIcon(.orange))
+                                    .font(.callout).labelStyle(.tintedIcon(.orange))
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                             if item.warnings > 0 {
                                 WarningLabel(Text("^[\(item.warnings) key casing change](inflect: true) found during verification"))
-                                    .font(.caption)
+                                    .font(.callout)
                             }
                         }
                         .padding(10)
@@ -122,7 +141,7 @@ struct DeployConfirmationSheet: View {
 
             HStack {
                 Spacer()
-                Button("Cancel", role: .cancel) { dismiss() }
+                Button("Cancel", role: .cancel) { onCancel() }
                     .keyboardShortcut(.cancelAction)
                 Button(items.count == 1 ? "Deploy" : "Deploy All \(items.count)", role: .destructive) {
                     let now = Date()
@@ -130,13 +149,10 @@ struct DeployConfirmationSheet: View {
                         DeployConfirmation(blueprintID: $0.blueprintID, blueprintName: $0.blueprintName,
                                            groupNames: $0.groups.map(\.name), deviceCount: $0.deviceCount, confirmedAt: now)
                     })
-                    dismiss()
                 }
                 .disabled(!confirmed || items.isEmpty || !items.allSatisfy(\.canBeConfirmed))
             }
         }
-        .padding(24)
-        .frame(width: 520)
     }
 }
 

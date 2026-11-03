@@ -63,7 +63,6 @@ struct DeployHistoryTests {
     func refusedDeployLeavesNoConfirmedLine() async throws {
         let workspace = Workspace.previewDemo()
         let session = try #require(workspace.session(for: ProfileKey(platform: .macOS, id: 101)))
-        session.dryRun = false
         await session.create()
         let blueprintID = try #require(session.blueprintID)
         #expect(session.fidelity?.passed == true)

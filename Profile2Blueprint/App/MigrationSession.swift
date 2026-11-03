@@ -66,8 +66,6 @@ final class MigrationSession: Identifiable {
     private(set) var groupPicks: [String: String] = [:]
     /// Required to continue when eligibility is "needs attention".
     var acknowledgedWarnings = false
-    /// Dry run is the default; creating requires switching it off.
-    var dryRun = true
     /// Per-profile opt-in: unscope the classic profile once the Blueprint is deployed
     /// to every device. Only offered when classic scope changes are on for the tenant.
     var unscopeAfterDeploy = false {
@@ -212,7 +210,7 @@ final class MigrationSession: Identifiable {
     var needsAcknowledgement: Bool { effectiveReport.status == .needsAttention }
 
     var canCreate: Bool {
-        !isBusy && !isLoadingSavedState && !dryRun && blueprintID == nil && effectiveReport.status != .blocked
+        !isBusy && !isLoadingSavedState && blueprintID == nil && effectiveReport.status != .blocked
             && (!needsAcknowledgement || acknowledgedWarnings) && (try? preview.get()) != nil
     }
 
