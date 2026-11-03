@@ -275,6 +275,24 @@ actor MigrationPipeline {
         }
     }
 
+    /// Follows a deployment Jamf shows as pending or deploying (one a failed
+    /// deploy request may have started), as after a normal deploy.
+    func followDeployment(
+        id: String,
+        onProgress: @Sendable (JamfPlatform.DeploymentStatus) async -> Void = { _ in }
+    ) async throws -> DeploymentOutcome {
+        guard id == blueprintID else { throw PipelineError(message: "Create the Blueprint before following its deployment.") }
+        // The deployment Jamf shows now is the one to follow.
+        previousDeploymentStart = nil
+        state = .deploying(nil)
+        do {
+            return try await monitor(id: id, onProgress: onProgress)
+        } catch {
+            state = .failed(stage: "deploy", ErrorReport(error))
+            throw error
+        }
+    }
+
     /// Whether `deploy(confirmation:)` would go ahead: a verified, passing
     /// Blueprint and a confirmation naming it. Sends nothing. Returns the Blueprint's ID.
     @discardableResult

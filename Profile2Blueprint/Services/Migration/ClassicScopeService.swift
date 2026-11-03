@@ -269,6 +269,10 @@ nonisolated enum ClassicScopeService {
 
         do {
             try await writer.replaceScope(key: key, body: unscopedBody(platform: key.platform))
+        } catch where StoppedWaiting.matches(error) {
+            // Stopped during a wait before a retry: an earlier attempt may have
+            // gone through. The backup stays pending, so Restore is offered.
+            throw ScopeChangeError(message: stoppedUnscopeMessage)
         } catch {
             // The change may or may not have reached Jamf Pro; the profile tells.
             _ = await settle(backup, environment: environment, backups: backups)
@@ -289,6 +293,9 @@ nonisolated enum ClassicScopeService {
     }
 
     static let offMessage = "Classic scope changes are off for this tenant."
+
+    static let stoppedUnscopeMessage = "You stopped waiting for Jamf. The scope change may already have been made: check the classic profile in Jamf Pro. Restore is available."
+    static let stoppedRestoreMessage = "You stopped waiting for Jamf. The scope may already have been restored: check the classic profile in Jamf Pro. Restore is still available."
 
     static func uncoveredMessage(_ uncovered: [String]) -> String {
         "Not unscoped automatically: the classic profile also targets \(uncovered.formatted(.list(type: .and))), "
@@ -348,7 +355,12 @@ nonisolated enum ClassicScopeService {
         guard let expected = try? ClassicXMLParser.parseScopeXML(backup.scopeXML, platform: backup.platform) else {
             throw ScopeChangeError(message: "The saved scope backup can’t be read.")
         }
-        try await writer.replaceScope(key: backup.key, body: restoreBody(platform: backup.platform, scopeXML: backup.scopeXML))
+        do {
+            try await writer.replaceScope(key: backup.key, body: restoreBody(platform: backup.platform, scopeXML: backup.scopeXML))
+        } catch where StoppedWaiting.matches(error) {
+            // The backup isn't marked restored, so Restore stays available.
+            throw ScopeChangeError(message: stoppedRestoreMessage)
+        }
         let after = try await environment.classic.profile(key: backup.key)
         guard equivalent(after.scope, expected) else {
             throw ScopeChangeError(message: "Scope was sent back to Jamf Pro, but the result differs from the backup. Check the profile in Jamf Pro.")

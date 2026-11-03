@@ -139,7 +139,23 @@ final class Workspace {
         if listPhase == .idle { reload() }
     }
 
+    /// A batch migration is running (set by its sheet).
+    var batchRunning = false
+    /// Migrations with a step running, as each reports it (observed, unlike `sessions`).
+    private(set) var busyMigrations: Set<ProfileKey> = []
+
+    func migration(_ key: ProfileKey, isBusy: Bool) {
+        if isBusy { busyMigrations.insert(key) } else { busyMigrations.remove(key) }
+    }
+
+    /// Reload Profiles waits while a batch runs or a migration step is busy:
+    /// reloading replaces the profiles and groups those steps work with.
+    var isReloadBlocked: Bool {
+        batchRunning || !busyMigrations.isEmpty
+    }
+
     func reload() {
+        guard !isReloadBlocked else { return }
         loadTask?.cancel()
         loadTask = Task { await load() }
     }

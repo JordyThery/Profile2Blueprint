@@ -144,15 +144,17 @@ struct BatchMigrationView: View {
 
     private func run(dryRun: Bool) async {
         running = true
+        workspace.batchRunning = true
         stopRequested = false
-        defer { running = false; progressText = nil }
+        defer { running = false; workspace.batchRunning = false; progressText = nil }
         await BatchMigration.run(eligible, dryRun: dryRun, shouldStop: { stopRequested }) { progressText = $0 }
     }
 
     private func deploy(_ confirmations: [DeployConfirmation]) async {
         running = true
+        workspace.batchRunning = true
         stopRequested = false
-        defer { running = false; progressText = nil }
+        defer { running = false; workspace.batchRunning = false; progressText = nil }
         await BatchMigration.deploy(confirmations, sessions: sessions, shouldStop: { stopRequested }) { progressText = $0 }
     }
 

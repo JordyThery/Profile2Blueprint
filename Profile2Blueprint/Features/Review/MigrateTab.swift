@@ -220,6 +220,10 @@ struct MigrateTab: View {
                     Text("Deploying pushes the Blueprint to every device in the target groups. On each device the classic profile is replaced in place by the DDM-managed one.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
+                    if let notice = session.deploymentNotice {
+                        WarningLabel(notice)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                     if !session.unresolvedDeployGroupIDs.isEmpty {
                         WarningLabel("The Blueprint targets \(session.unresolvedDeployGroupIDs.count == 1 ? "a group" : "groups") the group list doesn’t have (\(session.unresolvedDeployGroupIDs.joined(separator: ", "))). Click Verify Again before deploying.")
                             .fixedSize(horizontal: false, vertical: true)

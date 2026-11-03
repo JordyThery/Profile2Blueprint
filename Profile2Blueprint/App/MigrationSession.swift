@@ -104,6 +104,11 @@ final class MigrationSession: Identifiable {
     private(set) var isLoadingSavedState = true
     /// The workspace was replaced: no more cleanup from this session.
     private(set) var isClosed = false
+    /// A deploy request failed in a way that may have started the deployment;
+    /// Verify Again then reads what Jamf shows before Deploy is offered.
+    private(set) var deployMayHaveStarted = false
+    /// Said above Deploy when the deployment that may have started failed.
+    private(set) var deploymentNotice: String?
 
     init(profile: ClassicProfile, report: EligibilityReport, workspace: Workspace) {
         key = profile.key
@@ -434,6 +439,8 @@ final class MigrationSession: Identifiable {
             // refused deploy sends nothing and leaves no "confirmed" line.
             try await pipeline.checkDeployable(confirmation: confirmation)
             let devices = "\(confirmation.deviceCount) device\(confirmation.deviceCount == 1 ? "" : "s")"
+            deploymentNotice = nil
+            deployMayHaveStarted = false
             history.record(.deploy, environment: environment, profile: profile, blueprintID: confirmation.blueprintID,
                                      blueprintName: confirmation.blueprintName, result: .success,
                                      message: "Confirmed by user for \(confirmation.groupNames.joined(separator: ", ")) (\(devices)).")
@@ -443,6 +450,7 @@ final class MigrationSession: Identifiable {
                     await MainActor.run { self?.deployment = progress }
                 }
             } catch {
+                if let failed = error as? DeployFailedError, failed.mayHaveStarted { deployMayHaveStarted = true }
                 // Every failed or stopped deploy says in the history whether it may have started.
                 let message = switch error {
                 case let notSent as DeployNotSentError: notSent.message
@@ -763,11 +771,43 @@ final class MigrationSession: Identifiable {
             : "\(result.mismatches.count) mismatch\(result.mismatches.count == 1 ? "" : "es"): " + result.mismatches.prefix(3).map(\.field).joined(separator: "; ")
         history.record(.verify, environment: environment, profile: profile, blueprintID: blueprintID, blueprintName: createdName,
                                  result: result.passed ? (result.caseChanges.isEmpty ? .success : .warning) : .failure, message: summary)
+        _ = try await followDeploymentInProgress()
+    }
+
+    /// What Jamf shows for the Blueprint's last deployment, read with Verify
+    /// Again: one still pending or deploying is followed as after Deploy
+    /// (returns true); after a deploy that may have started, a failed one is
+    /// said before Deploy is offered again.
+    private func followDeploymentInProgress() async throws -> Bool {
+        guard let blueprintID, let deployment = readBack?.overview.deploymentState else { return false }
+        switch deployment.lastDeploymentState?.uppercased() {
+        case "PENDING", "DEPLOYING":
+            deploymentNotice = nil
+            deployMayHaveStarted = false
+            history.record(.deploymentResult, environment: environment, profile: profile, blueprintID: blueprintID,
+                           blueprintName: createdName, result: .warning,
+                           message: "A deployment is \(deployment.lastDeploymentState?.lowercased() ?? "running"); following it instead of offering Deploy again.")
+            let result = try await pipeline.followDeployment(id: blueprintID) { [weak self] progress in
+                await MainActor.run { self?.deployment = progress }
+            }
+            await finish(result)
+            return true
+        case "FAILED" where deployMayHaveStarted:
+            deployMayHaveStarted = false
+            deploymentNotice = "The deployment the failed request may have started has failed (\(deployment.displayText)). Check the devices in Jamf Pro before deploying again."
+            history.record(.deploymentResult, environment: environment, profile: profile, blueprintID: blueprintID,
+                           blueprintName: createdName, result: .failure, message: deploymentNotice ?? "")
+            return false
+        default:
+            if deployMayHaveStarted { deployMayHaveStarted = false }
+            return false
+        }
     }
 
     private func perform(_ work: () async throws -> Void) async {
         guard !isBusy else { return }
         isBusy = true
+        workspace?.migration(key, isBusy: true)
         lastError = nil
         do {
             try await work()
@@ -776,6 +816,7 @@ final class MigrationSession: Identifiable {
             state = await pipeline.state
         }
         isBusy = false
+        workspace?.migration(key, isBusy: false)
         if cleanupQueued {
             cleanupQueued = false
             await reportBecameFinal(nil)

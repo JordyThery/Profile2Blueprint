@@ -96,7 +96,10 @@ private struct ProfilesContent: View {
         .toolbar {
             ToolbarItemGroup {
                 Button("Reload", systemImage: "arrow.clockwise") { workspace.reload() }
-                    .help("Reload profiles and device groups (read-only) ⌘R")
+                    .disabled(workspace.isReloadBlocked)
+                    .help(workspace.isReloadBlocked
+                          ? "Available when the running migration step or batch has finished"
+                          : "Reload profiles and device groups (read-only) ⌘R")
                 Button("Migrate Selected…", systemImage: "square.stack.3d.up") { showingBatch = true }
                     .disabled(selection.count < 2)
                     .help("Migrate the selected profiles together, with a summary per profile")
@@ -106,7 +109,7 @@ private struct ProfilesContent: View {
             BatchMigrationView(workspace: workspace, profileKeys: selection.sorted())
         }
         .focusedSceneValue(\.profileList, ProfileListActions(
-            reload: { workspace.reload() },
+            reload: workspace.isReloadBlocked ? nil : { workspace.reload() },
             migrateSelected: selection.count < 2 ? nil : { showingBatch = true }
         ))
         .onAppear { workspace.loadIfNeeded() }

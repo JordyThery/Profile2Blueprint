@@ -2,7 +2,8 @@ import SwiftUI
 
 /// What the profile list offers the menu bar while it is on screen.
 struct ProfileListActions {
-    var reload: () -> Void
+    /// Nil while a batch runs or a migration step is busy.
+    var reload: (() -> Void)?
     /// Nil while fewer than two profiles are selected.
     var migrateSelected: (() -> Void)?
 }
@@ -37,9 +38,9 @@ struct AppCommands: Commands {
 
     var body: some Commands {
         CommandMenu("Profile") {
-            Button("Reload Profiles") { profileList?.reload() }
+            Button("Reload Profiles") { profileList?.reload?() }
                 .keyboardShortcut("r")
-                .disabled(profileList == nil)
+                .disabled(profileList?.reload == nil)
             Button("Reload Profile") { profile?.reload() }
                 .keyboardShortcut("r", modifiers: [.command, .shift])
                 .disabled(profile == nil)

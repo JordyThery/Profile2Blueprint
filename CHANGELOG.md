@@ -34,7 +34,14 @@
   in batch migration.
 - **Stop says what happened.** Stopping a wait reads “You stopped waiting for
   Jamf; nothing was sent again”, and every failed or stopped deploy leaves a
-  History line saying whether it may have started.
+  History line saying whether it may have started. Stopping during a classic
+  scope change or a Restore says the change may already have been made, asks
+  you to check the classic profile, and keeps Restore available.
+- **After a deploy that may have started,** Verify Again checks the Blueprint:
+  a deployment still pending or deploying is followed as after Deploy, and a
+  failed one is reported before Deploy is offered again.
+- **Reload Profiles waits** while a batch migration runs or a migration step
+  is busy.
 - **Menu commands.** Profile › Reload Profiles (⌘R), Reload Profile (⇧⌘R),
   Migrate Selected… (⇧⌘M), Open Profile in Jamf Pro (⌥⌘J) and Open Blueprint
   in Jamf Pro (⇧⌥⌘J); File › Export History (⇧⌘E).

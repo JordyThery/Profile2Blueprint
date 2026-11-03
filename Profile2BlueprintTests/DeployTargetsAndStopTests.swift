@@ -22,21 +22,25 @@ private func temporaryFile(_ name: String) -> URL {
 private final class OnceServer: DemoServer, @unchecked Sendable {
     let inner: DemoJamfPlatformServer
     private let lock = NSLock()
-    private var rule: (match: @Sendable (DemoRequest) -> Bool, response: DemoResponse)?
+    private var rule: (match: @Sendable (DemoRequest) -> Bool, response: DemoResponse, forward: Bool)?
 
     init(_ inner: DemoJamfPlatformServer) { self.inner = inner }
 
-    func arm(_ response: DemoResponse, when match: @escaping @Sendable (DemoRequest) -> Bool) {
-        lock.withLock { rule = (match, response) }
+    /// - Parameter forward: the server still gets the request (it happened),
+    ///   and only the answer is replaced (it was lost or failed).
+    func arm(_ response: DemoResponse, forward: Bool = false, when match: @escaping @Sendable (DemoRequest) -> Bool) {
+        lock.withLock { rule = (match, response, forward) }
     }
 
     func respond(to request: DemoRequest) -> DemoResponse {
-        let answer: DemoResponse? = lock.withLock {
-            guard let rule, rule.match(request) else { return nil }
+        let rule: (match: @Sendable (DemoRequest) -> Bool, response: DemoResponse, forward: Bool)? = lock.withLock {
+            guard let rule = self.rule, rule.match(request) else { return nil }
             self.rule = nil
-            return rule.response
+            return rule
         }
-        return answer ?? inner.respond(to: request)
+        guard let rule else { return inner.respond(to: request) }
+        if rule.forward { _ = inner.respond(to: request) }
+        return rule.response
     }
 
     static let wait = DemoResponse(status: 429, headers: ["Content-Type": "application/json", "Retry-After": "30"],
@@ -66,14 +70,15 @@ private final class OnceServer: DemoServer, @unchecked Sendable {
 
 @MainActor
 private struct Rig {
-    let server = DemoJamfPlatformServer()
+    let server: DemoJamfPlatformServer
     let classic = DemoClassicServer()
     let once: OnceServer
     let waits = RequestWaits()
     let environment: MigrationEnvironment
     let workspace: Workspace
 
-    init() {
+    init(server: DemoJamfPlatformServer = DemoJamfPlatformServer()) {
+        self.server = server
         once = OnceServer(server)
         let session = DemoNetwork(servers: [DemoSamples.platformHost: once]).session
         environment = .demo(server: server, classicServer: classic, session: session, waits: waits)
@@ -289,7 +294,7 @@ struct StopAndFailureTests {
         #expect(session.lastError?.title == StoppedWaiting.message)
     }
 
-    @Test("Stop during a wait on the classic scope PUT: the scope stays, the backup reads as not written")
+    @Test("Stop during a wait on the classic scope PUT: may have been made, check the profile, Restore offered")
     func stopClassicPut() async throws {
         let rig = Rig()
         let backups = ScopeBackupStore(fileURL: temporaryFile("b.json"))
@@ -302,10 +307,43 @@ struct StopAndFailureTests {
             thrown = error
         }
         await stopper.value
-        #expect(thrown.map(StoppedWaiting.matches) == true)
-        #expect(thrown.map { ErrorReport($0).title } == StoppedWaiting.message)
-        #expect(rig.classic.scopeWrites.isEmpty)
-        #expect(await backups.latest(key: loginItems, environment: rig.environment) == nil, "settled as not written")
+        #expect(thrown.map { ErrorReport($0).title } == ClassicScopeService.stoppedUnscopeMessage)
+        #expect(ClassicScopeService.stoppedUnscopeMessage.contains("may already have been made"))
+        #expect(!ClassicScopeService.stoppedUnscopeMessage.contains("nothing was sent"))
+        let backup = await backups.latest(key: loginItems, environment: rig.environment)
+        #expect(backup?.writeState == .pending, "kept for Restore")
+    }
+
+    @Test("Stop during the automatic or manual unscope in a migration: Restore is available")
+    func stopUnscopeInSession() async throws {
+        let rig = Rig()
+        let session = try await rig.verified()
+        await session.deploy(try confirmation(session))
+        try #require(session.canUnscopeNow, "\(String(describing: session.outcome))")
+        rig.once.arm(OnceServer.wait, when: OnceServer.isClassicPut)
+        let stopper = rig.stopFirstWait()
+        await session.unscopeClassic()
+        await stopper.value
+        guard case let .failed(report) = session.unscopeStatus else { Issue.record("\(session.unscopeStatus)"); return }
+        #expect(report.title == ClassicScopeService.stoppedUnscopeMessage)
+        #expect(session.canRestoreScope)
+    }
+
+    @Test("Stop during a wait on Restore: may already be restored, check the profile, Restore still available")
+    func stopRestore() async throws {
+        let rig = Rig()
+        let session = try await rig.verified()
+        await session.deploy(try confirmation(session))
+        await session.unscopeClassic()
+        try #require(session.canRestoreScope, "\(session.unscopeStatus)")
+        rig.once.arm(OnceServer.wait, when: OnceServer.isClassicPut)
+        let stopper = rig.stopFirstWait()
+        await session.restoreClassicScope()
+        await stopper.value
+        guard case let .failed(report) = session.unscopeStatus else { Issue.record("\(session.unscopeStatus)"); return }
+        #expect(report.title == ClassicScopeService.stoppedRestoreMessage)
+        #expect(session.canRestoreScope, "Restore stays available")
+        #expect(session.scopeBackup != nil)
     }
 
     @Test("A deploy POST answered 503 leaves a history line saying it may have started")
@@ -317,6 +355,38 @@ struct StopAndFailureTests {
         #expect(rig.lastDeployLine?.result == .failure)
         #expect(rig.lastDeployLine?.message.contains("may or may not have started") == true, "\(String(describing: rig.lastDeployLine))")
         #expect(!session.canDeploy, "it may have started: verify again first")
+    }
+
+    @Test("A deploy that may have started and is still running: Verify Again follows it instead of offering Deploy")
+    func verifyFollowsRunningDeployment() async throws {
+        let rig = Rig(server: DemoJamfPlatformServer(pollsToSucceed: 3))
+        let session = try await rig.verified()
+        // The deploy reaches Jamf, but its answer is a 503.
+        rig.once.arm(OnceServer.status(503), forward: true, when: OnceServer.isDeploy)
+        await session.deploy(try confirmation(session))
+        #expect(rig.server.deployCount == 1)
+        #expect(session.deployMayHaveStarted)
+        #expect(!session.canDeploy)
+        await session.verify()
+        guard case .deployed = session.state else { Issue.record("\(session.state)"); return }
+        #expect(!session.canDeploy)
+        #expect(rig.server.deployCount == 1, "never deployed a second time")
+        #expect(rig.workspace.history.records.contains { $0.message.contains("following it instead of offering Deploy again") })
+    }
+
+    @Test("A deploy that may have started and failed: Verify Again says so before Deploy is offered")
+    func verifyReportsFailedDeployment() async throws {
+        let rig = Rig(server: DemoJamfPlatformServer(pollsToSucceed: 0, failDeployments: true))
+        let session = try await rig.verified()
+        rig.once.arm(OnceServer.status(503), forward: true, when: OnceServer.isDeploy)
+        await session.deploy(try confirmation(session))
+        #expect(!session.canDeploy)
+        await session.verify()
+        let notice = try #require(session.deploymentNotice, "\(session.state)")
+        #expect(notice.contains("has failed"))
+        #expect(session.canDeploy, "offered again, after the notice")
+        #expect(rig.workspace.history.records.last { $0.action == .deploymentResult }?.message == notice)
+        #expect(rig.server.deployCount == 1)
     }
 
     @Test("A deploy POST refused with 400 leaves a history line saying it didn't start")
@@ -381,5 +451,34 @@ struct TenantWorkspaceTests {
         tenant.allowClassicScopeChanges = false
         try model.connections.save(tenant, secrets: [:])
         #expect(environment.classicScopeWriter == nil, "the old workspace sees the switch turned off")
+    }
+}
+
+@Suite("Reload Profiles while work runs", .serialized)
+@MainActor
+struct ReloadBlockTests {
+    @Test("Unavailable while a migration step is busy or a batch runs")
+    func blocked() async throws {
+        let rig = Rig()
+        let session = try #require(rig.workspace.session(for: loginItems))
+        await session.waitUntilReady()
+        #expect(!rig.workspace.isReloadBlocked)
+        // Hold the create in a wait, so the step stays busy.
+        rig.once.arm(OnceServer.wait, when: OnceServer.isCreate)
+        let create = Task { await session.create() }
+        for _ in 0..<1_000 where rig.waits.current.isEmpty { try await Task.sleep(for: .milliseconds(5)) }
+        #expect(session.isBusy)
+        #expect(rig.workspace.isReloadBlocked)
+        let before = rig.workspace.detailsLoaded
+        rig.workspace.reload()
+        #expect(rig.workspace.listPhase == .loaded && rig.workspace.detailsLoaded == before, "reload refused")
+        rig.waits.cancelAll()
+        await create.value
+        #expect(!rig.workspace.isReloadBlocked)
+
+        rig.workspace.batchRunning = true
+        #expect(rig.workspace.isReloadBlocked)
+        rig.workspace.batchRunning = false
+        #expect(!rig.workspace.isReloadBlocked)
     }
 }
