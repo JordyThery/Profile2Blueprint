@@ -16,6 +16,10 @@ A native macOS app that migrates **Jamf Pro classic configuration profiles** (ma
 
 > **Status:** verified end to end against live Jamf tenants — create, server-side verify, deploy, the in-place transform on a Mac and on an iPhone, and classic scope cleanup with restore. Try every migration on a test device before using it fleet-wide.
 
+## Compared with Blueshift
+
+[Blueshift](https://github.com/Jamf-Concepts/blueshift), a Jamf Concepts project, also moves classic configuration profiles to Blueprints, in a different way: it builds a new Blueprint alongside the profile, turns payloads into native declarations where it can and wraps unknown ones as managed preferences, and once you’ve confirmed the Blueprint works, retires the original by renaming and unscoping it. Until then, both manage the same settings. Profile2Blueprint keeps the profile’s payloads as they are and uses Apple’s in-place transform, so the device swaps one for the other with no gap and no second copy. Blueshift suits moving settings to native declarations; Profile2Blueprint suits profiles that must keep applying, unchanged, throughout the migration.
+
 ## Install
 
 Download the latest `Profile2Blueprint-X.Y.Z.zip` from [Releases](https://github.com/JordyThery/Profile2Blueprint/releases), unzip it, and move **Profile2Blueprint.app** to `/Applications`. The app is signed with a Developer ID certificate and notarized, so Gatekeeper verifies it instead of blocking it. Requires **macOS 14 or later**.
