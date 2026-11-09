@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.4.1 (unreleased)
+## 1.4.1 (2026-11-09)
 
 - **A clearer warning before the classic cleanup.** After the in-place
   transform, unscoping the classic profile (or deleting it in Jamf Pro later)
