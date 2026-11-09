@@ -92,6 +92,9 @@ private struct TenantAppSections: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            WarningLabel("Unscoping a classic profile makes Jamf Pro send each device a Remove Configuration Profile command. Devices with the in-place transform refuse it and Jamf Pro keeps retrying, so on a large fleet these failed commands pile up and can overload the Jamf Pro server. Deleting the classic profile in Jamf Pro later has the same effect.")
+                .font(.callout)
+                .fixedSize(horizontal: false, vertical: true)
             if tenant.allowClassicScopeChanges {
                 Label("On. Requires the configuration-profiles:update permission. Each unscope still needs a per-profile opt-in and confirmation.",
                       systemImage: "exclamationmark.shield.fill")
@@ -114,10 +117,10 @@ private struct TenantAppSections: View {
             }
         } message: {
             Text("""
-            This is the only way the app changes anything in Jamf Pro. Once you save, it can replace the scope of a classic \
-            profile (after you opt in per profile and confirm). When Jamf Pro unscopes a profile it removes it from devices, \
-            and on devices where the in-place DDM transform didn’t happen, the settings are lost. Test with one profile and one device first. \
-            A backup of every scope is kept so it can be restored.
+            This is the only way the app changes a classic profile. Once you save, it can replace the scope of a classic \
+            profile (after you opt in per profile and confirm). Where the in-place transform didn’t happen, unscoping removes \
+            the settings from devices. Where it did, devices refuse the removal and Jamf Pro keeps retrying, which can overload \
+            Jamf Pro on a large fleet. Start with one profile scoped to a small group. Every scope is backed up first and can be restored.
             """)
         }
     }
