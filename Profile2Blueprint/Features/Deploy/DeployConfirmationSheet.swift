@@ -92,7 +92,7 @@ struct DeployConfirmationView: View {
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                             if let classic = item.unscopeClassicProfile {
-                                Label("Afterwards, classic profile \(classic) will be unscoped, but only if every device succeeds. Its scope is backed up first and can be restored.",
+                                Label("Afterwards, classic profile \(classic) will be unscoped, but only if every device succeeds. Devices with the in-place transform then refuse Jamf Pro’s Remove command, and Jamf Pro keeps retrying, which can overload Jamf Pro on a large fleet. Its scope is backed up first and can be restored.",
                                       systemImage: "scissors")
                                     .font(.callout).labelStyle(.tintedIcon(.orange))
                                     .fixedSize(horizontal: false, vertical: true)

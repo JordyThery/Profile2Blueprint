@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.4.1 (unreleased)
+
+- **A clearer warning before the classic cleanup.** After the in-place
+  transform, unscoping the classic profile (or deleting it in Jamf Pro later)
+  makes Jamf Pro send each device a command to remove it. The devices refuse
+  it and Jamf Pro keeps retrying, so on a large fleet the failed commands pile
+  up and can overload the Jamf Pro server. The Allow classic scope changes
+  setting, the Migrate tab, the cleanup and deploy confirmations and the README
+  now say so and suggest starting with a profile scoped to a small group. The
+  README explains how to cancel failed commands in Jamf Pro.
+
 ## 1.4.0 (2026-11-03)
 
 - **Nothing is sent to your tenant at launch.** The window opens without a page

@@ -268,14 +268,8 @@ extension MigrateTab {
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
-                    WarningLabel("When Jamf Pro unscopes a profile it removes it from devices. On devices where the in-place transform didn’t happen (no DDM, or not installed by MDM), the settings are lost. Try it with one profile and one device first.")
+                    WarningLabel("When Jamf Pro unscopes a profile, it sends each device a Remove Configuration Profile command. On devices where the in-place transform didn’t happen (no DDM, or not installed by MDM), the settings are lost. Where it did, the device refuses, because the Blueprint now manages the profile, and Jamf Pro keeps retrying; deleting the classic profile in Jamf Pro later does the same. With many devices or profiles, these failed commands pile up and can overload the Jamf Pro server. Start with one profile scoped to a small group, and watch its failed commands in Jamf Pro.")
                         .font(.callout)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Label("After the transform, Jamf Pro logs a failed “Remove Configuration Profile” command for each device: the device refuses to let MDM remove a profile the Blueprint now owns. That failure is expected.",
-                          systemImage: "info.circle")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
 
                     unscopeStatusView
@@ -298,9 +292,9 @@ extension MigrateTab {
             Button("Unscope Classic Profile", role: .destructive) { Task { await session.unscopeClassic() } }
         } message: {
             if session.uncoveredClassicTargets.isEmpty {
-                Text("Removes every scope target from classic profile #\(session.profile.id) in \(workspace.environment.displayName). Jamf Pro will then remove the classic profile from devices. The current scope is backed up first.")
+                Text("Removes every scope target from classic profile #\(session.profile.id) in \(workspace.environment.displayName). Devices with the in-place transform refuse Jamf Pro’s Remove command, and Jamf Pro keeps retrying, which can overload Jamf Pro on a large fleet. Start with a profile scoped to a small group. The current scope is backed up first.")
             } else {
-                Text("Removes every scope target from classic profile #\(session.profile.id) in \(workspace.environment.displayName). The classic profile also targets \(session.uncoveredClassicTargets.formatted(.list(type: .and))), which the Blueprint’s groups (\(session.selectedGroups.map(\.name).formatted(.list(type: .and)))) don’t cover: Jamf Pro will remove the profile from those devices too, and they won’t get the Blueprint. The current scope is backed up first.")
+                Text("Removes every scope target from classic profile #\(session.profile.id) in \(workspace.environment.displayName). The classic profile also targets \(session.uncoveredClassicTargets.formatted(.list(type: .and))), which the Blueprint’s groups (\(session.selectedGroups.map(\.name).formatted(.list(type: .and)))) don’t cover: Jamf Pro will remove the profile from those devices, and they won’t get the Blueprint. Devices with the in-place transform refuse Jamf Pro’s Remove command, and Jamf Pro keeps retrying, which can overload Jamf Pro on a large fleet. Start with a profile scoped to a small group. The current scope is backed up first.")
             }
         }
         .confirmationDialog("Restore the scope of “\(session.profile.name)”?", isPresented: $confirmingRestore) {
