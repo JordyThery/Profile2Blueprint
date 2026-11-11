@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.4.2 (2026-11-11)
+
+The last release of Profile2Blueprint: the app is no longer maintained.
+Use Blueshift by Jamf Concepts instead: its Keep as Installed takes a
+configuration profile over in place using Apple’s transition from MDM, as
+Profile2Blueprint’s in-place transform does.
+
+- **A notice that the app is no longer maintained**, as a bar at the top of the
+  main window and in About, with **Open Blueshift** to open Blueshift on GitHub
+  in your browser. Blueshift’s README says which profiles qualify for Keep as
+  Installed. Closing the bar hides it until the next launch.
+- **Deleting a connection whose Keychain item can’t be removed now keeps the
+  connection and says why**, for example while the Keychain is locked, instead
+  of removing the connection and leaving its client secret behind in the
+  Keychain. Delete it again once the Keychain allows it.
+
 ## 1.4.1 (2026-11-09)
 
 - **A clearer warning before the classic cleanup.** After the in-place

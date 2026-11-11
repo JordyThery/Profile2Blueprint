@@ -10,6 +10,8 @@ final class AppModel {
     private(set) var currentTenantID: UUID?
     /// Set when persisting tenants or secrets fails, shown as an alert.
     var persistenceError: String?
+    /// The no-longer-maintained notice was closed. Not saved: it's back at the next launch.
+    var isArchiveNoticeClosed = false
 
     /// JTKit's demo mode: Contoso's sample tenant, answered inside the app; no
     /// tenant is contacted. A setting of its own, never a tenant in the list.

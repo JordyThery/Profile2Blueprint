@@ -15,9 +15,18 @@ struct ContentView: View {
     @State private var choseFirstPage = false
 
     var body: some View {
+        @Bindable var model = model
+
+        VStack(spacing: 0) {
+            ArchiveNoticeBar(isClosed: $model.isArchiveNoticeClosed)
+            splitView
+        }
+    }
+
+    private var splitView: some View {
         @Bindable var updates = updates
 
-        NavigationSplitView {
+        return NavigationSplitView {
             List(selection: $selection) {
                 Section("Migration") {
                     Label("Profiles", systemImage: "doc.badge.gearshape")
