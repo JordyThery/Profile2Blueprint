@@ -1,3 +1,8 @@
+> [!IMPORTANT]
+> **Archived.** Profile2Blueprint is no longer maintained. Use Blueshift by Jamf Concepts instead: its Keep as Installed takes a configuration profile over in place using Apple’s transition from MDM, as Profile2Blueprint’s in-place transform does. Blueshift’s README says which profiles qualify for Keep as Installed.
+>
+> [Open Blueshift](https://github.com/Jamf-Concepts/blueshift)
+
 <p align="center">
   <img src="docs/icon.png" width="128" alt="Profile2Blueprint app icon">
 </p>

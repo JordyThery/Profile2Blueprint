@@ -40,8 +40,9 @@ extension AboutConfiguration {
         appName: "Profile2Blueprint",
         copyright: AboutCopyright(year: "2026", holder: "Jordy Thery"),
         author: "Created by Jordy Thery",
-        summary: "Migrates Jamf Pro classic configuration profiles (macOS and mobile device) into Jamf Platform Blueprints with Apple’s in-place Classic → DDM transform: reviewable, verifiable and non-destructive.",
+        summary: "Migrates Jamf Pro classic configuration profiles (macOS and mobile device) into Jamf Platform Blueprints with Apple’s in-place Classic → DDM transform: reviewable, verifiable and non-destructive.\n\n\(ArchiveNotice.text)",
         links: [
+            ArchiveNotice.blueshiftURL.map { AboutLink(ArchiveNotice.buttonTitle, url: $0) },
             AboutLink("github.com/JordyThery/Profile2Blueprint", address: "https://github.com/JordyThery/Profile2Blueprint"),
         ].compactMap { $0 },
         disclaimer: "Try every migration on a test device before using it fleet-wide."
